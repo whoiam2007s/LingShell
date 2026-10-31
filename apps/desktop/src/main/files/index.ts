@@ -1,0 +1,10 @@
+// 本目录对外入口：其它目录只从这里引用（eslint no-restricted-imports 检查）。只导出外部实际用到的。
+export { DOC_EXTS, DOC_TEXT_MAX_CHARS, artifactInfo, docToText } from './docText.js'
+export { EXT_EDIT_MAX_BYTES } from './externalEdit.js'
+export { readForCompare } from './fileCompare.js'
+export { MAX_FILE_BYTES, backupFile, backupName, localAccess, sftpAccess, writeWithBackup } from './fileOps.js'
+export type { FileAccess } from './fileOps.js'
+export { registerFilePreview } from './filePreviewIpc.js'
+export { TransferService, hasOpenssl } from './transfer.js'
+export { fileHistory } from './transferQueue.js'
+export { registerFilesIpc } from './register.js'

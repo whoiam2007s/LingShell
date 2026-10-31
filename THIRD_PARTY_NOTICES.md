@@ -1,0 +1,875 @@
+# Third-Party Notices
+
+灵壳 LingShell includes the following third-party packages.
+
+Generated from `pnpm licenses list --json` on 2026-10-21. License texts are distributed with each package; regenerate this file after dependency changes:
+
+```bash
+pnpm licenses list --json > licenses.json
+```
+
+## (MIT OR CC0-1.0) (1)
+
+- type-fest@0.13.1
+
+## (WTFPL OR MIT) (1)
+
+- utf8-byte-length@1.0.5
+
+## 0BSD (1)
+
+- tslib@2.8.1
+
+## Apache-2.0 (58)
+
+- @aws-sdk/client-bedrock-runtime@3.1127.0
+- @aws-sdk/core@3.978.2
+- @aws-sdk/credential-provider-env@3.972.73
+- @aws-sdk/credential-provider-http@3.972.75
+- @aws-sdk/credential-provider-ini@3.973.18
+- @aws-sdk/credential-provider-login@3.972.80
+- @aws-sdk/credential-provider-node@3.972.85
+- @aws-sdk/credential-provider-process@3.972.73
+- @aws-sdk/credential-provider-sso@3.973.17
+- @aws-sdk/credential-provider-web-identity@3.972.79
+- @aws-sdk/eventstream-handler-node@3.972.36
+- @aws-sdk/middleware-eventstream@3.972.31
+- @aws-sdk/middleware-websocket@3.972.55
+- @aws-sdk/nested-clients@3.997.47
+- @aws-sdk/signature-v4-multi-region@3.996.48
+- @aws-sdk/token-providers@3.1127.0, 3.1149.0
+- @aws-sdk/types@3.974.6
+- @aws-sdk/xml-builder@3.972.41
+- @aws/lambda-invoke-store@0.3.0
+- @eslint/config-array@0.21.2
+- @eslint/config-helpers@0.4.2
+- @eslint/core@0.17.0
+- @eslint/object-schema@2.1.7
+- @eslint/plugin-kit@0.4.1
+- @google/genai@2.21.0
+- @humanfs/core@0.19.2
+- @humanfs/node@0.16.8
+- @humanfs/types@0.15.0
+- @humanwhocodes/module-importer@1.0.1
+- @humanwhocodes/retry@0.4.3
+- @malept/cross-spawn-promise@2.0.0
+- @opentelemetry/api@1.9.0
+- @smithy/core@3.35.2
+- @smithy/credential-provider-imds@4.5.2
+- @smithy/fetch-http-handler@5.8.0
+- @smithy/node-http-handler@4.12.1
+- @smithy/signature-v4@5.7.4
+- @smithy/types@4.19.0
+- baseline-browser-mapping@2.10.40
+- detect-libc@2.1.2
+- didyoumean@1.2.2
+- ecdsa-sig-formatter@1.0.11
+- ejs@3.1.10
+- eslint-visitor-keys@3.4.3, 4.2.1, 5.0.1
+- expect-type@1.4.0
+- exponential-backoff@3.1.3
+- filelist@1.0.6
+- gaxios@7.3.1
+- gcp-metadata@8.1.2
+- google-auth-library@10.9.1
+- google-logging-utils@1.1.3
+- jake@10.9.4
+- long@5.3.2
+- openai@7.19.0
+- rxjs@7.8.2
+- sumchecker@3.0.1
+- ts-interface-checker@0.1.13
+- typescript@5.9.3
+
+## BlueOak-1.0.0 (7)
+
+- chownr@3.0.0
+- isexe@3.1.5, 4.0.0
+- minimatch@10.2.5
+- minipass@7.1.3
+- sax@1.6.0
+- tar@7.5.19
+- yallist@5.0.0
+
+## BSD-2-Clause (13)
+
+- @electron/osx-sign@1.3.3
+- @electron/windows-sign@1.2.2
+- dotenv@16.6.1
+- dotenv-expand@11.0.7
+- eslint-scope@8.4.0
+- espree@10.4.0
+- esrecurse@4.3.0
+- estraverse@5.3.0
+- esutils@2.0.3
+- extract-zip@2.0.1
+- http-cache-semantics@4.2.0
+- json-schema-typed@8.0.2
+- uri-js@4.4.1
+
+## BSD-3-Clause (32)
+
+- @deepseek-ai/node-addon-system@0.1.2
+- @hapi/address@5.1.1
+- @hapi/formula@3.0.2
+- @hapi/hoek@11.0.7
+- @hapi/pinpoint@2.0.1
+- @hapi/tlds@1.1.7
+- @hapi/topo@6.0.2
+- @protobufjs/aspromise@1.1.2
+- @protobufjs/base64@1.1.2
+- @protobufjs/codegen@2.0.5
+- @protobufjs/eventemitter@1.1.1
+- @protobufjs/fetch@1.1.1
+- @protobufjs/float@1.0.2
+- @protobufjs/path@1.1.2
+- @protobufjs/pool@1.1.0
+- @protobufjs/utf8@1.1.2
+- asn1js@3.0.10
+- bcrypt-pbkdf@1.0.2
+- buffer-equal-constant-time@1.0.1
+- bytestreamjs@2.0.1
+- duplexer2@0.1.4
+- esquery@1.7.0
+- fast-uri@3.1.2
+- global-agent@3.0.0
+- joi@18.2.3
+- pkijs@3.4.0
+- protobufjs@7.6.6
+- qs@6.16.0
+- roarr@2.15.4
+- source-map@0.6.1
+- source-map-js@1.2.1
+- sprintf-js@1.1.3
+
+## CC-BY-4.0 (1)
+
+- caniuse-lite@1.0.30001799
+
+## ISC (38)
+
+- @isaacs/fs-minipass@4.0.1
+- @ungap/structured-clone@1.3.2
+- abbrev@4.0.0
+- anymatch@3.1.3
+- at-least-node@1.0.0
+- cliui@8.0.1, 9.0.1
+- electron-to-chromium@1.5.380
+- fastq@1.20.1
+- flatted@3.4.2
+- fs.realpath@1.0.0
+- get-caller-file@2.0.5
+- glob@7.2.3
+- glob-parent@5.1.2, 6.0.2
+- graceful-fs@4.2.11
+- hosted-git-info@4.1.0
+- inflight@1.0.6
+- inherits@2.0.4
+- isexe@2.0.0
+- json-stringify-safe@5.0.1
+- lru-cache@5.1.1, 6.0.0
+- lucide-react@1.22.0
+- minimatch@3.1.5, 5.1.9, 9.0.9
+- nopt@9.0.0
+- once@1.4.0
+- picocolors@1.1.1
+- proc-log@6.1.0
+- rimraf@2.6.3
+- semver@5.7.2, 6.3.1, 7.7.4, 7.8.5
+- setprototypeof@1.2.0
+- siginfo@2.0.0
+- signal-exit@3.0.7
+- which@2.0.2, 5.0.0, 6.0.1
+- wrappy@1.0.2
+- y18n@5.0.8
+- yallist@3.1.1, 4.0.0
+- yaml@2.9.0
+- yargs-parser@21.1.1, 22.0.0
+- zod-to-json-schema@3.25.2
+
+## MIT (657)
+
+- @alloc/quick-lru@5.2.0
+- @anthropic-ai/sdk@0.129.0
+- @babel/code-frame@7.29.7
+- @babel/compat-data@7.29.7
+- @babel/core@7.29.7
+- @babel/generator@7.29.7
+- @babel/helper-compilation-targets@7.29.7
+- @babel/helper-globals@7.29.7
+- @babel/helper-module-imports@7.29.7
+- @babel/helper-module-transforms@7.29.7
+- @babel/helper-plugin-utils@7.29.7
+- @babel/helper-string-parser@7.29.7
+- @babel/helper-validator-identifier@7.29.7
+- @babel/helper-validator-option@7.29.7
+- @babel/helpers@7.29.7
+- @babel/parser@7.29.7
+- @babel/plugin-transform-arrow-functions@7.29.7
+- @babel/runtime@7.29.10
+- @babel/template@7.29.7
+- @babel/traverse@7.29.7
+- @babel/types@7.29.7
+- @deepseek-ai/cordis@4.0.5
+- @deepseek-ai/cordis-plugin-include@1.0.10
+- @deepseek-ai/cordis-plugin-loader@1.0.6
+- @deepseek-ai/cosmokit@1.8.6
+- @deepseek-ai/dsh-agent@0.2.1-rc.2
+- @deepseek-ai/dsh-agent-loop@0.2.1-rc.2
+- @deepseek-ai/dsh-anonymous-user-id@0.2.1-rc.2
+- @deepseek-ai/dsh-atomic-write@0.2.1-rc.2
+- @deepseek-ai/dsh-attachment@0.2.1-rc.2
+- @deepseek-ai/dsh-authorization@0.2.1-rc.2
+- @deepseek-ai/dsh-brand@0.2.1-rc.2
+- @deepseek-ai/dsh-commands@0.2.1-rc.2
+- @deepseek-ai/dsh-compaction@0.2.1-rc.2
+- @deepseek-ai/dsh-compaction-basic@0.2.1-rc.2
+- @deepseek-ai/dsh-compaction-image-offload@0.2.1-rc.2
+- @deepseek-ai/dsh-compaction-tool-result-pruner@0.2.1-rc.2
+- @deepseek-ai/dsh-credentials@0.2.1-rc.2
+- @deepseek-ai/dsh-deepseek-llm-api-extensions@0.2.1-rc.2
+- @deepseek-ai/dsh-fs@0.2.1-rc.2
+- @deepseek-ai/dsh-home-paths@0.2.1-rc.2
+- @deepseek-ai/dsh-launch-environment@0.2.1-rc.2
+- @deepseek-ai/dsh-llm@0.2.1-rc.2
+- @deepseek-ai/dsh-llm-deepseek@0.2.1-rc.2
+- @deepseek-ai/dsh-llm-pi-ai@0.2.1-rc.2
+- @deepseek-ai/dsh-llm-retry@0.2.1-rc.2
+- @deepseek-ai/dsh-ptc-runtime@0.2.1-rc.2
+- @deepseek-ai/dsh-sandbox@0.2.1-rc.2
+- @deepseek-ai/dsh-sandbox-policy@0.2.1-rc.2
+- @deepseek-ai/dsh-scope@0.2.1-rc.2
+- @deepseek-ai/dsh-session@0.2.1-rc.2
+- @deepseek-ai/dsh-session-format@0.2.1-rc.2
+- @deepseek-ai/dsh-session-format-catalog@0.2.1-rc.2
+- @deepseek-ai/dsh-session-format-v0-to-v1@0.2.1-rc.2
+- @deepseek-ai/dsh-session-format-v1-to-v2@0.2.1-rc.2
+- @deepseek-ai/dsh-session-format-v2-to-v3@0.2.1-rc.2
+- @deepseek-ai/dsh-session-format-v3-to-v4@0.2.1-rc.2
+- @deepseek-ai/dsh-session-persistence@0.2.1-rc.2
+- @deepseek-ai/dsh-session-persistence-jsonl@0.2.1-rc.2
+- @deepseek-ai/dsh-session-projection@0.2.1-rc.2
+- @deepseek-ai/dsh-skill@0.2.1-rc.2
+- @deepseek-ai/dsh-system-prompt@0.2.1-rc.2
+- @deepseek-ai/dsh-timeout@0.2.1-rc.2
+- @deepseek-ai/dsh-token-meter@0.2.1-rc.2
+- @deepseek-ai/dsh-tool-skill@0.2.1-rc.2
+- @deepseek-ai/dsh-tools@0.2.1-rc.2
+- @deepseek-ai/dsh-typert-protocol@0.2.1-rc.2
+- @deepseek-ai/dsh-user-approval@0.2.1-rc.2
+- @deepseek-ai/dsh-util-crypto@0.2.1-rc.2
+- @deepseek-ai/dsh-util-values@0.2.1-rc.2
+- @deepseek-ai/dsh-working-directory@0.2.1-rc.2
+- @deepseek-ai/schemastery@3.18.5
+- @earendil-works/pi-ai@1.3.0
+- @earendil-works/pi-telemetry@1.3.0
+- @electron/asar@3.4.1
+- @electron/fuses@1.8.0
+- @electron/get@2.0.3, 3.1.0
+- @electron/notarize@2.5.0
+- @electron/rebuild@4.0.6
+- @electron/universal@2.0.3
+- @epic-web/invariant@1.0.0
+- @esbuild/win32-x64@0.25.12
+- @eslint-community/eslint-utils@4.9.1
+- @eslint-community/regexpp@4.12.2
+- @eslint/eslintrc@3.3.5
+- @eslint/js@9.39.4
+- @floating-ui/core@1.8.0
+- @floating-ui/dom@1.8.0
+- @floating-ui/react-dom@2.1.9
+- @floating-ui/utils@0.2.12
+- @hono/node-server@2.1.4
+- @jridgewell/gen-mapping@0.3.13
+- @jridgewell/remapping@2.3.5
+- @jridgewell/resolve-uri@3.1.2
+- @jridgewell/sourcemap-codec@1.5.5
+- @jridgewell/trace-mapping@0.3.31
+- @koromix/koffi-win32-x64@3.1.1
+- @malept/flatpak-bundler@0.4.0
+- @modelcontextprotocol/sdk@1.32.1
+- @noble/hashes@1.4.0, 2.2.0
+- @nodelib/fs.scandir@2.1.5
+- @nodelib/fs.stat@2.0.5
+- @nodelib/fs.walk@1.2.8
+- @oxc-project/types@0.137.0
+- @peculiar/asn1-schema@2.8.0
+- @peculiar/json-schema@1.1.12
+- @peculiar/utils@2.0.3
+- @peculiar/webcrypto@1.7.1
+- @radix-ui/number@1.1.3
+- @radix-ui/primitive@1.1.1, 1.2.0
+- @radix-ui/react-arrow@1.1.17
+- @radix-ui/react-checkbox@1.4.1
+- @radix-ui/react-collection@1.2.0
+- @radix-ui/react-compose-refs@1.1.1, 1.1.5
+- @radix-ui/react-context@1.1.1, 1.3.0
+- @radix-ui/react-direction@1.2.0
+- @radix-ui/react-dismissable-layer@1.2.1
+- @radix-ui/react-focus-guards@1.2.0
+- @radix-ui/react-focus-scope@1.3.1
+- @radix-ui/react-id@1.1.4
+- @radix-ui/react-popover@1.3.1
+- @radix-ui/react-popper@1.4.0
+- @radix-ui/react-portal@1.2.0
+- @radix-ui/react-presence@1.1.11
+- @radix-ui/react-primitive@2.0.1, 2.2.0
+- @radix-ui/react-select@2.4.1
+- @radix-ui/react-slot@1.1.1, 1.5.0
+- @radix-ui/react-switch@1.1.2
+- @radix-ui/react-use-callback-ref@1.1.0, 1.1.5
+- @radix-ui/react-use-controllable-state@1.1.0, 1.3.0
+- @radix-ui/react-use-effect-event@0.0.5
+- @radix-ui/react-use-layout-effect@1.1.0, 1.1.4
+- @radix-ui/react-use-previous@1.1.0
+- @radix-ui/react-use-rect@1.1.4
+- @radix-ui/react-use-size@1.1.0, 1.1.5
+- @radix-ui/react-visually-hidden@1.2.13
+- @radix-ui/rect@1.1.3
+- @rolldown/binding-win32-x64-msvc@1.1.3
+- @rolldown/pluginutils@1.0.1
+- @sindresorhus/is@4.6.0
+- @stablelib/base64@1.0.1
+- @standard-schema/spec@1.1.0
+- @szmarczak/http-timer@4.0.6
+- @turbo/windows-64@2.10.0
+- @types/cacheable-request@6.0.3
+- @types/chai@5.2.3
+- @types/debug@4.1.13
+- @types/deep-eql@4.0.2
+- @types/estree@1.0.9
+- @types/estree-jsx@1.0.5
+- @types/fs-extra@9.0.13
+- @types/hast@3.0.4
+- @types/http-cache-semantics@4.2.0
+- @types/json-schema@7.0.15
+- @types/keyv@3.1.4
+- @types/mdast@4.0.4
+- @types/ms@2.1.0
+- @types/node@18.19.130, 22.10.2, 24.13.2
+- @types/react@19.2.17
+- @types/react-dom@19.2.3
+- @types/responselike@1.0.3
+- @types/retry@0.12.0
+- @types/ssh2@1.15.1
+- @types/unist@2.0.11, 3.0.3
+- @types/yauzl@2.10.3
+- @typescript-eslint/eslint-plugin@8.62.0
+- @typescript-eslint/parser@8.62.0
+- @typescript-eslint/project-service@8.62.0
+- @typescript-eslint/scope-manager@8.62.0
+- @typescript-eslint/tsconfig-utils@8.62.0
+- @typescript-eslint/type-utils@8.62.0
+- @typescript-eslint/types@8.62.0
+- @typescript-eslint/typescript-estree@8.62.0
+- @typescript-eslint/utils@8.62.0
+- @typescript-eslint/visitor-keys@8.62.0
+- @vitejs/plugin-react@6.0.3
+- @vitest/expect@4.1.9
+- @vitest/mocker@4.1.9
+- @vitest/pretty-format@4.1.9
+- @vitest/runner@4.1.9
+- @vitest/snapshot@4.1.9
+- @vitest/spy@4.1.9
+- @vitest/utils@4.1.9
+- @xmldom/xmldom@0.8.13
+- @xterm/addon-fit@0.11.0
+- @xterm/addon-search@0.16.0
+- @xterm/addon-unicode11@0.9.0
+- @xterm/addon-web-links@0.12.0
+- @xterm/addon-webgl@0.19.0
+- @xterm/headless@6.0.0
+- @xterm/xterm@6.0.0
+- accepts@2.0.0
+- acorn@8.17.0
+- acorn-jsx@5.3.2
+- agent-base@6.0.2, 7.1.4, 9.0.0
+- ajv@6.15.0, 8.20.0
+- ajv-formats@3.0.1
+- ansi-regex@5.0.1, 6.2.2
+- ansi-styles@4.3.0, 6.2.3
+- any-promise@1.3.0
+- app-builder-lib@26.15.3
+- arg@5.0.2
+- aria-hidden@1.2.6
+- asn1@0.2.6
+- assertion-error@2.0.1
+- async@3.2.6
+- async-exit-hook@2.0.1
+- asynckit@0.4.0
+- autoprefixer@10.5.2
+- aws4@1.13.2
+- axios@1.18.1
+- bail@2.0.2
+- balanced-match@1.0.2, 4.0.4
+- base64-js@1.5.1
+- bignumber.js@9.3.1
+- binary-extensions@2.3.0
+- bluebird@3.7.2
+- body-parser@2.3.0
+- boolean@3.2.0
+- bowser@2.14.1
+- brace-expansion@1.1.15, 2.1.1, 5.0.7
+- braces@3.0.3
+- browserslist@4.28.4
+- buffer-crc32@0.2.13
+- buffer-from@1.1.2
+- buildcheck@0.0.7
+- builder-util@26.15.3
+- builder-util-runtime@9.7.0
+- bytes@3.1.2
+- cac@6.7.14
+- cacheable-lookup@5.0.4
+- cacheable-request@7.0.4
+- call-bind-apply-helpers@1.0.2
+- call-bound@1.0.4
+- callsites@3.1.0
+- camelcase-css@2.0.1
+- ccount@2.0.1
+- chai@6.2.2
+- chalk@4.1.2, 5.6.2
+- character-entities@2.0.2
+- character-entities-html4@2.1.0
+- character-entities-legacy@3.0.0
+- character-reference-invalid@2.0.1
+- chokidar@3.6.0
+- chromium-pickle-js@0.2.0
+- ci-info@4.3.1, 4.4.0
+- clone-response@1.0.3
+- clsx@2.1.1
+- color-convert@2.0.1
+- color-name@1.1.4
+- combined-stream@1.0.8
+- comma-separated-tokens@2.0.3
+- commander@4.1.1, 5.1.0, 9.5.0
+- compare-version@0.1.2
+- concat-map@0.0.1
+- concurrently@10.0.3
+- content-disposition@2.0.1
+- content-type@1.0.5, 2.1.0
+- convert-source-map@2.0.0
+- cookie@0.7.2
+- cookie-signature@1.2.2
+- core-util-is@1.0.3
+- cors@2.8.6
+- cpu-features@0.0.10
+- cross-dirname@0.1.0
+- cross-env@10.1.0
+- cross-spawn@7.0.6
+- cssesc@3.0.0
+- csstype@3.2.3
+- data-uri-to-buffer@4.0.1
+- debug@4.4.3
+- decode-named-character-reference@1.3.0
+- decompress-response@6.0.0
+- deep-is@0.1.4
+- defer-to-connect@2.0.1
+- define-data-property@1.1.4
+- define-properties@1.2.1
+- delayed-stream@1.0.0
+- depd@2.0.0
+- dequal@2.0.3
+- detect-node@2.1.0
+- detect-node-es@1.1.0
+- devlop@1.1.0
+- dir-compare@4.2.0
+- dlv@1.1.3
+- dmg-builder@26.15.3
+- dunder-proto@1.0.1
+- ee-first@1.1.1
+- electron@40.8.3
+- electron-builder@26.15.3
+- electron-builder-squirrel-windows@26.15.3
+- electron-publish@26.15.3
+- electron-updater@6.8.10
+- electron-vite@5.0.0
+- electron-winstaller@5.4.0
+- emoji-regex@8.0.0, 10.6.0
+- encodeurl@2.0.0
+- end-of-stream@1.4.5
+- env-paths@2.2.1
+- err-code@2.0.3
+- es-define-property@1.0.1
+- es-errors@1.3.0
+- es-module-lexer@2.2.0
+- es-object-atoms@1.1.2
+- es-set-tostringtag@2.1.0
+- es6-error@4.1.1
+- esbuild@0.25.12
+- escalade@3.2.0
+- escape-html@1.0.3
+- escape-string-regexp@4.0.0, 5.0.0
+- eslint@9.39.4
+- estree-util-is-identifier-name@3.0.0
+- estree-walker@3.0.3
+- etag@1.8.1
+- eventsource@3.0.7
+- eventsource-parser@3.1.0
+- express@5.3.0
+- express-rate-limit@8.7.1
+- extend@3.0.2
+- fast-deep-equal@3.1.3
+- fast-glob@3.3.3
+- fast-json-stable-stringify@2.1.0
+- fast-levenshtein@2.0.6
+- fd-slicer@1.1.0
+- fdir@6.5.0
+- fetch-blob@3.2.0
+- file-entry-cache@8.0.0
+- fill-range@7.1.1
+- finalhandler@2.1.1
+- find-up@5.0.0
+- flat-cache@4.0.1
+- follow-redirects@1.16.0
+- form-data@4.0.6
+- formdata-polyfill@4.0.10
+- forwarded@0.2.0
+- fraction.js@5.3.4
+- fresh@2.0.0
+- fs-extra@7.0.1, 8.1.0, 9.1.0, 10.1.0, 11.3.1, 11.3.5
+- function-bind@1.1.2
+- gensync@1.0.0-beta.2
+- get-east-asian-width@1.6.0
+- get-intrinsic@1.3.0
+- get-nonce@1.0.1
+- get-proto@1.0.1
+- get-stream@5.2.0
+- globals@14.0.0, 17.7.0
+- globalthis@1.0.4
+- gopd@1.2.0
+- got@11.8.6
+- has-flag@4.0.0
+- has-property-descriptors@1.0.2
+- has-symbols@1.1.0
+- has-tostringtag@1.0.2
+- hasown@2.0.4
+- hast-util-to-jsx-runtime@2.3.6
+- hast-util-whitespace@3.0.0
+- hono@4.13.13
+- html-url-attributes@3.0.1
+- http-errors@2.0.1
+- http-proxy-agent@7.0.2, 9.1.0
+- http2-wrapper@1.0.3
+- https-proxy-agent@5.0.1, 7.0.6, 9.1.0
+- iconv-lite@0.7.3
+- ignore@5.3.2, 7.0.5
+- import-fresh@3.3.1
+- imurmurhash@0.1.4
+- inline-style-parser@0.2.7
+- ip-address@10.7.3
+- ipaddr.js@1.9.1
+- is-alphabetical@2.0.1
+- is-alphanumerical@2.0.1
+- is-binary-path@2.1.0
+- is-core-module@2.16.2
+- is-decimal@2.0.1
+- is-extglob@2.1.1
+- is-fullwidth-code-point@3.0.0
+- is-glob@4.0.3
+- is-hexadecimal@2.0.1
+- is-number@7.0.0
+- is-plain-obj@4.1.0
+- is-promise@4.0.0
+- isarray@1.0.0
+- isbinaryfile@4.0.10, 5.0.7
+- jiti@1.21.7, 2.7.0
+- jose@6.2.12
+- js-tokens@4.0.0
+- js-yaml@4.3.0
+- jsesc@3.1.0
+- json-bigint@1.0.0
+- json-buffer@3.0.1
+- json-schema-to-ts@3.1.1
+- json-schema-traverse@0.4.1, 1.0.0
+- json-stable-stringify-without-jsonify@1.0.1
+- json5@2.2.3
+- jsonfile@4.0.0, 6.2.1
+- jwa@2.0.1
+- jws@4.0.1
+- keyv@4.5.4
+- koffi@3.1.1
+- lazy-val@1.0.5
+- levn@0.4.1
+- lilconfig@3.1.3
+- lines-and-columns@1.2.4
+- locate-path@6.0.0
+- lodash@4.18.1
+- lodash.escaperegexp@4.1.2
+- lodash.isequal@4.5.0
+- lodash.merge@4.6.2
+- longest-streak@3.1.0
+- lowercase-keys@2.0.0
+- magic-string@0.30.21
+- markdown-table@3.0.4
+- matcher@3.0.0
+- math-intrinsics@1.1.0
+- mdast-util-find-and-replace@3.0.2
+- mdast-util-from-markdown@2.0.3
+- mdast-util-gfm@3.1.0
+- mdast-util-gfm-autolink-literal@2.0.1
+- mdast-util-gfm-footnote@2.1.0
+- mdast-util-gfm-strikethrough@2.0.0
+- mdast-util-gfm-table@2.0.0
+- mdast-util-gfm-task-list-item@2.0.0
+- mdast-util-mdx-expression@2.0.1
+- mdast-util-mdx-jsx@3.2.0
+- mdast-util-mdxjs-esm@2.0.1
+- mdast-util-phrasing@4.1.0
+- mdast-util-to-hast@13.2.1
+- mdast-util-to-markdown@2.1.2
+- mdast-util-to-string@4.0.0
+- media-typer@1.1.1
+- merge-descriptors@2.0.0
+- merge2@1.4.1
+- micromark@4.0.2
+- micromark-core-commonmark@2.0.3
+- micromark-extension-gfm@3.0.0
+- micromark-extension-gfm-autolink-literal@2.1.0
+- micromark-extension-gfm-footnote@2.1.0
+- micromark-extension-gfm-strikethrough@2.1.0
+- micromark-extension-gfm-table@2.1.1
+- micromark-extension-gfm-tagfilter@2.0.0
+- micromark-extension-gfm-task-list-item@2.1.0
+- micromark-factory-destination@2.0.1
+- micromark-factory-label@2.0.1
+- micromark-factory-space@2.0.1
+- micromark-factory-title@2.0.1
+- micromark-factory-whitespace@2.0.1
+- micromark-util-character@2.1.1
+- micromark-util-chunked@2.0.1
+- micromark-util-classify-character@2.0.1
+- micromark-util-combine-extensions@2.0.1
+- micromark-util-decode-numeric-character-reference@2.0.2
+- micromark-util-decode-string@2.0.1
+- micromark-util-encode@2.0.1
+- micromark-util-html-tag-name@2.0.1
+- micromark-util-normalize-identifier@2.0.1
+- micromark-util-resolve-all@2.0.1
+- micromark-util-sanitize-uri@2.0.1
+- micromark-util-subtokenize@2.1.0
+- micromark-util-symbol@2.0.1
+- micromark-util-types@2.0.2
+- micromatch@4.0.8
+- mime@2.6.0
+- mime-db@1.52.0, 1.54.0
+- mime-types@2.1.35, 3.0.2
+- mimic-response@1.0.1, 3.1.0
+- minimist@1.2.8
+- minizlib@3.1.0
+- mkdirp@0.5.6
+- ms@2.1.3
+- mz@2.7.0
+- nan@2.28.0
+- nanoid@3.3.15
+- natural-compare@1.4.0
+- negotiator@1.1.0
+- node-abi@4.31.0
+- node-addon-api@7.1.1
+- node-api-version@0.2.1
+- node-domexception@1.0.0
+- node-fetch@3.3.2
+- node-gyp@12.4.0
+- node-int64@0.4.0
+- node-pty@1.1.0
+- node-releases@2.0.50
+- normalize-path@3.0.0
+- normalize-url@6.1.0
+- object-assign@4.1.1
+- object-hash@3.0.0
+- object-inspect@1.13.4
+- object-keys@1.1.1
+- obug@2.1.3
+- on-finished@2.4.1
+- optionator@0.9.4
+- p-cancelable@2.1.1
+- p-limit@3.1.0, 7.3.3
+- p-locate@5.0.0
+- p-retry@4.6.2
+- parent-module@1.0.1
+- parse-entities@4.0.2
+- parseurl@1.3.3
+- partial-json@0.1.7
+- path-exists@4.0.0
+- path-is-absolute@1.0.1
+- path-key@3.1.1
+- path-parse@1.0.7
+- path-to-regexp@8.4.2
+- pathe@2.0.3
+- pe-library@0.4.1
+- pend@1.2.0
+- picomatch@2.3.2, 4.0.4
+- pify@2.3.0
+- pirates@4.0.7
+- pkce-challenge@5.0.1
+- plist@3.1.0
+- postcss@8.5.16
+- postcss-import@15.1.0
+- postcss-js@4.1.0
+- postcss-load-config@4.0.2
+- postcss-nested@6.2.0
+- postcss-selector-parser@6.1.4
+- postcss-value-parser@4.2.0
+- postject@1.0.0-alpha.6
+- prelude-ls@1.2.1
+- process-nextick-args@2.0.1
+- progress@2.0.3
+- promise-retry@2.0.1
+- proper-lockfile@4.1.2
+- property-information@7.2.0
+- proxy-addr@2.0.8
+- proxy-agent-negotiate@1.1.0
+- proxy-from-env@2.1.0
+- pump@3.0.4
+- punycode@2.3.1
+- pvtsutils@1.3.6
+- pvutils@1.1.5
+- queue-microtask@1.2.3
+- quick-lru@5.1.1
+- range-parser@1.3.0
+- raw-body@3.0.2
+- react@19.2.7
+- react-dom@19.2.7
+- react-markdown@9.1.0
+- react-remove-scroll@2.7.2
+- react-remove-scroll-bar@2.3.8
+- react-style-singleton@2.2.3
+- read-binary-file-arch@1.0.6
+- read-cache@1.0.0
+- readable-stream@2.3.8
+- readdirp@3.6.0
+- remark-gfm@4.0.1
+- remark-parse@11.0.0
+- remark-rehype@11.1.2
+- remark-stringify@11.0.0
+- require-directory@2.1.1
+- require-from-string@2.0.2
+- resedit@1.7.2
+- resolve@1.22.12
+- resolve-alpn@1.2.1
+- resolve-from@4.0.0
+- responselike@2.0.1
+- retry@0.12.0, 0.13.1
+- reusify@1.1.0
+- rolldown@1.1.3
+- router@2.2.0
+- run-parallel@1.2.0
+- safe-buffer@5.1.2
+- safer-buffer@2.1.2
+- scheduler@0.27.0
+- semver-compare@1.0.0
+- send@1.2.1
+- serialize-error@7.0.1
+- serve-static@2.2.1
+- shebang-command@2.0.0
+- shebang-regex@3.0.0
+- shell-quote@1.8.4
+- side-channel@1.1.1
+- side-channel-list@1.0.1
+- side-channel-map@1.0.1
+- side-channel-weakmap@1.0.2
+- simple-update-notifier@2.0.0
+- source-map-support@0.5.21
+- space-separated-tokens@2.0.2
+- ssh2@1.16.0
+- stackback@0.0.2
+- standardwebhooks@1.1.1
+- stat-mode@1.0.0
+- statuses@2.0.2
+- std-env@4.1.0
+- string_decoder@1.1.1
+- string-width@4.2.3, 7.2.0
+- stringify-entities@4.0.4
+- strip-ansi@6.0.1, 7.2.0
+- strip-json-comments@3.1.1
+- style-to-js@1.1.21
+- style-to-object@1.0.14
+- sucrase@3.35.1
+- supports-color@7.2.0, 10.2.2
+- supports-preserve-symlinks-flag@1.0.0
+- tailwind-merge@3.6.0
+- tailwindcss@3.4.17
+- temp@0.9.4
+- temp-file@3.4.0
+- thenify@3.3.1
+- thenify-all@1.6.0
+- tiny-async-pool@1.3.0
+- tiny-typed-emitter@2.1.0
+- tinybench@2.9.0
+- tinyexec@1.2.4
+- tinyglobby@0.2.17
+- tinyrainbow@3.1.0
+- tmp@0.2.7
+- tmp-promise@3.0.3
+- to-regex-range@5.0.1
+- toidentifier@1.0.1
+- tree-kill@1.2.2
+- trim-lines@3.0.1
+- trough@2.2.0
+- ts-algebra@2.0.0
+- ts-api-utils@2.5.0
+- turbo@2.10.0
+- type-check@0.4.0
+- type-is@2.1.0
+- typebox@1.3.27
+- typescript-eslint@8.62.0
+- undici@6.27.0
+- undici-types@5.26.5, 6.20.0, 7.18.2
+- unified@11.0.5
+- unist-util-is@6.0.1
+- unist-util-position@5.0.0
+- unist-util-stringify-position@4.0.0
+- unist-util-visit@5.1.0
+- unist-util-visit-parents@6.0.2
+- universalify@0.1.2, 2.0.1
+- unpdf@1.9.1
+- unpipe@1.0.0
+- unzipper@0.12.5
+- update-browserslist-db@1.2.3
+- use-callback-ref@1.3.3
+- use-sidecar@1.1.3
+- util-deprecate@1.0.2
+- vary@1.1.2
+- vfile@6.0.3
+- vfile-message@4.0.3
+- vite@8.1.0
+- vitest@4.1.9
+- wait-on@9.0.10
+- web-streams-polyfill@3.3.3
+- webcrypto-core@1.9.2
+- why-is-node-running@2.3.0
+- word-wrap@1.2.5
+- wrap-ansi@7.0.0, 9.0.2
+- ws@8.22.0
+- xmlbuilder@15.1.1
+- yargs@17.7.3, 18.0.0
+- yauzl@2.10.0
+- yocto-queue@0.1.0, 1.2.2
+- zod@4.4.3, 4.5.2
+- zwitch@2.0.4
+
+## MPL-2.0 (2)
+
+- lightningcss@1.32.0
+- lightningcss-win32-x64-msvc@1.32.0
+
+## Python-2.0 (1)
+
+- argparse@2.0.1
+
+## Unlicense (2)
+
+- fast-sha256@1.3.0
+- tweetnacl@0.14.5
+
+## WTFPL (1)
+
+- truncate-utf8-bytes@1.0.2
+
+## WTFPL OR ISC (1)
+
+- sanitize-filename@1.6.4
+
+
+---
+
+For binary distributions, keep the license files shipped inside each dependency (electron-builder packages them by default). If you add or remove dependencies, regenerate this list and re-check the full license texts, especially for Apache-2.0, MPL-2.0, and CC-BY-4.0 packages.

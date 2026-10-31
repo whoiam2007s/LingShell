@@ -1,0 +1,10 @@
+// 根入口：导出全部领域（现有 `from '@lingshell/shared'` 不变）；按领域引用用子路径 @lingshell/shared/<领域>
+export * from './protocol/index.js'
+export * from './ops/index.js'
+export * from './terminal/index.js'
+export * from './ai/index.js'
+export * from './ui/index.js'
+export * from './files/index.js'
+export * from './git/index.js'
+export * from './db/index.js'
+export * from './i18n/index.js'

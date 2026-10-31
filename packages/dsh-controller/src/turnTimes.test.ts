@@ -1,0 +1,71 @@
+import { describe, it, expect } from 'vitest'
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { TurnTimesStore } from './turnTimes.js'
+
+describe('TurnTimesStore（首次返回时间侧车）', () => {
+  it('记下后重新打开能读回；同一轮只记第一次', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'tt-')), 'chat-times')
+    const a = new TurnTimesStore(dir)
+    await a.record('sess_1', 1, 1000)
+    await a.record('sess_1', 1, 2000)
+    await a.record('sess_1', 2, 3000)
+    expect(new TurnTimesStore(dir).firstOf('sess_1')).toEqual({ 1: 1000, 2: 3000 })
+    expect(new TurnTimesStore(dir).firstOf('other')).toEqual({})
+    await a.remove('sess_1')
+    expect(existsSync(join(dir, 'sess_1.json'))).toBe(false)
+  })
+  it('工具识别时刻与首次返回存同一文件，互不覆盖；同一工具只记第一次；旧文件没有 tools 当空', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'tt-')), 'chat-times')
+    const a = new TurnTimesStore(dir)
+    await a.record('d1', 1, 1000)
+    await a.recordTool('d1', 'call_a', 1100)
+    await a.recordTool('d1', 'call_a', 1999)
+    await a.recordTool('d1', 'call_b', 1200)
+    const b = new TurnTimesStore(dir)
+    expect(b.firstOf('d1')).toEqual({ 1: 1000 })
+    expect(b.toolsOf('d1')).toEqual({ call_a: 1100, call_b: 1200 })
+    writeFileSync(join(dir, 'old.json'), JSON.stringify({ first: { 1: 5 } }))
+    expect(b.toolsOf('old')).toEqual({})
+    expect(b.firstOf('old')).toEqual({ 1: 5 })
+  })
+  it('思考块开始 / 结束：与其它字段同文件；同一块后写覆盖（重试）；坏区间丢弃；旧文件没有 reasoning 当空', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'tt-')), 'chat-times')
+    const a = new TurnTimesStore(dir)
+    await a.record('d1', 1, 1000)
+    await a.recordReasoning('d1', '1:1:0', 1000, 1500)
+    await a.recordReasoning('d1', '1:1:0', 2000, 2600)
+    await a.recordReasoning('d1', '1:2:0', 3000, 3100)
+    await a.recordReasoning('d1', '1:3:0', 5000, 4000)   // 结束早于开始：不记
+    const b = new TurnTimesStore(dir)
+    expect(b.reasoningOf('d1')).toEqual({ '1:1:0': [2000, 2600], '1:2:0': [3000, 3100] })
+    expect(b.firstOf('d1')).toEqual({ 1: 1000 })
+    writeFileSync(join(dir, 'old.json'), JSON.stringify({ first: { 1: 5 }, tools: { c: 6 } }))
+    writeFileSync(join(dir, 'bad.json'), JSON.stringify({ reasoning: { a: [1], b: [3, 2], c: ['x', 1], d: [1, 2] } }))
+    expect(b.reasoningOf('old')).toEqual({})
+    expect(b.reasoningOf('bad')).toEqual({ d: [1, 2] })
+  })
+  it('坏文件 / 非法值当没有', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tt-'))
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'x.json'), '{bad')
+    writeFileSync(join(dir, 'y.json'), JSON.stringify({ first: { 1: 'no', 2: 5 } }))
+    const s = new TurnTimesStore(dir)
+    expect(s.firstOf('x')).toEqual({})
+    expect(s.firstOf('y')).toEqual({ 2: 5 })
+  })
+  it('分叉拷贝：只拷继承下来的轮 / 工具，落到新 dsh id，源不动', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'tt-')), 'chat-times')
+    const a = new TurnTimesStore(dir)
+    await a.record('src', 1, 10); await a.record('src', 2, 20)
+    await a.recordTool('src', 'c1', 11); await a.recordTool('src', 'c2', 21)
+    await a.recordReasoning('src', '1:1:0', 5, 6); await a.recordReasoning('src', '2:1:0', 15, 16)
+    await a.copy('src', 'dst', new Set([1]), new Set(['c1']))
+    const b = new TurnTimesStore(dir)
+    expect(b.firstOf('dst')).toEqual({ 1: 10 })
+    expect(b.toolsOf('dst')).toEqual({ c1: 11 })
+    expect(b.reasoningOf('dst')).toEqual({ '1:1:0': [5, 6] })
+    expect(b.firstOf('src')).toEqual({ 1: 10, 2: 20 })
+  })
+})

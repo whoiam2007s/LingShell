@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞（私下报告）
+    url: https://github.com/whoiam2007s/LingShell/security/advisories/new
+    about: 不要公开贴漏洞细节、凭据或真实主机信息；请按 SECURITY.md 私下报告。
+  - name: 使用问题 / 讨论
+    url: https://github.com/whoiam2007s/LingShell/discussions
+    about: 不确定是不是 bug、想先讨论方案，请开 Discussion。

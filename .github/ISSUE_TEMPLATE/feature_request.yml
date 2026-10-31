@@ -1,0 +1,54 @@
+name: 功能建议
+description: 希望灵壳支持的能力或改进
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索已有 issue。社区版保持单机、本地优先；团队 / 集中治理类需求会被标记为 `team-edition` 讨论。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的场景 / 问题
+      description: 现在怎么做、哪里不方便、影响多大
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的做法
+      description: 你希望怎么操作、界面大概是什么样
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 考虑过的替代方案
+  - type: dropdown
+    id: area
+    attributes:
+      label: 相关模块
+      options:
+        - AI 对话 / 授权
+        - 终端 / SSH
+        - 文件 / 传输
+        - 主机 / 多主机
+        - 运维工具（日志 / 巡检 / 合规 / 部署评审等）
+        - 数据库 / Docker / Kubernetes
+        - Git / 接口调试
+        - 安全 / 保险箱 / 审计
+        - 设置 / 外观 / 桌面集成
+        - 文档 / 帮助
+        - 其他
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我已搜索过已有 issue
+          required: true
+        - label: 这个需求不包含敏感信息
+          required: true

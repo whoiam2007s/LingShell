@@ -1,0 +1,36 @@
+{
+  "name": "@lingshell/config",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "author": "BigZ <whoiam2007s@163.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whoiam2007s/LingShell.git"
+  },
+  "homepage": "https://github.com/whoiam2007s/LingShell#readme",
+  "bugs": {
+    "url": "https://github.com/whoiam2007s/LingShell/issues"
+  },
+  "keywords": [
+    "lingshell",
+    "electron",
+    "terminal",
+    "ssh",
+    "devops",
+    "ai"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src",
+    "lint": "eslint src"
+  },
+  "dependencies": { "@lingshell/shared": "workspace:*" },
+  "devDependencies": { "typescript": "5.9.3", "vitest": "4.1.9", "@types/node": "22.10.2" }
+}

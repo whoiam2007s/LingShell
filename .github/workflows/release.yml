@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows 安装包
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建并打包
+        env:
+          # electron-updater 的 generic provider：指向本仓库最新 Release 的资产目录，
+          # 客户端会去取 <url>/latest.yml。不想启用自动更新就删掉这一行（产出的包不带 app-update.yml）。
+          LINGSHELL_UPDATE_URL: https://github.com/whoiam2007s/LingShell/releases/latest/download
+          # 代码签名：有证书时在这里接上，二选一
+          #   - 传统 pfx：CSC_LINK / CSC_KEY_PASSWORD（私钥在硬件 token 或云 HSM 时用不了，需自定义 win.sign）
+          #   - Azure Trusted Signing：在 apps/desktop/electron-builder.config.cjs 里加 win.azureSignOptions，
+          #     凭据用 AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET
+          #   注意：一旦开始签名就要一直签（客户端校验 publisherName），中途停签会导致更新失败。
+        run: pnpm dist:win
+
+      - name: 生成 SBOM
+        run: node scripts/sbom.mjs release/sbom.json
+
+      - name: 上传到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
+            release/sbom.json
+          generate_release_notes: true

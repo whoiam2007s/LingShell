@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 静态检查与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: 界面文案检查
+        run: pnpm i18n:check
+
+      - name: 结构与 IPC 协议检查
+        run: pnpm check:structure
+
+      - name: 构建
+        run: pnpm build
+
+  test:
+    name: 单元 / 集成测试
+    runs-on: ubuntu-latest
+    # packages/dsh-controller 的 e2e 曾在 beforeAll 撞 vitest 默认 10s hookTimeout；
+    # 已在 packages/dsh-controller/vitest.config.ts 放宽到 60s，测试恢复为阻塞项。
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 测试
+        # *.real.test.ts 依赖真实环境（Git Bash / SSH / Docker / 宿主机时序），
+        # 在 CI 跑会假失败；需要时在真机上用 pnpm test 全量跑。
+        run: pnpm test:ci

@@ -1,0 +1,65 @@
+// AppClient 文件部分的 IPC 实现（接口见 packages/shared/src/protocol/client/files.ts，主进程见 apps/desktop/src/main/files/register.ts）
+import type { AppClient, FilesApi, DeletePlan, DirEntry, FsScope, TransferMove, TransferProgressEvent } from '@lingshell/shared'
+
+export function createFilesIpc(): FilesApi {
+  return {
+    fs: {
+      listDir: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:listDir', scope, path) as Promise<DirEntry[]>,
+      listDirByHost: (hostId: string, path: string) => window.electronAPI.invoke('fs:listDirByHost', hostId, path) as Promise<DirEntry[]>,
+      places: (scope: FsScope) => window.electronAPI.invoke('fs:places', scope) as ReturnType<AppClient['fs']['places']>,
+      remove: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:remove', scope, path) as Promise<void>,
+      deletePlan: (scope: FsScope, paths: string[]) => window.electronAPI.invoke('fs:deletePlan', scope, paths) as Promise<DeletePlan>,
+      create: (scope: FsScope, dir: string, name: string, kind: 'file' | 'dir') => window.electronAPI.invoke('fs:create', scope, dir, name, kind) as Promise<string>,
+      rename: (scope: FsScope, path: string, name: string) => window.electronAPI.invoke('fs:rename', scope, path, name) as Promise<string>,
+      openLocal: (path: string) => window.electronAPI.invoke('fs:openLocal', path) as Promise<void>,
+      readText: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:readText', scope, path) as Promise<string>,
+      diffText: (scope: FsScope, path: string, base: string, next: string) => window.electronAPI.invoke('fs:diffText', scope, path, base, next) as Promise<string>,
+      writeText: (scope: FsScope, path: string, base: string, next: string) => window.electronAPI.invoke('fs:writeText', scope, path, base, next) as Promise<void>,
+      compare: ((targets, path, opts) => window.electronAPI.invoke('fs:compare', targets, path, opts)) as AppClient['fs']['compare'],
+      chmod: (scope: FsScope, paths: string[], mode: number, recursive: boolean) => window.electronAPI.invoke('fs:chmod', scope, paths, mode, recursive) as Promise<void>,
+      pack: (scope: FsScope, paths: string[]) => window.electronAPI.invoke('fs:pack', scope, paths) as Promise<string>,
+      unpack: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:unpack', scope, path) as Promise<string>,
+      search: ((scope, root, query) => window.electronAPI.invoke('fs:search', scope, root, query)) as AppClient['fs']['search'],
+      searchContent: ((scope, root, query) => window.electronAPI.invoke('fs:search', scope, root, query, 'content')) as AppClient['fs']['searchContent'],
+      pastePlan: ((scope, srcs, dir) => window.electronAPI.invoke('fs:pastePlan', scope, srcs, dir)) as AppClient['fs']['pastePlan'],
+      paste: ((scope, srcs, dir, mode, policy) => window.electronAPI.invoke('fs:paste', scope, srcs, dir, mode, policy)) as AppClient['fs']['paste'],
+      stats: ((scope, paths) => window.electronAPI.invoke('fs:stats', scope, paths)) as AppClient['fs']['stats'],
+      checksum: ((scope, path, algo) => window.electronAPI.invoke('fs:checksum', scope, path, algo)) as AppClient['fs']['checksum'],
+      owners: ((scope) => window.electronAPI.invoke('fs:owners', scope)) as AppClient['fs']['owners'],
+      sudoAuth: (terminalId: string, password: string) => window.electronAPI.invoke('fs:sudoAuth', terminalId, password) as Promise<void>,
+      sudoForget: (terminalId: string) => window.electronAPI.invoke('fs:sudoForget', terminalId) as Promise<void>,
+      chown: ((scope, paths, owner, group, rec) => window.electronAPI.invoke('fs:chown', scope, paths, owner, group, rec)) as AppClient['fs']['chown'],
+      editExternal: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:editExternal', scope, path) as Promise<void>,
+    },
+    transfer: {
+      upload: (hostId: string, localPath: string, targetDir: string, encrypt: boolean) => window.electronAPI.invoke('transfer:upload', hostId, localPath, targetDir, encrypt) as Promise<void>,
+      download: (terminalId: string, remotePath: string, localDir: string) => window.electronAPI.invoke('transfer:download', terminalId, remotePath, localDir) as Promise<void>,
+      downloadMany: (scope: FsScope, remotePaths: string[], localDir: string) => window.electronAPI.invoke('transfer:downloadMany', scope, remotePaths, localDir) as Promise<void>,
+      cancel: (taskId: string) => window.electronAPI.invoke('transfer:cancel', taskId) as Promise<void>,
+      list: () => window.electronAPI.invoke('transfer:list') as Promise<TransferProgressEvent[]>,
+      retry: (taskId: string) => window.electronAPI.invoke('transfer:retry', taskId) as Promise<void>,
+      clearFinished: () => window.electronAPI.invoke('transfer:clearFinished') as Promise<void>,
+      revealLocal: (taskId: string) => window.electronAPI.invoke('transfer:revealLocal', taskId) as Promise<void>,
+      reorder: (taskId: string, to: TransferMove) => window.electronAPI.invoke('transfer:reorder', taskId, to) as Promise<void>,
+      uploadConflicts: ((t, ps, dir) => window.electronAPI.invoke('transfer:uploadConflicts', t, ps, dir)) as AppClient['transfer']['uploadConflicts'],
+      uploadDirect: ((t, ps, dir, policy) => window.electronAPI.invoke('transfer:uploadDirect', t, ps, dir, policy)) as AppClient['transfer']['uploadDirect'],
+      pause: (taskId: string) => window.electronAPI.invoke('transfer:pause', taskId) as Promise<void>,
+      discard: (taskId: string) => window.electronAPI.invoke('transfer:discard', taskId) as Promise<void>,
+    },
+    dirSync: {
+      compare: (id, req) => window.electronAPI.invoke('dirSync:compare', id, req) as ReturnType<AppClient['dirSync']['compare']>,
+      run: (id, sel, dir, mirror) => window.electronAPI.invoke('dirSync:run', id, sel, dir, mirror) as ReturnType<AppClient['dirSync']['run']>,
+      progress: (id) => window.electronAPI.invoke('dirSync:progress', id) as ReturnType<AppClient['dirSync']['progress']>,
+      cancel: (id) => window.electronAPI.invoke('dirSync:cancel', id) as Promise<void>,
+    },
+    preview: {
+      read: (s, p) => window.electronAPI.invoke('preview:read', s, p) as ReturnType<AppClient['preview']['read']>,
+      openExternal: (s, p) => window.electronAPI.invoke('preview:openExternal', s, p) as Promise<void>,
+    },
+    fileLinks: {
+      open: (id, l) => window.electronAPI.invoke('fileLinks:open', id, l) as ReturnType<AppClient['fileLinks']['open']>,
+      vscodePlan: (id) => window.electronAPI.invoke('fileLinks:vscodePlan', id) as ReturnType<AppClient['fileLinks']['vscodePlan']>,
+      vscodeOpen: (id, p, o) => window.electronAPI.invoke('fileLinks:vscodeOpen', id, p, o) as Promise<void>,
+    },
+  }
+}

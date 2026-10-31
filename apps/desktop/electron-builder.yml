@@ -1,0 +1,74 @@
+# 由 electron-builder.config.cjs extends 引入；更新源(publish)与签名按环境变量处理，见那边与 docs/release.md
+appId: com.lingshell.app
+productName: LingShell
+directories:
+  output: ../../release   # 安装包放仓库根目录 release/（electron-builder 按 apps/desktop 解析相对路径）
+  buildResources: build
+
+# node-pty 1.1.0 用 prebuildify + node-addon-api(N-API)，自带跨 ABI 兼容的 prebuilds/win32-x64/*.node，
+# Electron 与 Node 共享 N-API ABI → 直接可用，无需 rebuild。electron-builder 默认强制 rebuild node-pty
+# 会触发 winpty 源码编译（GetCommitHash.bat 调用失败）而打包中断。关掉 rebuild 用自带 prebuilds。
+# ssh2 是纯 JS（cpu-features 为 optionalDependencies，加载失败自动降级），同样无需 rebuild。
+npmRebuild: false
+
+# 打包进应用的文件：main/preload 的构建产物 + 必要的 node_modules
+files:
+  - out/**/*
+  - package.json
+
+# 原生 .node 及 node-pty 的 winpty companion（winpty.dll/winpty-agent.exe）不能在 asar 内 dlopen/spawn，
+# 解包到 app.asar.unpacked。node-pty 运行时按 prebuilds/{platform}-{arch} 加载这些文件。
+asarUnpack:
+  - "**/*.node"
+  - "**/node_modules/node-pty/**"
+  # koffi 是 @deepseek-ai/dsh-session-persistence-jsonl 的 FFI 依赖，自带各平台预编译件，
+  # 与 node-pty 同理：不能在 asar 内 dlopen，解包出来运行时加载。
+  # koffi 3 的 koffi.node 在平台子包 @koromix/koffi-<平台> 里（koffi 的 optionalDependencies），electron-builder
+  # 收集 pnpm 依赖时会漏掉它 → 打包版 Windows 上会话日志写不了（jsonl 的跨进程锁用 koffi 调 kernel32）。
+  # 所以 apps/desktop 把这些子包列进 optionalDependencies，确保进包；.node 由上面 **/*.node 规则解包。
+  - "**/node_modules/koffi/**"
+
+# 额外资源：前端 ui 产物 + 启动小窗
+# （引擎换成 DeepSeek Harness 后不再有二进制随包——原来 codewhale.exe + codewhale-tui.exe 共 69MB）
+extraResources:
+  # ui 前端产物 → resources/ui （main 用 process.resourcesPath/ui/index.html 加载）
+  - from: ../ui/dist
+    to: ui
+  # 启动 loading 小窗页面 → resources/splash.html
+  - from: resources/splash.html
+    to: splash.html
+  # 托盘图标（运行时 nativeImage 读它，有待授权时合成红点角标，见 src/main/background.ts）→ resources/icon.ico
+  - from: build/icon.ico
+    to: icon.ico
+  # 许可证与第三方声明：Apache-2.0 要求在分发时随附 LICENSE 与 NOTICE（THIRD_PARTY_NOTICES 供用户查阅依赖许可）
+  - from: ../../LICENSE
+    to: LICENSE
+  - from: ../../NOTICE
+    to: NOTICE
+  - from: ../../THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+
+win:
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+mac:
+  target:
+    - dmg
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+linux:
+  target:
+    - AppImage
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  shortcutName: 灵壳 LingShell
+  uninstallDisplayName: 灵壳 LingShell
+  allowToChangeInstallationDirectory: true
+  # 安装程序中英双语：按系统语言自动选，不弹语言选择框（应用内语言另在 设置 → 通用 → 外观 切换）
+  installerLanguages: [zh_CN, en_US]
+  multiLanguageInstaller: true
+  displayLanguageSelector: false

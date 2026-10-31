@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>灵壳 LingShell</title>
+<style>
+  /* 颜色跟随当前界面主题：主进程建窗口时把主题的底色 / 面板 / 强调色 / 文字色放进地址参数（见 index.ts createSplash），下面的脚本写进 CSS 变量；
+     没带参数时用默认暗黑主题的颜色 */
+  :root { --bg: #0d1117; --panel: #161b22; --accent: #2dd4bf; --text: #e6edf3; --glyph: #ffffff; --star: #fef9c3; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  }
+  .stage {
+    position: relative; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 16px; overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--text) 14%, var(--bg));
+    color: var(--text);
+    background:
+      radial-gradient(120% 90% at 12% -10%, color-mix(in srgb, var(--accent) 22%, transparent) 0%, transparent 62%),
+      radial-gradient(110% 90% at 105% 115%, color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 58%),
+      var(--bg);
+  }
+  /* 背景：细网格 + 两团缓慢漂移的光斑 */
+  .grid {
+    position: absolute; inset: 0; opacity: .45;
+    background-image:
+      linear-gradient(color-mix(in srgb, var(--text) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--text) 6%, transparent) 1px, transparent 1px);
+    background-size: 36px 36px;
+    -webkit-mask-image: radial-gradient(circle at 50% 42%, #000 0%, transparent 72%);
+    mask-image: radial-gradient(circle at 50% 42%, #000 0%, transparent 72%);
+  }
+  .orb { position: absolute; width: 220px; height: 220px; border-radius: 50%; filter: blur(64px); opacity: .32; animation: drift 7s ease-in-out infinite alternate; }
+  .orb.a { background: var(--accent); top: -100px; left: -70px; }
+  .orb.b { background: color-mix(in srgb, var(--accent) 55%, #a855f7); bottom: -130px; right: -80px; animation-delay: -3.2s; }
+  /* Logo：三圈环 + 光晕 + 轻微浮动 */
+  .stage-logo { position: relative; width: 116px; height: 116px; display: flex; align-items: center; justify-content: center; }
+  .ring { position: absolute; inset: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); animation: spin 7s linear infinite; }
+  .ring.r2 { inset: 12px; border-style: dashed; border-color: color-mix(in srgb, var(--accent) 26%, transparent); animation: spin 11s linear infinite reverse; }
+  .ring.r3 { inset: 24px; border-color: transparent; border-top-color: var(--accent); animation: spin 2.4s linear infinite; filter: drop-shadow(0 0 6px var(--accent)); }
+  .halo { position: absolute; inset: 18px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 38%, transparent) 0%, transparent 70%); animation: pulse 2.2s ease-in-out infinite; }
+  .logo { position: relative; width: 64px; height: 64px; transform-origin: 50% 50%; animation: breathe 2.6s ease-in-out infinite; filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent)); }
+  /* 文字 */
+  .title {
+    margin-top: 16px; font-size: 19px; font-weight: 650; letter-spacing: .05em;
+    background: linear-gradient(90deg, var(--text) 0%, var(--accent) 45%, var(--text) 90%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shine 3.2s linear infinite;
+  }
+  .sub { margin-top: 7px; font-size: 12px; letter-spacing: .12em; color: color-mix(in srgb, var(--text) 58%, var(--bg)); }
+  .status { margin-top: 18px; height: 16px; display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: color-mix(in srgb, var(--text) 55%, var(--bg)); }
+  .dots { display: inline-flex; gap: 3px; }
+  .dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); opacity: .3; animation: dot 1.2s ease-in-out infinite; }
+  .dots i:nth-child(2) { animation-delay: .18s; }
+  .dots i:nth-child(3) { animation-delay: .36s; }
+  .bar { position: relative; margin-top: 9px; width: 190px; height: 3px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .bar i { position: absolute; top: 0; left: 0; height: 100%; width: 45%; border-radius: 99px; background: linear-gradient(90deg, transparent, var(--accent), transparent); box-shadow: 0 0 10px var(--accent); animation: sweep 1.5s ease-in-out infinite; }
+  .foot { position: absolute; bottom: 13px; font-size: 10px; letter-spacing: .2em; color: color-mix(in srgb, var(--text) 28%, var(--bg)); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 50% { opacity: .4; transform: scale(.9); } }
+  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+  @keyframes shine { to { background-position: 220% 0; } }
+  @keyframes sweep { 0% { transform: translateX(-130%); } 100% { transform: translateX(300%); } }
+  @keyframes dot { 0%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+  @keyframes drift { to { transform: translate3d(46px, 34px, 0) scale(1.16); } }
+</style>
+<script>
+  // 只接受 #rgb / #rrggbb；强调色很亮（高对比主题的亮黄）时 Logo 里的 >_ 和星芒用黑色，同主界面
+  (function () {
+    var q = new URLSearchParams(location.search), root = document.documentElement.style, ok = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/
+    ;['bg', 'panel', 'accent', 'text'].forEach(function (k) { var v = q.get(k); if (v && ok.test(v)) root.setProperty('--' + k, v) })
+    var a = q.get('accent')
+    if (a && ok.test(a)) {
+      if (a.length === 4) a = '#' + a[1] + a[1] + a[2] + a[2] + a[3] + a[3]
+      var lum = (0.2126 * parseInt(a.substr(1, 2), 16) + 0.7152 * parseInt(a.substr(3, 2), 16) + 0.0722 * parseInt(a.substr(5, 2), 16)) / 255
+      if (lum > 0.7) { root.setProperty('--glyph', '#000000'); root.setProperty('--star', '#000000') }
+    }
+  })()
+</script>
+</head>
+<body>
+  <div class="stage">
+    <div class="grid"></div>
+    <div class="orb a"></div>
+    <div class="orb b"></div>
+
+    <div class="stage-logo">
+      <span class="ring"></span><span class="ring r2"></span><span class="ring r3"></span><span class="halo"></span>
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--accent)"/><stop offset="1" style="stop-color: color-mix(in srgb, var(--accent) 62%, #000)"/></linearGradient></defs>
+        <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#g)"/>
+        <path d="M15 22 L27 32 L15 42" fill="none" style="stroke: var(--glyph)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="31" y="39" width="17" height="6" rx="3" style="fill: var(--glyph)"/>
+        <path d="M46 9 C46.8 14.2 48.8 16.2 54 17 C48.8 17.8 46.8 19.8 46 25 C45.2 19.8 43.2 17.8 38 17 C43.2 16.2 45.2 14.2 46 9 Z" style="fill: var(--star)"/>
+      </svg>
+    </div>
+
+    <div class="title">灵壳 LingShell</div>
+    <div class="sub">会思考的终端 · 运维工作台</div>
+    <div class="status"><span class="dots"><i></i><i></i><i></i></span><span id="st">正在启动内核…</span></div>
+    <div class="bar"><i></i></div>
+    <div class="foot">AI TERMINAL WORKSPACE</div>
+  </div>
+  <script>
+    // 状态文字依次走一遍（纯展示；主进程保证启动页至少显示 3 秒）
+    // 英文界面：主进程经地址参数 lang=en 告知（见 index.ts createSplash）
+    var en = new URLSearchParams(location.search).get('lang') === 'en'
+    if (en) { document.documentElement.lang = 'en'; document.querySelector('.sub').textContent = 'The terminal that thinks · Ops workbench' }
+    var steps = en ? ['Starting engine…', 'Loading settings…', 'Connecting workspace…', 'Almost ready…'] : ['正在启动内核…', '正在加载配置…', '正在连接工作区…', '即将就绪…'], i = 0, el = document.getElementById('st')
+    el.textContent = steps[0]
+    var t = setInterval(function () { i++; if (i >= steps.length) { clearInterval(t); return } el.textContent = steps[i] }, 900)
+  </script>
+</body>
+</html>

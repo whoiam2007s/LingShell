@@ -1,0 +1,38 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物
+dist/
+out/
+build/
+.turbo/
+*.tsbuildinfo
+# 例外：apps/desktop/build 是 electron-builder 的 buildResources 源目录（图标），非产物，须入库
+!apps/desktop/build/
+!apps/desktop/build/**
+
+# Electron 打包
+release/
+*.exe.blockmap
+
+# ⚠️ 凭据安全：含明文 api_key 的 config.toml，绝不提交
+**/.codewhale/config.toml
+**/.deepseek/config.toml
+
+# 环境/编辑器
+.env
+.env.local
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# superpowers brainstorm 可视化临时产物
+.superpowers/
+
+# Claude Code 子代理的临时 git worktree
+.claude/worktrees/
+
+# 开发文档与项目记忆：仅本地保留，不随公开仓库发布
+docs/

@@ -1,0 +1,8 @@
+<svg width="256" height="256" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- 灵壳 LingShell 应用图标（48px 及以上）：青绿圆角方块 + >_ 提示符 + 星芒（灵光）。界面内的 Logo 见 apps/ui/src/components/Logo.tsx -->
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2dd4bf"/><stop offset="1" stop-color="#0f766e"/></linearGradient></defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#g)"/>
+  <path d="M15 22 L27 32 L15 42" fill="none" stroke="#f0fdfa" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="31" y="39" width="17" height="6" rx="3" fill="#f0fdfa"/>
+  <path d="M46 9 C46.8 14.2 48.8 16.2 54 17 C48.8 17.8 46.8 19.8 46 25 C45.2 19.8 43.2 17.8 38 17 C43.2 16.2 45.2 14.2 46 9 Z" fill="#fef9c3"/>
+</svg>
