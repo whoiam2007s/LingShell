@@ -6,7 +6,7 @@
 //  3. 实现里 invoke 的通道名都是字面量，且主进程有注册（*.handle('通道', …)），注册在同名领域目录下；
 //     主进程注册的通道都有 AppClient 方法用到（apps/desktop/src/main/index.ts 里给 preload 直接用的除外），且不重复注册
 //  4. HttpTransport 覆盖全部命名空间
-//  5. docs/structure-refactor/client-methods.txt、invoke-channels.txt 与代码一致
+//  5. scripts/structure/client-methods.txt、invoke-channels.txt 与代码一致
 //
 // 用法：node scripts/check-protocol.mjs          有问题时退出码 1
 //       node scripts/check-protocol.mjs --write  重新生成第 5 条的两个清单
@@ -22,7 +22,7 @@ const PROTO = path.join(ROOT, 'packages/shared/src/protocol/client')
 const IPC = path.join(ROOT, 'apps/ui/src/client/transports/ipc')
 const HTTP = path.join(ROOT, 'apps/ui/src/client/transports/HttpTransport.ts')
 const MAIN = path.join(ROOT, 'apps/desktop/src/main')
-const DOCS = path.join(ROOT, 'docs/structure-refactor')
+const DOCS = path.join(ROOT, 'scripts/structure')
 const rel = (f) => path.relative(ROOT, f).split(path.sep).join('/')
 const parse = (f) => ts.createSourceFile(f, fs.readFileSync(f, 'utf8'), ts.ScriptTarget.Latest, true)
 const tsFiles = (d) => fs.readdirSync(d).filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts') && !/\.test\.ts$/.test(f))

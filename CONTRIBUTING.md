@@ -60,7 +60,7 @@ pnpm i18n:check        # 改了界面文案时
 3. `apps/ui/src/client/transports/ipc/<领域>.ts`：`window.electronAPI.invoke('<前缀>:<名字>', …)`
 4. `apps/ui/src/client/transports/HttpTransport.ts`：补占位（`ni`）
 
-改完跑 `node scripts/check-protocol.mjs --write`（IPC 清单会生成到本地 `docs/structure-refactor/`，该目录不随仓库发布），再跑 `pnpm check:structure`。
+改完跑 `node scripts/check-protocol.mjs --write`（IPC 清单生成在 `scripts/structure/`，随仓库一起提交），再跑 `pnpm check:structure`。
 
 **用户可见文案**一律走 `tr()`，并在英文词典里补上对应条目，改完跑 `pnpm i18n:check` 校验。
 

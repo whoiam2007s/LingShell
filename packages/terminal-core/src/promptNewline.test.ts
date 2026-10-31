@@ -78,13 +78,26 @@ describe.skipIf(!bash)('提示符另起一行（PROMPT_COMMAND）', () => {
   })
 
   it('交互 bash：每条命令 C…D;<退出码>；空行/纯注释行没有 C（UI 忽略孤立的 D）', () => {
-    expect(marks(interactive(['true', 'false', '', '# c', '(exit 3)']))).toEqual([
-      'D;0', 'A', 'D;0', 'A', 'B',        // 启动提示符、exec 2>&1（其 PS0 还在 stderr 原位，未进 stdout）
-      'C', 'D;0', 'A', 'B',               // true
-      'C', 'D;1', 'A', 'B',               // false
-      'D;1', 'A', 'B', 'D;1', 'A', 'B',   // 空行、注释：无 C
-      'C', 'D;3', 'A', 'B',               // (exit 3)
-    ])
+    const seq = marks(interactive(['true', 'false', '', '# c', '(exit 3)']))
+    // 跨平台断言：每条 C 之后的第一条 D 就是该命令的退出码；空行 / 注释不产生 C，
+    // 所以「最后三条 C→D」正好对应三个真实命令。
+    const codes: Array<string | undefined> = []
+    seq.forEach((m, i) => { if (m === 'C') codes.push(seq.slice(i).find((x) => x.startsWith('D;'))) })
+    expect(codes.slice(-3)).toEqual(['D;0', 'D;1', 'D;3'])
+    if (process.platform === 'win32') {
+      // Git Bash：exec 2>&1 的 PS0 落在 stderr（不进 stdout），整个序列是稳定的
+      expect(seq).toEqual([
+        'D;0', 'A', 'D;0', 'A', 'B',        // 启动提示符、exec 2>&1（其 PS0 还在 stderr 原位，未进 stdout）
+        'C', 'D;0', 'A', 'B',               // true
+        'C', 'D;1', 'A', 'B',               // false
+        'D;1', 'A', 'B', 'D;1', 'A', 'B',   // 空行、注释：无 C
+        'C', 'D;3', 'A', 'B',               // (exit 3)
+      ])
+    } else {
+      // POSIX bash：PS0 的 OSC 133 同样会进 stdout，启动段比 Git Bash 多一个 C，
+      // 精确序列因 shell 版本而异，这里只保留上面的结构断言
+      expect(seq.filter((m) => m === 'C').length).toBeGreaterThanOrEqual(3)
+    }
   })
 
   it('AI 哨兵命令的 C/D 落在哨兵标记外侧：捕获期 C 不转发给 UI，结束后的 D 成孤立标记，不算用户命令', () => {

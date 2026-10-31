@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 从开着 --inspect 的开发实例主进程读出 invoke 通道的注册顺序，写到 docs/structure-refactor/invoke-channels-order.txt。
+// 从开着 --inspect 的开发实例主进程读出 invoke 通道的注册顺序，写到 scripts/structure/invoke-channels-order.txt。
 // 只在改了主进程注册顺序（services.ts / ipc.ts / 各领域 register.ts 的先后）时需要，用来逐个比对；不收 Electron 自己注册的通道。
 //
 // 用法：先用 --inspect=<端口> 启动开发实例（electron-vite dev -- 或在 launch 脚本里加 --inspect 9229），然后
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const rel = (p) => path.relative(ROOT, p).split(path.sep).join('/')
-const OUT = path.join(ROOT, 'docs/structure-refactor/invoke-channels-order.txt')
+const OUT = path.join(ROOT, 'scripts/structure/invoke-channels-order.txt')
 const port = process.argv.slice(2).find((a) => /^\d+$/.test(a)) ?? '9229'
 const CHECK = process.argv.includes('--check')
 const list = await fetch(`http://127.0.0.1:${port}/json/list`).then((r) => r.json(), () => null)
