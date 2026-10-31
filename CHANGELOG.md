@@ -2,6 +2,17 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)。版本号在 `apps/desktop/package.json` 与根 `package.json` 中同步维护。
 
+## [0.1.1] - 2026-10-31
+
+修复：
+
+- **Linux / macOS 下终端当前目录识别不到**：shell integration 的 OSC 633 路径上报其实一直在工作，但 `knownCwd` 只认 Windows 盘符路径，把 `/home/...` 这类 POSIX 路径当成"不知道"。现在非 Windows 平台直接返回原始路径 —— AI 的终端清单和资源管理器的"跟随终端目录"在 Linux / macOS 上恢复正常。
+
+工程：
+
+- CI 修复：IPC 清单移入 `scripts/structure/`（协议一致性检查在 CI 里继续生效）、shell 标记测试改为跨平台断言。
+- Dependabot 自动 rebase，Release 说明改为从本文件自动提取并附安装包 SHA256。
+
 ## [0.1.0] - 2026-10-31
 
 首个开源版本（Apache-2.0）。

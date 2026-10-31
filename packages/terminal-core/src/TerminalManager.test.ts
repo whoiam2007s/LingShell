@@ -31,9 +31,7 @@ describe('TerminalManager local terminal', () => {
     mgr.close(info.id)
   }, 15000)
 
-  // OSC 633;P;Cwd 只在 Windows 本地 Git Bash 下由 promptNewline 注入（见 TerminalManager.ts
-  // 的 knownCwd 分支）；其他平台走的是另一条探测路径，这个用例不适用。
-  it.skipIf(process.platform !== 'win32')('knownCwd：取提示符报的目录（OSC 633;P;Cwd），cd 后跟着变，不往终端里打 pwd', async () => {
+  it('knownCwd：取提示符报的目录（OSC 633;P;Cwd），cd 后跟着变，不往终端里打 pwd', async () => {
     const mgr = new TerminalManager()
     const start = process.cwd()   // 仓库目录（Git Bash 下是 /d/... 形式，能换回 Windows 路径；/tmp 这类挂载点不行）
     const info = mgr.createLocal({ cwd: start })

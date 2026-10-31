@@ -188,10 +188,13 @@ export class TerminalManager {
     const c = this.oscCwd.get(id), e = this.entries.get(id)
     if (!c || !e) return undefined
     if (e.info.type !== 'local') return c
+    // 本地终端：Windows 上 shell 报的是 MSYS 路径，要归一成 Windows（/c/x → C:\x，
+    // /tmp、/usr 这类挂载点换不出来才算不知道）；macOS / Linux 上报的就是真实绝对路径，直接用。
+    if (process.platform !== 'win32') return c
     const distro = wslDistro(e.info.shell)
     if (distro) return wslToWinPath(c, distro)
     const w = toWinPath(c)
-    return /^[A-Za-z]:/.test(w) ? w : undefined   // Git Bash 的 /tmp、/usr 这类挂载点换不成 Windows 路径：当不知道
+    return /^[A-Za-z]:/.test(w) ? w : undefined
   }
 
   write(id: string, data: string, opts?: WriteOpts): void {

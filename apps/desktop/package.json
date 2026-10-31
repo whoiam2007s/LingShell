@@ -1,6 +1,6 @@
 {
   "name": "@lingshell/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "Apache-2.0",
   "description": "灵壳 LingShell — AI terminal and operations workbench",
   "author": "BigZ <whoiam2007s@163.com>",
