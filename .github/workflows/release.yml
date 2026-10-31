@@ -58,7 +58,7 @@ jobs:
           $body | Out-File -FilePath release-notes.md -Encoding utf8
 
       - name: 上传到 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: release-notes.md
           generate_release_notes: true
