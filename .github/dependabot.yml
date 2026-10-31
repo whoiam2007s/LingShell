@@ -5,6 +5,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # 分支落后于 master 时自动 rebase，否则 PR 上的 CI 会一直用旧的工作流配置
+    rebase-strategy: auto
     groups:
       dev-dependencies:
         dependency-type: development
@@ -12,8 +14,12 @@ updates:
     # 大范围自动升级会打乱版本对齐，交给人工评估。
     ignore:
       - dependency-name: "@deepseek-ai/*"
+      # koffi 的子包（@koromix/koffi-<平台>）必须与 koffi 主包版本一致，
+      # 单独升某个平台包会让打包后的原生依赖对不上；要升就整体人工升。
+      - dependency-name: "@koromix/koffi-*"
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    rebase-strategy: auto

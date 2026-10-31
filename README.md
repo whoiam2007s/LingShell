@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#安装)
 [![Status](https://img.shields.io/badge/status-early%20preview-orange.svg)](#项目状态)
+[![CI](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml/badge.svg)](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml)
 
 [English](README.en.md) · 简体中文 · [功能详解](#功能详解)
 
