@@ -119,6 +119,10 @@ The main process, the shared protocol, and the UI's IPC implementation are split
 - Team collaboration and central governance (shared credentials, central policy/approval, centralized audit, SSO/RBAC, relay, private deployment, etc.) will be offered as separate commercial Team / Enterprise editions. See [COMMERCIAL.md](COMMERCIAL.md).
 - Commitment: **we will not move existing single-user features behind a paywall, and security fixes remain free.**
 
+## Sponsorship
+
+If LingShell is useful to you, you can [sponsor the project](SPONSORS.md) (WeChat Pay / Alipay). Sponsorship covers development time and test machines, and **never affects feature availability** — the community edition stays complete and free.
+
 ## Contributing
 
 Issues, docs, tests, and PRs are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). First-time contributors must agree to the [CLA](CLA.md).

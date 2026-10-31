@@ -119,6 +119,10 @@ scripts/          结构检查、i18n 检查等仓库脚本
 - 团队协作 / 集中治理（共享凭据、集中策略与审批、集中审计、SSO/RBAC、远程中继、私有化等）会作为独立的商业 Team / Enterprise 版本提供，见 [COMMERCIAL.md](COMMERCIAL.md)。
 - 我们承诺：**不把现有单机功能挪进付费墙，安全修复永远免费**。
 
+## 赞助
+
+如果灵壳帮到了你，可以[扫码赞助](SPONSORS.md)（微信支付 / 支付宝）。赞助用于开发时间和测试机器，**不影响任何功能可用性** —— 社区版永远完整免费。
+
 ## 贡献
 
 欢迎 issue、文档、测试和 PR。提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。首次贡献需要同意 [CLA](CLA.md)（用于保留商业版与双许可所需的授权）。

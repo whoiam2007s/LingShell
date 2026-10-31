@@ -1,0 +1,5 @@
+# 仓库页右上角的 "Sponsor" 按钮
+# 说明：项目用微信 / 支付宝收款，不在 GitHub Sponsors 上（大陆主体开不了 Stripe）。
+# custom 最多 4 个链接，GitHub 会直接跳转到该页面。
+custom:
+  - "https://github.com/whoiam2007s/LingShell/blob/master/SPONSORS.md"
