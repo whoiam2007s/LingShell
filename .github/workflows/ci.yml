@@ -93,7 +93,13 @@ jobs:
         # 自动更新地址写进 app-update.yml，与正式发布一致；--publish never 确保不上传
         env:
           LINGSHELL_UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download
-        run: pnpm dist:linux
+        run: pnpm dist:linux 2>&1 | tee build-linux.log
+
+      - name: 失败时输出错误摘要
+        # 仓库令牌读不到 Actions 日志时，把关键输出写成注解，便于通过 API 定位问题
+        if: failure()
+        run: |
+          echo "::error title=Linux 打包失败::$(tail -c 2500 build-linux.log | tr '\n' '|')"
 
       - name: 检查产物
         run: |
