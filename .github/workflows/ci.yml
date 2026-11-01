@@ -68,3 +68,44 @@ jobs:
         # *.real.test.ts 依赖真实环境（Git Bash / SSH / Docker / 宿主机时序），
         # 在 CI 跑会假失败；需要时在真机上用 pnpm test 全量跑。
         run: pnpm test:ci
+
+  package-linux:
+    name: Linux 打包验证
+    runs-on: ubuntu-latest
+    # Linux 产物一直没被真正构建过（release.yml 只出 Windows），这里先跑通再谈发布。
+    # 只验证「能不能打出 AppImage」，不发布，产物作为 artifact 留档。
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 打包 AppImage
+        # 自动更新地址写进 app-update.yml，与正式发布一致；--publish never 确保不上传
+        env:
+          LINGSHELL_UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download
+        run: pnpm dist:linux
+
+      - name: 检查产物
+        run: |
+          ls -lh release/
+          test -n "$(find release -name '*.AppImage' -print -quit)" || { echo "没有生成 AppImage"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: |
+            release/*.AppImage
+            release/latest-linux.yml
+          if-no-files-found: error
+          retention-days: 7
+
