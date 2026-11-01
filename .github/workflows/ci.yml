@@ -92,12 +92,17 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: 打包 AppImage
-        # 自动更新地址写进 app-update.yml，与正式发布一致；--publish never 确保不上传
+        # 自动更新地址写进 app-update.yml，与正式发布一致；--publish never 确保不上传。
+        # 必须开 pipefail：默认 shell 不带它，`| tee` 会把 electron-builder 的失败吞成 0。
+        shell: bash
         env:
           LINGSHELL_UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download
-        run: pnpm dist:linux 2>&1 | tee build-linux.log
+        run: |
+          set -o pipefail
+          pnpm dist:linux 2>&1 | tee build-linux.log
 
       - name: 检查产物
+        shell: bash
         run: |
           ls -lh release/ || true
           echo '--- 全仓 AppImage 搜索 ---'
@@ -113,9 +118,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: 失败时把诊断信息提交到分支
-        # 仓库令牌读不到 Actions 日志时，把关键信息落到分支上的临时文件，便于排查（调试用，稳定后删）
+      - name: 失败时把诊断信息推到 ci-logs 分支
+        # 仓库令牌读不到 Actions 日志，把关键信息推到独立分支便于排查（调试用，稳定后删）。
+        # 推新分支而不是 PR 分支：PR 事件下 HEAD 是合并提交，推回原分支必然 non-fast-forward。
         if: failure()
+        shell: bash
         run: |
           {
             echo '=== build-linux.log 尾部 ==='
@@ -127,8 +134,7 @@ jobs:
             echo '=== 全仓 AppImage ==='
             find . -name '*.AppImage' 2>/dev/null | head -5 || true
           } > ci-linux-failure.log
-          git config user.name "lingshell-ci"
-          git config user.email "ci@lingshell.local"
+          git checkout -B ci-logs
           git add -f ci-linux-failure.log
-          git commit -m "ci: 记录 Linux 打包失败诊断 [skip ci]" || true
-          git push origin "HEAD:${{ github.head_ref }}" || true
+          git -c user.name=lingshell-ci -c user.email=ci@lingshell.local commit -m "ci: Linux 打包失败诊断"
+          git push -f origin ci-logs
