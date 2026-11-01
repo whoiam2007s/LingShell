@@ -90,7 +90,7 @@
     "electron-updater": "6.8.11",
     "node-pty": "1.1.0",
     "ssh2": "1.16.0",
-    "unpdf": "^1.9.1"
+    "unpdf": "^2.0.0"
   },
   "optionalDependencies": {
     "@koromix/koffi-darwin-arm64": "3.1.1",
