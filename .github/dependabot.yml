@@ -8,6 +8,14 @@ updates:
     # 分支落后于 master 时自动 rebase，否则 PR 上的 CI 会一直用旧的工作流配置
     rebase-strategy: auto
     groups:
+      # react / react-dom / @types/react* 必须同版本：只升其中一个会让 React 与 ReactDOM
+      # 版本错配，前端测试（renderToStaticMarkup 断言）会整片失败 —— PR #6 就是这么挂的。
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       dev-dependencies:
         dependency-type: development
     # @deepseek-ai/dsh-* 通过根 package.json 的 pnpm.overrides 锁在同一个 rc 版本，
