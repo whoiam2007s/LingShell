@@ -103,8 +103,11 @@ jobs:
 
       - name: 检查产物
         run: |
-          ls -lh release/
-          test -n "$(find release -name '*.AppImage' -print -quit)" || { echo "没有生成 AppImage"; exit 1; }
+          ls -lh release/ || true
+          test -n "$(find release -name '*.AppImage' -print -quit)" || {
+            echo "::error title=没有生成 AppImage::$(find . -maxdepth 4 -name '*.AppImage' -o -maxdepth 4 -name 'latest-linux.yml' | head -5 | tr '\n' ' ')"
+            exit 1
+          }
 
       - uses: actions/upload-artifact@v4
         with:
