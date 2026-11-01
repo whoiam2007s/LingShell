@@ -67,3 +67,38 @@ jobs:
             release/*.exe.blockmap
             release/latest.yml
             release/sbom.json
+
+  linux:
+    name: Linux 安装包（AppImage）
+    # 跑在 Windows 作业之后：由它先创建好 Release，这里只追加资产，
+    # 不传 body/body_path，避免把已经生成的发布说明覆盖掉。
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建并打包
+        env:
+          # 与 Windows 相同：产出 latest-linux.yml，客户端据此自动更新
+          LINGSHELL_UPDATE_URL: https://github.com/whoiam2007s/LingShell/releases/latest/download
+        run: pnpm dist:linux
+
+      - name: 追加 AppImage 到同一个 Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            release/*.AppImage
+            release/latest-linux.yml
+          fail_on_unmatched_files: true

@@ -1,7 +1,7 @@
 {
   "name": "lingshell",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "Apache-2.0",
   "description": "LingShell — AI terminal and operations workbench",
   "author": "BigZ <whoiam2007s@163.com>",
@@ -35,6 +35,8 @@
     "build": "pnpm build:libs && pnpm build:ui && pnpm build:desktop",
     "dist": "pnpm build && pnpm --filter @lingshell/desktop dist",
     "dist:win": "pnpm build && pnpm --filter @lingshell/desktop dist:win",
+    "dist:mac": "pnpm build && pnpm --filter @lingshell/desktop dist:mac",
+    "dist:linux": "pnpm build && pnpm --filter @lingshell/desktop dist:linux",
     "test": "turbo run test --concurrency=2",
     "test:ci": "turbo run test --concurrency=2 -- --exclude \"**/*.real.test.ts\"",
     "lint": "turbo run lint",

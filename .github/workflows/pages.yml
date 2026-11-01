@@ -1,0 +1,41 @@
+name: Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'guide/**'
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# 推 gh-pages 分支只需要写内容权限；不用 Pages 的 OIDC 流程（省去配置来源那一步）
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: 发布文档站
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 组装站点
+        # guide/ 里的 Markdown 与截图直接当站点内容；site/ 提供 docsify 外壳与侧栏。
+        # docsify 在浏览器里渲染 Markdown，所以没有构建步骤，文档改了推上去就是新的。
+        run: |
+          mkdir -p _site
+          cp -r guide/. _site/
+          cp site/index.html site/index.md site/_sidebar.md _site/
+          find _site -maxdepth 2 -type f | head -20
+
+      - name: 推送到 gh-pages 分支
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          publish_dir: ./_site
+          publish_branch: gh-pages
+          # 仓库设置里把 Pages 的来源指向 gh-pages 分支即可（只需设一次）

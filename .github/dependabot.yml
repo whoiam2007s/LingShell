@@ -8,11 +8,23 @@ updates:
     # 分支落后于 master 时自动 rebase，否则 PR 上的 CI 会一直用旧的工作流配置
     rebase-strategy: auto
     groups:
+      # react / react-dom / @types/react* 必须同版本：只升其中一个会让 React 与 ReactDOM
+      # 版本错配，前端测试（renderToStaticMarkup 断言）会整片失败 —— PR #6 就是这么挂的。
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       dev-dependencies:
         dependency-type: development
     # @deepseek-ai/dsh-* 通过根 package.json 的 pnpm.overrides 锁在同一个 rc 版本，
     # 大范围自动升级会打乱版本对齐，交给人工评估。
     ignore:
+      # @types/node 要跟着 .nvmrc / Electron 的运行时走：大版本跳跃（如 22 → 26）会带来
+      # Buffer 等类型变更（string | NonSharedBuffer），代码要成片改，交给人工评估。
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "@deepseek-ai/*"
       # koffi 的子包（@koromix/koffi-<平台>）必须与 koffi 主包版本一致，
       # 单独升某个平台包会让打包后的原生依赖对不上；要升就整体人工升。
