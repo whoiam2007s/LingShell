@@ -97,25 +97,12 @@ jobs:
           LINGSHELL_UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download
         run: pnpm dist:linux 2>&1 | tee build-linux.log
 
-      - name: 失败时把构建日志提交到分支
-        # 仓库令牌读不到 Actions 日志时，把尾部落到分支上的临时文件，便于排查（调试用，稳定后删）
-        if: failure()
-        run: |
-          tail -c 20000 build-linux.log > ci-linux-failure.log 2>/dev/null || echo '(没有 build-linux.log)' > ci-linux-failure.log
-          git config user.name "lingshell-ci"
-          git config user.email "ci@lingshell.local"
-          git add -f ci-linux-failure.log
-          git commit -m "ci: 记录 Linux 打包失败日志 [skip ci]" || true
-          git push origin "HEAD:${{ github.head_ref }}" || true
-
       - name: 检查产物
         run: |
           ls -lh release/ || true
-          test -n "$(find release -name '*.AppImage' -print -quit)" || {
-            echo "没有找到 AppImage"
-            find . -maxdepth 4 -name '*.AppImage' -o -maxdepth 4 -name 'latest-linux.yml' | head -5
-            exit 1
-          }
+          echo '--- 全仓 AppImage 搜索 ---'
+          find . -name '*.AppImage' 2>/dev/null | head -5
+          test -n "$(find release -name '*.AppImage' -print -quit)"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -125,3 +112,23 @@ jobs:
             release/latest-linux.yml
           if-no-files-found: error
           retention-days: 7
+
+      - name: 失败时把诊断信息提交到分支
+        # 仓库令牌读不到 Actions 日志时，把关键信息落到分支上的临时文件，便于排查（调试用，稳定后删）
+        if: failure()
+        run: |
+          {
+            echo '=== build-linux.log 尾部 ==='
+            tail -c 18000 build-linux.log 2>/dev/null || echo '(没有 build-linux.log)'
+            echo
+            echo '=== release 目录 ==='
+            ls -lh release/ 2>/dev/null || echo '(没有 release 目录)'
+            echo
+            echo '=== 全仓 AppImage ==='
+            find . -name '*.AppImage' 2>/dev/null | head -5 || true
+          } > ci-linux-failure.log
+          git config user.name "lingshell-ci"
+          git config user.email "ci@lingshell.local"
+          git add -f ci-linux-failure.log
+          git commit -m "ci: 记录 Linux 打包失败诊断 [skip ci]" || true
+          git push origin "HEAD:${{ github.head_ref }}" || true
