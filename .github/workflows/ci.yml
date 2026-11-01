@@ -105,7 +105,7 @@ jobs:
           ls -lh release/
           test -n "$(find release -name '*.AppImage' -print -quit)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
           path: |
