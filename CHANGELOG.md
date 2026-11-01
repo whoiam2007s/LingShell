@@ -2,6 +2,24 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)。版本号在 `apps/desktop/package.json` 与根 `package.json` 中同步维护。
 
+## [0.1.2] - 2026-11-01
+
+新增：
+
+- **Linux 版**：正式发布现在会同时产出 AppImage（`LingShell-<版本>-linux-x86_64.AppImage`）与 `latest-linux.yml`，Linux 用户可用自动更新。CI 里也新增了 Linux 打包验证作业，避免以后悄悄坏掉。
+- **文档站**：`guide/` 下的功能详解通过 GitHub Pages 发布，带侧栏与全文搜索。
+
+修复：
+
+- Linux 打包的两处阻塞：electron-builder 不接受 `.ico` 图标（改为脚本渲染 1024×1024 PNG）、包名 `@lingshell/desktop` 含非法字符（可执行名固定为 `lingshell`）。
+
+工程：
+
+- 前端分包：react / xterm / markdown / radix 拆成独立 chunk，主包不再一次解析全部依赖。
+- React 四个包同步升到 19.3.1（`react`、`react-dom`、`@types/react`、`@types/react-dom` 必须同版本，只升一个会让前端测试整片失败）。
+- `@types/node` 统一到 22.20.0（跟随运行时；低于 22.12 不满足 vite 8 的对等依赖）。
+- Dependabot：新增 react 生态分组、忽略 `@types/node` 大版本跳跃，避免同类失败重复出现。
+
 ## [0.1.1] - 2026-10-31
 
 修复：
