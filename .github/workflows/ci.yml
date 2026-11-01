@@ -72,10 +72,8 @@ jobs:
   package-linux:
     name: Linux 打包验证
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    # Linux 产物一直没被真正构建过（release.yml 只出 Windows），这里先跑通再谈发布。
-    # 只验证「能不能打出 AppImage」，不发布，产物作为 artifact 留档。
+    # Linux 产物此前从未真正构建过（release.yml 只出 Windows）。这里只验证「能不能打出
+    # AppImage」并留档 artifact，不发布；真正发布在 release.yml 里接。
     steps:
       - uses: actions/checkout@v7
 
@@ -104,9 +102,7 @@ jobs:
       - name: 检查产物
         shell: bash
         run: |
-          ls -lh release/ || true
-          echo '--- 全仓 AppImage 搜索 ---'
-          find . -name '*.AppImage' 2>/dev/null | head -5
+          ls -lh release/
           test -n "$(find release -name '*.AppImage' -print -quit)"
 
       - uses: actions/upload-artifact@v4
@@ -117,24 +113,3 @@ jobs:
             release/latest-linux.yml
           if-no-files-found: error
           retention-days: 7
-
-      - name: 失败时把诊断信息推到 ci-logs 分支
-        # 仓库令牌读不到 Actions 日志，把关键信息推到独立分支便于排查（调试用，稳定后删）。
-        # 推新分支而不是 PR 分支：PR 事件下 HEAD 是合并提交，推回原分支必然 non-fast-forward。
-        if: failure()
-        shell: bash
-        run: |
-          {
-            echo '=== build-linux.log 尾部 ==='
-            tail -c 18000 build-linux.log 2>/dev/null || echo '(没有 build-linux.log)'
-            echo
-            echo '=== release 目录 ==='
-            ls -lh release/ 2>/dev/null || echo '(没有 release 目录)'
-            echo
-            echo '=== 全仓 AppImage ==='
-            find . -name '*.AppImage' 2>/dev/null | head -5 || true
-          } > ci-linux-failure.log
-          git checkout -B ci-logs
-          git add -f ci-linux-failure.log
-          git -c user.name=lingshell-ci -c user.email=ci@lingshell.local commit -m "ci: Linux 打包失败诊断"
-          git push -f origin ci-logs
