@@ -7,7 +7,7 @@
 [![Status](https://img.shields.io/badge/status-early%20preview-orange.svg)](#项目状态)
 [![CI](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml/badge.svg)](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml)
 
-[English](README.en.md) · 简体中文 · [功能详解](#功能详解)
+[English](README.en.md) · 简体中文 · [功能详解](#功能详解) · [在线文档](https://whoiam2007s.github.io/LingShell/)
 
 灵壳是一个开源的 AI 终端与运维工作台：左边是 AI 对话，右边是本地终端和 SSH 主机。AI 在你授权后执行命令、读取结果、继续下一步；执行前有授权卡、危险命令确认、执行计划和回滚方案，执行后有完整执行记录。
 

@@ -25,6 +25,17 @@ updates:
       # Buffer 等类型变更（string | NonSharedBuffer），代码要成片改，交给人工评估。
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # Electron 大版本升级要跨多个版本改 API（clipboard.readBuffer 被移除、printToPDF 的
+      # marginType 也不存在了），还要重验三平台打包与自动更新 —— 见 issue #20，人工做。
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
+      # Tailwind 4 是 CSS 优先的重写，样式必须人工逐个界面核对，CI 测不出来 —— 见 issue #20。
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 7 的原生编译器把 JS API 移到 unstable 入口，typescript-eslint 与
+      # scripts/check-tdz.mjs 都用不了 —— 见 issue #19，等生态支持。
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "@deepseek-ai/*"
       # koffi 的子包（@koromix/koffi-<平台>）必须与 koffi 主包版本一致，
       # 单独升某个平台包会让打包后的原生依赖对不上；要升就整体人工升。
