@@ -27,19 +27,8 @@ import { ListChecks } from 'lucide-react'
 import { tk, tr } from '@lingshell/shared'
 
 import { ModelSettings } from './basics/ModelSettings.js'
-export type SettingsTab = 'model' | 'ssh' | 'terminal' | 'ai' | 'general' | 'templates' | 'runbooks' | 'schedules' | 'mcp' | 'keys' | 'network' | 'recordings' | 'about' | 'maintenance' | 'shortcuts' | 'skills' | 'secrets' | 'mobile' | 'compliance'
-// 页面标题：值是中文原文（= 翻译键，帮助 / 命令面板也用它），显示时 tr()
-export const TITLES: Record<SettingsTab, string> = {
-  model: tk('模型设置'), ssh: tk('主机与连接'), terminal: tk('终端'), ai: tk('AI 与安全'), general: tk('通用'),
-  templates: tk('常用任务模板'), runbooks: tk('运维手册'), schedules: tk('定时巡检'), mcp: tk('MCP 服务'),
-  keys: tk('SSH 密钥'), network: tk('网络代理'), recordings: tk('终端录像'), about: tk('关于'),
-  maintenance: tk('备份与诊断'),
-  shortcuts: tk('快捷键'),
-  skills: 'Skills',
-  secrets: tk('密钥保险箱'),
-  mobile: tk('手机访问'),
-  compliance: tk('合规基线'),
-}
+import { TITLES, type SettingsTab } from './titles.js'
+export type { SettingsTab }
 // 左侧菜单：分组（组标题小号灰字）→ 各页
 const ICONS: Record<SettingsTab, React.ComponentType<{ className?: string }>> = {
   model: Cpu, ssh: Server, terminal: TerminalSquare, ai: ShieldCheck, general: SlidersHorizontal,
