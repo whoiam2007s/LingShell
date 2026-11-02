@@ -7,7 +7,7 @@
 [![Status](https://img.shields.io/badge/status-early%20preview-orange.svg)](#status)
 [![CI](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml/badge.svg)](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml)
 
-English · [简体中文](README.md) · [Feature guide](#feature-guide)
+English · [简体中文](README.md) · [Feature guide](#feature-guide) · [Docs site](https://whoiam2007s.github.io/LingShell/)
 
 LingShell is an open-source AI terminal and operations workbench: an AI chat on the left, local and SSH terminals on the right. After your approval, the AI can execute commands, read the output, and continue. Every action has approval cards, dangerous-command confirmation, execution plans, rollback plans, and a full audit trail.
 
