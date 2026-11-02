@@ -9,7 +9,7 @@
 
 ## 环境
 
-- Node.js ≥ 18、pnpm 9、Git。
+- Node.js ≥ 22（见 .nvmrc）、pnpm 9、Git。
 - Windows 本地终端需要 Git for Windows；开发 node-pty 可能需要 VS Build Tools。
 - 首次安装：`pnpm install`。
 - 启动：`pnpm dev`（UI dev server + Electron）。
