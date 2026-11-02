@@ -64,7 +64,8 @@
 从 [Releases](https://github.com/whoiam2007s/LingShell/releases) 下载对应平台的安装包。
 
 - **Windows**：`LingShell-<版本>-win-x64.exe`（NSIS，当前未签名，SmartScreen 会提示）。
-- **macOS / Linux**：构建配置已提供，尚未充分验证；欢迎参与测试。
+- **Linux**：`LingShell-<版本>-linux-x86_64.AppImage`（每次发布都由 CI 构建验证；下载后先 `chmod +x`）。
+- **macOS**：构建配置已提供，但还没有 macOS 构建机实际验证过；欢迎参与测试。
 - 首次启动在「设置 → 模型设置」填入你自己的 API Key；没有 Key 时不会发起任何模型请求。
 
 > 安装包目前未签名。下载后请核对发布页的 SHA256；企业环境建议使用自己构建的签名版本。
@@ -81,7 +82,7 @@
 
 ## 开发
 
-前置：Node.js ≥ 18、pnpm 9、Git。Windows 上本地终端需要 Git for Windows（Git Bash）；开发 node-pty 可能需要 VS Build Tools，打包使用其自带预编译件。
+前置：Node.js ≥ 22、pnpm 9、Git。Windows 上本地终端需要 Git for Windows（Git Bash）；开发 node-pty 可能需要 VS Build Tools，打包使用其自带预编译件。
 
 ```bash
 pnpm install
@@ -91,6 +92,8 @@ pnpm typecheck
 pnpm lint
 pnpm check:structure   # 目录边界、IPC 协议三方一致、循环依赖检查
 pnpm dist:win   # Windows 安装包（仓库根目录 release/）
+pnpm dist:linux # Linux AppImage
+pnpm dist:mac   # macOS DMG（需在 macOS 上执行）
 ```
 
 工程结构：

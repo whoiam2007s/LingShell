@@ -64,7 +64,8 @@ Each area has its own page with usage details and caveats (Chinese and English):
 Download the installer for your platform from [Releases](https://github.com/whoiam2007s/LingShell/releases).
 
 - **Windows**: `LingShell-<version>-win-x64.exe` (NSIS, currently unsigned; SmartScreen will warn).
-- **macOS / Linux**: build configuration is present but not thoroughly tested yet; testers welcome.
+- **Linux**: `LingShell-<version>-linux-x86_64.AppImage` (built and verified by CI on every release; `chmod +x` before running).
+- **macOS**: build configuration is present but has not been verified on a real macOS builder yet; testers welcome.
 - On first launch, add your own API key in Settings → Model. Without a key, no model request is made.
 
 > Installers are currently unsigned. Verify the SHA256 published with each release; enterprises should build and sign their own.
@@ -81,7 +82,7 @@ Report vulnerabilities privately per [SECURITY.md](SECURITY.md); do not open a p
 
 ## Development
 
-Requirements: Node.js ≥ 18, pnpm 9, Git. On Windows, Git for Windows (Git Bash) is required for local terminals. Building node-pty may require VS Build Tools; packaged builds use its prebuilt binaries.
+Requirements: Node.js ≥ 22, pnpm 9, Git. On Windows, Git for Windows (Git Bash) is required for local terminals. Building node-pty may require VS Build Tools; packaged builds use its prebuilt binaries.
 
 ```bash
 pnpm install
@@ -91,6 +92,8 @@ pnpm typecheck
 pnpm lint
 pnpm check:structure   # directory boundaries, IPC protocol consistency, import-cycle checks
 pnpm dist:win   # Windows installer (release/ at the repo root)
+pnpm dist:linux # Linux AppImage
+pnpm dist:mac   # macOS DMG (run on macOS)
 ```
 
 Layout:
