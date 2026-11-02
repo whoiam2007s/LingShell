@@ -89,7 +89,7 @@
     "@xterm/headless": "6.0.0",
     "electron-updater": "6.8.11",
     "node-pty": "1.1.0",
-    "ssh2": "1.16.0",
+    "ssh2": "1.17.0",
     "unpdf": "^1.9.1"
   },
   "optionalDependencies": {
@@ -102,7 +102,7 @@
   },
   "devDependencies": {
     "@types/node": "22.20.0",
-    "@types/ssh2": "1.15.1",
+    "@types/ssh2": "1.15.6",
     "electron": "40.10.6",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
