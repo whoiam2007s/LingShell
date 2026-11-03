@@ -105,6 +105,24 @@ jobs:
           ls -lh release/
           test -n "$(find release -name '*.AppImage' -print -quit)"
 
+      - name: 启动冒烟（xvfb 真启动打包产物）
+        # 类型检查 / 单测 / 打包都绿，也挡不住"启动后白屏"。这里在虚拟显示里真跑一次打包产物：
+        # 主进程的 LINGSHELL_SMOKE 分支会检查 #root 里是否真有渲染内容，再用退出码报告
+        # （见 apps/desktop/src/main/app/smoke.ts）。
+        shell: bash
+        env:
+          LINGSHELL_SMOKE: '1'
+        run: |
+          set -o pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgbm1 libnss3 libatk-bridge2.0-0 libgtk-3-0 libxss1 libxtst6 libasound2t64 2>/dev/null \
+            || sudo apt-get install -y -qq xvfb libgbm1 libnss3 libatk-bridge2.0-0 libgtk-3-0 libxss1 libxtst6 libasound2
+          APP="$(find release/linux-unpacked -maxdepth 1 -type f -perm -u+x -name 'lingshell*' -print -quit)"
+          echo "打包产物可执行文件: ${APP:-（没找到）}"
+          test -n "$APP"
+          timeout 120 xvfb-run -a "$APP" --no-sandbox 2>&1 | tee smoke.log
+          grep -q 'SMOKE_OK' smoke.log
+
       - uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
