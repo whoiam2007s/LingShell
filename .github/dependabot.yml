@@ -27,6 +27,9 @@ updates:
         update-types: ["version-update:semver-major"]
       # Electron 大版本升级要跨多个版本改 API（clipboard.readBuffer 被移除、printToPDF 的
       # marginType 也不存在了），还要重验三平台打包与自动更新 —— 见 issue #20，人工做。
+      # electron-vite 是 electron 的构建链，两者大版本要一起升才安全（#29 就是这种情况）。
+      - dependency-name: "electron-vite"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "electron"
         update-types: ["version-update:semver-major"]
       # Tailwind 4 是 CSS 优先的重写，样式必须人工逐个界面核对，CI 测不出来 —— 见 issue #20。

@@ -2,6 +2,27 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)。版本号在 `apps/desktop/package.json` 与根 `package.json` 中同步维护。
 
+## [0.1.3] - 2026-11-03
+
+安全：
+
+- **生产依赖漏洞清零**：`pnpm audit --prod` 从 14 条降到 0 —— js-yaml 4.3.2、zod 4.6.6、undici 6.29.1（`openai` 把它钉成精确版本，需父子覆盖才生效）。
+- **Electron 40.8.3 → 40.10.6**：40 线最后一个补丁，修掉 nodeIntegrationInWorker 作用域、window.open 目标限制、离屏渲染 use-after-free、clipboard.readImage 崩溃等漏洞。同一大版本内，无 API 变更。
+
+新增：
+
+- **macOS 打包验证**：CI 每次都会在 `macos-latest` 上构建 DMG 并检查产物（未签名、不发布），macOS 从「从未构建」变成「持续构建验证」。
+
+优化：
+
+- 设置 / 用量 / 授权三个低频面板改为懒加载，前端主包 2152 KB → 1857 KB（-14%）。
+- lucide-react 1.65、ssh2 1.17 等常规升级。
+
+文档与工程：
+
+- README 增加在线文档入口；修正 Linux 已验证、Node ≥ 22 等过期描述。
+- Dependabot 忽略 Electron / electron-vite / Tailwind / TypeScript 的大版本（见 #19、#20），避免每周重复提无法自动合并的 PR。
+
 ## [0.1.2] - 2026-11-01
 
 新增：
