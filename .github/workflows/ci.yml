@@ -113,3 +113,50 @@ jobs:
             release/latest-linux.yml
           if-no-files-found: error
           retention-days: 7
+  package-macos:
+    name: macOS 打包验证
+    runs-on: macos-latest
+    # macOS 产物从未被真正构建过（README 一直标"未在 macOS 上验证"）。这里只验证
+    # 能不能打出 DMG 并留档 artifact，不发布、不签名（identity: null，见
+    # apps/desktop/electron-builder.config.cjs）。
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 打包 DMG（未签名）
+        # 与 Windows / Linux 一致地把更新地址写进 app-update.yml。
+        # 必须开 pipefail：默认 shell 不带它，`| tee` 会把失败吞成 0。
+        shell: bash
+        env:
+          LINGSHELL_UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -o pipefail
+          pnpm dist:mac 2>&1 | tee build-macos.log
+
+      - name: 检查产物
+        shell: bash
+        run: |
+          ls -lh release/
+          test -n "$(find release -name '*.dmg' -print -quit)"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-dmg
+          path: |
+            release/*.dmg
+            release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 7
+

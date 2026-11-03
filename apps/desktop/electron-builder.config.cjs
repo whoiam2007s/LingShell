@@ -13,6 +13,9 @@
 //      Unsupported input format ".ico" 并中断。icon.png 由 build/gen-icon.cjs 从 logo.svg 渲染。
 //    - executableName：包名是 @lingshell/desktop，拿它当可执行文件名会撞
 //      "characters that cannot be safely used in file paths"，这里固定成 lingshell。
+//
+// 4. macOS 同样给 PNG 图标（没有 .icns，由 electron-builder 从 1024×1024 的 png 转换），
+//    并用 identity: null 明确「不签名」：CI 上没证书，自动探测会报错中断。
 const url = (process.env.LINGSHELL_UPDATE_URL || '').trim()
 
 module.exports = {
@@ -22,5 +25,9 @@ module.exports = {
     icon: 'build/icon.png',
     category: 'Development',
     executableName: 'lingshell',
+  },
+  mac: {
+    icon: 'build/icon.png',
+    identity: null,
   },
 }
