@@ -6,8 +6,7 @@ import { registerIpc } from './ipc.js'
 import { initAppContext, log } from './core/index.js'
 import { initSshUrl, receiveSshUrlArgv } from './app/index.js'
 import { initNativeTheme, windowBg, currentTheme } from './app/index.js'
-import { initLocale } from './app/index.js'
-import { runSmokeCheck } from './app/smoke.js'
+import { initLocale, runSmokeCheck } from './app/index.js'
 import { themeInfo, getLocale, tr } from '@lingshell/shared'
 
 // ESM 下 __dirname 不存在；不依赖 electron-vite 的注入垫片（bundle 结构变化时会失效），
