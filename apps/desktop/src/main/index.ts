@@ -7,6 +7,7 @@ import { initAppContext, log } from './core/index.js'
 import { initSshUrl, receiveSshUrlArgv } from './app/index.js'
 import { initNativeTheme, windowBg, currentTheme } from './app/index.js'
 import { initLocale } from './app/index.js'
+import { runSmokeCheck } from './app/smoke.js'
 import { themeInfo, getLocale, tr } from '@lingshell/shared'
 
 // ESM 下 __dirname 不存在；不依赖 electron-vite 的注入垫片（bundle 结构变化时会失效），
@@ -100,6 +101,9 @@ function createMainWindow() {
   } else {
     win.loadFile(join(process.resourcesPath, 'ui', 'index.html'))
   }
+
+  // 冒烟模式（CI 用，见 app/smoke.ts）：加载后检查渲染是否真的有内容，然后自己退出
+  if (process.env.LINGSHELL_SMOKE) runSmokeCheck(win)
 
   registerWindowControls(win)
   registerIpc(win)
