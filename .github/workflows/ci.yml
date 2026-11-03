@@ -158,5 +158,6 @@ jobs:
             release/*.dmg
             release/latest-mac.yml
           if-no-files-found: error
-          retention-days: 7
+          # 保留 30 天：macOS 不进正式 Release（未签名 + 自动更新不可用），只作为实验版供试用的入口
+          retention-days: 30
 

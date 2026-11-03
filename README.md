@@ -65,7 +65,8 @@
 
 - **Windows**：`LingShell-<版本>-win-x64.exe`（NSIS，当前未签名，SmartScreen 会提示）。
 - **Linux**：`LingShell-<版本>-linux-x86_64.AppImage`（每次发布都由 CI 构建验证；下载后先 `chmod +x`）。
-- **macOS**：构建配置已提供，但还没有 macOS 构建机实际验证过；欢迎参与测试。
+- **macOS（实验版）**：不随正式发布提供。CI 每次都会构建 DMG，可从 [CI 运行记录](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml) 里最近一次成功的 `macOS 打包验证` 作业下载 `macos-dmg` 产物（保留 30 天）。
+  未签名、未公证：首次打开需右键 → 打开，或到「系统设置 → 隐私与安全性」里放行；**自动更新在 macOS 上不可用**（未签名包无法走 Squirrel.Mac），升级需手动重新下载。欢迎反馈问题。
 - 首次启动在「设置 → 模型设置」填入你自己的 API Key；没有 Key 时不会发起任何模型请求。
 
 > 安装包目前未签名。下载后请核对发布页的 SHA256；企业环境建议使用自己构建的签名版本。
