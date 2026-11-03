@@ -65,7 +65,8 @@ Download the installer for your platform from [Releases](https://github.com/whoi
 
 - **Windows**: `LingShell-<version>-win-x64.exe` (NSIS, currently unsigned; SmartScreen will warn).
 - **Linux**: `LingShell-<version>-linux-x86_64.AppImage` (built and verified by CI on every release; `chmod +x` before running).
-- **macOS**: build configuration is present but has not been verified on a real macOS builder yet; testers welcome.
+- **macOS (experimental)**: not part of official releases. CI builds a DMG on every run — download the `macos-dmg` artifact from the latest successful `macOS 打包验证` job in the [CI runs](https://github.com/whoiam2007s/LingShell/actions/workflows/ci.yml) (kept 30 days).
+  Unsigned and not notarized: right-click → Open on first launch, or allow it in System Settings → Privacy & Security. **Auto-update does not work on macOS** (unsigned apps cannot use Squirrel.Mac), so upgrades require a manual re-download. Feedback welcome.
 - On first launch, add your own API key in Settings → Model. Without a key, no model request is made.
 
 > Installers are currently unsigned. Verify the SHA256 published with each release; enterprises should build and sign their own.
