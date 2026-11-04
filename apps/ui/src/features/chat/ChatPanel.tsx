@@ -471,7 +471,7 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
       {sessionPhase.phase !== 'ready' && <Overlay phase={sessionPhase} onOpenSettings={onOpenSettings} onRetry={onRetry} onNew={onNew} onBack={onBack} onOpenHistory={onOpenHistory} />}
 
       {/* 会话 header */}
-      <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} onExport={items.length ? exportSession : undefined}
+      <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
         postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
         preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined} />
 
@@ -907,8 +907,9 @@ function useSessionModel(sessionId: string, busy: boolean, onManage?: () => void
   return { profiles: mp.profiles, defaultId: mp.defaultId, current: profileOf(mp, st.profileId), pending: st.pending, note, onPick, onManage }
 }
 
-function SessionHeader({ hasSession, sessionId, usage, onExport, postmortem, title, onRename, onNew, models, preview }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview }: {
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
+  busy?: boolean   // 本轮是否在跑：点用量标签压缩时要等它结束
   models?: SessionModel
   postmortem?: PostmortemAction
   hasSession: boolean
