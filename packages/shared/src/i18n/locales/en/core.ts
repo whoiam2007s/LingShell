@@ -18,6 +18,7 @@ export const core: Record<string, string> = {
   'rollback_required: 这是生产主机上的变更命令，必须同时给出回滚方案才会执行：在 rollback 参数里写能撤销本次改动的命令（可多行；改文件前先备份，回滚用备份还原），在 rollback_note 里说明为什么这样回滚；确实无法回滚的，rollback 留空，在 rollback_note 里写明「不可回滚」及原因；这条命令其实只读的，在 rollback_note 写「只读，无需回滚」。补全后重新调用。':
     'rollback_required: this command changes a production host and only runs with a rollback plan: put commands that undo the change in the rollback parameter (multiple lines allowed; back up files before editing and restore from the backup), and explain the approach in rollback_note. If it truly can\'t be rolled back, leave rollback empty and write "not reversible" plus the reason in rollback_note; if the command is actually read-only, write "read-only, no rollback needed" in rollback_note. Then call again.',
   'write_file 需要 content（整文件新内容）或 old_text + new_text（精确替换）': 'write_file needs content (the whole new file) or old_text + new_text (exact replacement)',
+  'content 与 old_text/new_text 不能同时给：整文件重写用 content，局部替换用 old_text + new_text': 'Do not pass content together with old_text/new_text: use content for a full rewrite, or old_text + new_text for a partial edit',
   '文件不存在，不能用 old_text/new_text 编辑；新建文件请传 content': 'File doesn\'t exist, so old_text/new_text can\'t be used; pass content to create a new file',
   'old_text 不能为空': 'old_text can\'t be empty',
   'old_text 在文件中出现多次，请多带几行上下文使其唯一': 'old_text appears more than once in the file; include more surrounding lines so it\'s unique',
