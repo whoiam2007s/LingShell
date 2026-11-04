@@ -123,7 +123,13 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
   const blocks = (): TermBlock[] => items.flatMap((a) => (a.kind === 'termBlock' ? [a.block] : []))
   // 红点菜单「附加到对话」
   useEffect(() => onAttachTermBlock((b) => setItems((cur) => [...cur, termBlockAtt(b)])), [])
-  useEffect(() => onAttachPaths((ps) => { void addPaths(ps) }), [multimodal])
+  // 订阅「资源管理器 → 添加到对话」：必须经 ref 取最新的 addPaths。
+  // 以前直接把 addPaths 闭包进订阅、依赖只写 [multimodal]，订阅里一直是**首次渲染**的那个函数：
+  // 那时会话还在异步恢复（sessionId 为空），addPaths 末尾“会话变了就别落地”的守卫会直接 return，
+  // 于是文件读出来了又被静默丢掉 —— 表现为右击「添加到对话」毫无反应（0.1.0 起就有）。
+  const addPathsRef = useRef(addPaths)
+  addPathsRef.current = addPaths
+  useEffect(() => onAttachPaths((ps) => { void addPathsRef.current(ps) }), [])
 
   // 上下文标签（@ 引用 / 终端块）：同一个终端 / 主机 / 会话只留一个（终端块每次执行都是新的，不去重）
   const addContext = (ctx: ContextKind, name: string, text: string) => setItems((cur) =>
