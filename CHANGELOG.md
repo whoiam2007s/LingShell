@@ -7,15 +7,21 @@
 新增：
 
 - **启动冒烟测试**：CI 在 Linux 打包作业里用 `xvfb` 真启动打包产物，检查界面是否真的渲染出内容（`#root` 有子节点）、是否触发 `did-fail-load` 或渲染进程崩溃。类型检查、单测、打包全绿但启动白屏的情况，现在能被拦下。
+- **点用量标签直接压缩上下文**：聊天头部的「tokens · 上下文 %」标签点一下立即压缩（把较早的对话压成摘要、最近一轮原文保留）；正在跑回合时等本轮结束再压，不打断工具调用。
 
-优化：
+安全：
 
-- **构建链告警 82 → 14**：brace-expansion、shell-quote（critical）、postcss、axios、@xmldom/xmldom、joi、nanoid、tar、browserslist、follow-redirects、source-map-js、minimatch 等传递依赖用 overrides 钉到修复版；`vite` 升到 8.1.6、`vitest` 升到 4.1.12、`electron-builder` 升到 26.18.0。
+- **依赖告警清零**：`pnpm audit` 从 **82 条降到 0 条**。
+- **Electron 40 → 45**：40 线已停止维护（修复版只在 41.10.3+，40.x 不再回补），升到当前受支持的 45 线。迁移处理了 45 的破坏性变更：剪贴板 API 改为异步（`readText`/`writeText`/`read` 返回 Promise，`readBuffer` 移除，资源管理器复制文件的粘贴兜底改走 `ClipboardItem` 原始格式）、`printToPDF` 的 `margins.marginType` 换成英寸数值。`node-pty` 是 N-API 模块，无需为 Electron 版本重编译。
+- 其余传递依赖用 overrides 钉到修复版：brace-expansion、shell-quote（critical）、postcss、axios、@xmldom/xmldom、joi、nanoid、tar、browserslist、follow-redirects、source-map-js、minimatch 等；`vite` 升到 8.1.6、`vitest` 升到 4.1.12、`electron-builder` 升到 26.18.0、`electron-vite` 升到 6.0.0。
+
+修复：
+
+- `write_file` 同时给 `content` 与 `old_text/new_text` 时直接报错：之前会静默以 `content` 为准、把整个文件覆盖掉，只剩备份能救。
 
 工程：
 
 - macOS 打包验证不再阻塞 PR（只在 master 推送 / 手动触发时跑）—— 产品上 macOS 只需在首个版本与系统兼容性调整时验证。
-- 剩余 14 条依赖告警全部来自 Electron 40：其修复版在 41.10.3+，属于大版本升级，见 issue #20。
 
 ## [0.1.3] - 2026-11-03
 
