@@ -471,7 +471,7 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
       {sessionPhase.phase !== 'ready' && <Overlay phase={sessionPhase} onOpenSettings={onOpenSettings} onRetry={onRetry} onNew={onNew} onBack={onBack} onOpenHistory={onOpenHistory} />}
 
       {/* 会话 header */}
-      <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} onExport={items.length ? exportSession : undefined}
+      <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
         postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
         preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined} />
 
@@ -809,7 +809,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
 // 本会话累计 tokens（用量统计）：每次请求后 contextUsage 变 → 重新取一次；改了单价也重取（花费跟着变）
 // 头部用量小标签：「本会话累计 tokens · 上下文进度条 %」合成一个，悬停看明细，点击立即压缩上下文。
 // 累计 tokens 每次请求后（contextUsage 变）重取；改了单价也重取（花费跟着变）
-function UsageChip({ sessionId, usage }: { sessionId: string; usage?: { inputTokens: number; limit: number } }) {
+function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { inputTokens: number; limit: number }; busy?: boolean }) {
   const [t, setT] = useState<(UsageTotals & { currency: UsageCurrency }) | null>(null)
   const [priceTick, setPriceTick] = useState(0)
   // 点击标签 = 立即压缩上下文（会话空闲时才有意义；忙时 dsh 会报 busy）
@@ -818,6 +818,8 @@ function UsageChip({ sessionId, usage }: { sessionId: string; usage?: { inputTok
   const doCompact = () => {
     if (compacting) return
     setCompacting(true)
+    // 正在跑回合时，控制器会等本轮结束再压；先给个提示，避免看起来卡住
+    if (busy) setNote({ ok: true, text: tr('等本轮结束后压缩…') })
     client.agent.compact(sessionId).then(
       (did) => setNote({ ok: true, text: did ? tr('已压缩上下文') : tr('没有可压缩的历史') }),
       (e) => setNote({ ok: false, text: e instanceof Error ? e.message : String(e) }),
@@ -852,7 +854,7 @@ function UsageChip({ sessionId, usage }: { sessionId: string; usage?: { inputTok
       n: t.requests, total: fmtTokens(totalTokens(t)), input: t.input.toLocaleString(), cache: t.cacheRead.toLocaleString(),
       rate: (cacheHitRate(t) * 100).toFixed(1), output: t.output.toLocaleString(), cost: fmtCost(t.cost, t.currency),
     }),
-    tr('点击立即压缩上下文（把较早的对话压成摘要，保留最近原文）'),
+    tr('点击立即压缩上下文（把较早的对话压成摘要，最近一轮原文会保留）'),
   ].filter(Boolean).join('\n\n')
   return (
     <button data-usage-chip onClick={doCompact} disabled={compacting} title={tip}
@@ -905,8 +907,9 @@ function useSessionModel(sessionId: string, busy: boolean, onManage?: () => void
   return { profiles: mp.profiles, defaultId: mp.defaultId, current: profileOf(mp, st.profileId), pending: st.pending, note, onPick, onManage }
 }
 
-function SessionHeader({ hasSession, sessionId, usage, onExport, postmortem, title, onRename, onNew, models, preview }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview }: {
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
+  busy?: boolean   // 本轮是否在跑：点用量标签压缩时要等它结束
   models?: SessionModel
   postmortem?: PostmortemAction
   hasSession: boolean
@@ -948,7 +951,7 @@ function SessionHeader({ hasSession, sessionId, usage, onExport, postmortem, tit
       )}
       {hasSession && models?.note && <span className={`max-w-[160px] shrink-0 truncate text-[11px] ${models.note.ok ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-danger)]'}`} title={models.note.text}>{models.note.text}</span>}
       {hasSession && models && <ModelChip profile={models.current} pending={models.pending} profiles={models.profiles} defaultId={models.defaultId} onPick={models.onPick} onManage={models.onManage} />}
-      {hasSession && sessionId && <UsageChip sessionId={sessionId} usage={usage} />}
+      {hasSession && sessionId && <UsageChip sessionId={sessionId} usage={usage} busy={busy} />}
       {hasSession && preview && (
         <button data-preview-toggle onClick={preview.onToggle} aria-pressed={preview.on}
           title={tr('预演模式（只说不做）：{state}\n开启后本会话的 AI 只做只读排查、把要改的列成方案，不执行任何写操作；回复末尾可勾选步骤再执行', { state: preview.on ? tr('已开') : tr('关') })}

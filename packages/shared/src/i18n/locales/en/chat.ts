@@ -474,6 +474,8 @@ export const chat: Record<string, string> = {
   '本会话 {n} 次请求，共 {total} tokens\n输入 {input}（未命中缓存）\n命中缓存 {cache}（{rate}%）\n输出 {output}\n花费 {cost}': 'This session: {n} requests, {total} tokens total\nInput {input} (cache miss)\nCache hit {cache} ({rate}%)\nOutput {output}\nCost {cost}',
   '点击打开用量统计': 'Click to open usage',
   '已压缩上下文': 'Context compacted',
+  '点击立即压缩上下文（把较早的对话压成摘要，最近一轮原文会保留）': 'Compact context now (summarize earlier messages; the latest turn stays verbatim)',
+  '等本轮结束后压缩…': 'Will compact when the current turn finishes…',
   '没有可压缩的历史': 'Nothing to compact',
   '点击立即压缩上下文（把较早的对话压成摘要，保留最近原文）': 'Compact context now (summarize earlier messages, keep recent ones verbatim)',
   '已压缩': 'Compacted',
