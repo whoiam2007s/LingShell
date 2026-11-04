@@ -14,8 +14,12 @@ export function runSmokeCheck(win: BrowserWindow): void {
     if (finished) return
     finished = true
     console.log(`${ok ? 'SMOKE_OK' : 'SMOKE_FAIL'} ${detail}`)   // i18n-ignore 给 CI 抓的标记
-    // 留一点时间把 stdout 刷出去，再用进程退出码表达结果（app.quit 在 CI 里可能被托盘逻辑拖住）
-    setTimeout(() => app.exit(ok ? 0 : 1), 300)
+    // 先留一点时间把 stdout 刷出去；然后走正常退出（让终端 / 托盘 / 后台任务有机会收尾），
+    // 1.5 秒后仍没退再强退兜底 —— 直接 app.exit 会在销毁窗口时留下未收尾的数据流。
+    setTimeout(() => {
+      app.quit()
+      setTimeout(() => app.exit(ok ? 0 : 1), 1500)
+    }, 300)
   }
 
   // 页面加载失败（文件不存在、preload 崩了等）

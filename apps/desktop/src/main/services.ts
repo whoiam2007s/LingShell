@@ -29,7 +29,10 @@ export function createMainContext(win: BrowserWindow) {
   const sendTaps: ((ev: AppEvent) => void)[] = []   // 旁听发给界面的事件（手机访问用，见 mobileIpc.ts）
   let clearCardsOnTurnEnd: (sid: string) => void = () => {}
   const send = (ev: AppEvent) => {
-    win.webContents.send('app:event', ev); for (const f of sendTaps) f(ev)
+    // 退出过程中窗口可能已销毁，而终端数据流 / 定时器 / 后台任务收尾仍会往这里送事件，
+    // 直接 send 会抛 “Object has been destroyed”（应用退出时弹崩溃框）。丢弃转发即可。
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('app:event', ev)
+    for (const f of sendTaps) f(ev)
     if (ev.type === 'agent:turnCompleted' || ev.type === 'agent:turnFailed') clearCardsOnTurnEnd(ev.sessionId)
   }
   // 应用锁：门禁装在所有 handler 注册之前（默认拒绝，见 appLock.ts）。后台连接/AI/巡检照跑，只拦来自 UI 和 HTTP 接口的操作
