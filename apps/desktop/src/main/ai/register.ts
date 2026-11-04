@@ -306,6 +306,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('agent:renameSession', (_e, id: string, title: string) => controller.renameSession(id, title))
   ipcMain.handle('agent:setWorkDir', (_e, sessionId: string, workDir: string) => controller.setWorkDir(sessionId, workDir))
   ipcMain.handle('agent:resetContext', (_e, sessionId: string, seed?: string) => controller.resetContext(sessionId, seed))
+  // 手动压缩上下文：聊天头部用量百分比点击 → dsh CompactionEngine.compactNow
+  ipcMain.handle('agent:compact', (_e, sessionId: string) => controller.compactNow(sessionId))
   ipcMain.handle('agent:search', (_e, query: string) => controller.searchSessions(query))
   // 终端里自然语言写命令：一次性补全，30s 超时；只收描述 + 系统 / 目录 / 生产标记（不带终端内容）。报错原样抛，界面 nlErrorText 翻译
   ipcMain.handle('agent:suggestCommand', async (_e, req: NlCommandRequest) => {

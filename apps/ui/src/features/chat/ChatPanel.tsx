@@ -22,7 +22,6 @@ import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
 import { conversationToMarkdown, buildSessionReport, fmtTokens, fmtCost, totalTokens, cacheHitRate, USAGE_PRICES_EVENT, type UsageTotals, type UsageCurrency } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { openUsage } from '../usage/index.js'
 import { TemplatePicker } from './TemplatePicker.js'
 import { RunbookPicker } from '../runbooks/index.js'
 import { InputActionsMenu } from './InputActionsMenu.js'
@@ -808,11 +807,27 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
 
 // 上下文用量：让用户自己判断何时开新会话，而不是干到一半被自动总结打断
 // 本会话累计 tokens（用量统计）：每次请求后 contextUsage 变 → 重新取一次；改了单价也重取（花费跟着变）
-// 头部用量小标签：「本会话累计 tokens · 上下文进度条 %」合成一个，悬停看明细，点击打开用量统计。
+// 头部用量小标签：「本会话累计 tokens · 上下文进度条 %」合成一个，悬停看明细，点击立即压缩上下文。
 // 累计 tokens 每次请求后（contextUsage 变）重取；改了单价也重取（花费跟着变）
 function UsageChip({ sessionId, usage }: { sessionId: string; usage?: { inputTokens: number; limit: number } }) {
   const [t, setT] = useState<(UsageTotals & { currency: UsageCurrency }) | null>(null)
   const [priceTick, setPriceTick] = useState(0)
+  // 点击标签 = 立即压缩上下文（会话空闲时才有意义；忙时 dsh 会报 busy）
+  const [compacting, setCompacting] = useState(false)
+  const [note, setNote] = useState<{ ok: boolean; text: string }>()
+  const doCompact = () => {
+    if (compacting) return
+    setCompacting(true)
+    client.agent.compact(sessionId).then(
+      (did) => setNote({ ok: true, text: did ? tr('已压缩上下文') : tr('没有可压缩的历史') }),
+      (e) => setNote({ ok: false, text: e instanceof Error ? e.message : String(e) }),
+    ).finally(() => setCompacting(false))
+  }
+  useEffect(() => {
+    if (!note) return
+    const t = setTimeout(() => setNote(undefined), 5000)
+    return () => clearTimeout(t)
+  }, [note])
   const tick = usage?.inputTokens ?? 0
   useEffect(() => {
     const on = () => setPriceTick((n) => n + 1)
@@ -837,10 +852,10 @@ function UsageChip({ sessionId, usage }: { sessionId: string; usage?: { inputTok
       n: t.requests, total: fmtTokens(totalTokens(t)), input: t.input.toLocaleString(), cache: t.cacheRead.toLocaleString(),
       rate: (cacheHitRate(t) * 100).toFixed(1), output: t.output.toLocaleString(), cost: fmtCost(t.cost, t.currency),
     }),
-    tr('点击打开用量统计'),
+    tr('点击立即压缩上下文（把较早的对话压成摘要，保留最近原文）'),
   ].filter(Boolean).join('\n\n')
   return (
-    <button data-usage-chip onClick={() => openUsage('session')} title={tip}
+    <button data-usage-chip onClick={doCompact} disabled={compacting} title={tip}
       className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] tabular-nums text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-secondary)]">
       {t?.requests ? <span>{fmtTokens(totalTokens(t))}</span> : null}
       {pct !== undefined && (
@@ -850,7 +865,13 @@ function UsageChip({ sessionId, usage }: { sessionId: string; usage?: { inputTok
             <circle cx="8" cy="8" r="6" fill="none" strokeWidth="2.5" style={{ stroke: 'var(--color-bg-hover)' }} />
             <circle cx="8" cy="8" r="6" fill="none" strokeWidth="2.5" strokeLinecap="round" pathLength={100} strokeDasharray={`${Math.max(pct, 1)} 100`} style={{ stroke: color }} className="transition-[stroke-dasharray]" />
           </svg>
-          <span style={{ color: pct >= 80 ? color : undefined }}>{pct}%</span>
+          {compacting ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <span style={{ color: note ? (note.ok ? 'var(--color-success)' : 'var(--color-danger)') : pct >= 80 ? color : undefined }}>
+              {note ? (note.ok ? tr('已压缩') : tr('失败')) : `${pct}%`}
+            </span>
+          )}
         </>
       )}
       {usage && pct === undefined && !t?.requests && <span>{K(usage.inputTokens)}</span>}

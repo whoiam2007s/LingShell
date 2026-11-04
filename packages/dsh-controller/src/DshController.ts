@@ -1127,6 +1127,21 @@ export class DshController {
   }
 
   /** 上下文重置：换一个新的 dsh 会话（旧日志留在磁盘上不再引用），可选把交接总结当首条消息发出。 */
+  /**
+   * 手动压缩上下文（界面点聊天头部的用量百分比）：把较早的历史压成摘要、保留最近原文。
+   * 与自动压缩走同一条引擎路径（dsh CompactionEngine.compactNow），只是不必等到阈值。
+   * 返回 false = 没有可压缩的历史；会话正在跑回合 / 摘要失败时抛错（dsh 的 ManualCompactionError）。
+   */
+  async compactNow(sessionId: string): Promise<boolean> {
+    const ctx = await this.boot()
+    const live = this.sessions.get(sessionId)
+    if (!live) throw new Error(tr('会话还没启动，先发一条消息再试'))
+    const engine = (ctx as any).compaction
+    if (!engine?.compactNow) throw new Error(tr('当前模型配置不支持手动压缩'))
+    const out = await engine.compactNow(live.handle.agent as any, new AbortController().signal)
+    return !!out
+  }
+
   async resetContext(sessionId: string, seed?: string): Promise<void> {
     const old = this.cfg.sessionStore?.list().find((x) => x.id === sessionId)
     if (!old) throw new Error('session_not_found')
