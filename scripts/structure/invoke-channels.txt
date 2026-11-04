@@ -1,3 +1,4 @@
+agent:compact
 agent:createSession
 agent:deleteSession
 agent:forkSession

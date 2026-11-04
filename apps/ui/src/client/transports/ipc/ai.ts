@@ -10,6 +10,7 @@ export function createAiIpc(): AiApi {
       steer: (sessionId: string, prompt: string, atts?: unknown[]) => window.electronAPI.invoke('agent:steer', sessionId, prompt, atts) as Promise<string>,
       unsteer: (sessionId: string, messageId: string) => window.electronAPI.invoke('agent:unsteer', sessionId, messageId) as Promise<boolean>,
       interruptTurn: (sessionId: string) => window.electronAPI.invoke('agent:interruptTurn', sessionId) as Promise<void>,
+      compact: (sessionId: string) => window.electronAPI.invoke('agent:compact', sessionId) as Promise<boolean>,
       listPersisted: () => window.electronAPI.invoke('agent:listPersisted') as Promise<SessionMeta[]>,
       reconnectSession: (id: string) => window.electronAPI.invoke('agent:reconnectSession', id) as Promise<SessionInfo>,
       deleteSession: (id: string) => window.electronAPI.invoke('agent:deleteSession', id) as Promise<void>,

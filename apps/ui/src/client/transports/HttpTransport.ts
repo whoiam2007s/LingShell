@@ -12,7 +12,7 @@ export class HttpTransport implements AppClient {
     list: ni, createLocal: ni, write: ni, close: ni, interrupt: ni, resize: ni, reconnect: ni, pwd: ni, duplicate: ni, createSsh: ni, testSsh: ni, watchStats: ni, tmuxJobs: ni, tmuxSessions: ni, snapshot: ni,
   }
   agent: AppClient['agent'] = {
-    createSession: ni, listSessions: ni, sendTurn: ni, interruptTurn: ni, steer: ni, unsteer: ni,
+    createSession: ni, listSessions: ni, sendTurn: ni, interruptTurn: ni, compact: ni, steer: ni, unsteer: ni,
     listPersisted: ni, reconnectSession: ni, deleteSession: ni, renameSession: ni, search: ni, setWorkDir: ni, resetContext: ni, suggestCommand: ni, forkSession: ni,
   }
   settings: AppClient['settings'] = {

@@ -1,3 +1,4 @@
+agent.compact → agent:compact
 agent.createSession → agent:createSession
 agent.deleteSession → agent:deleteSession
 agent.forkSession → agent:forkSession
