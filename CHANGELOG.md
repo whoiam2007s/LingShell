@@ -6,18 +6,20 @@
 
 新增：
 
-- **启动冒烟测试**：CI 在 Linux 打包作业里用 `xvfb` 真启动打包产物，检查界面是否真的渲染出内容（`#root` 有子节点）、是否触发 `did-fail-load` 或渲染进程崩溃。类型检查、单测、打包全绿但启动白屏的情况，现在能被拦下。
-- **点用量标签直接压缩上下文**：聊天头部的「tokens · 上下文 %」标签点一下立即压缩（把较早的对话压成摘要、最近一轮原文保留）；正在跑回合时等本轮结束再压，不打断工具调用。
+- **点用量标签直接压缩上下文**：聊天头部的「tokens · 上下文 %」标签点一下立即压缩（把较早的对话压成摘要，最近一轮原文逐字保留）。正在跑回合时先等本轮结束再压，不打断工具调用；压缩期间后续消息排队，压完继续。
+- **启动冒烟测试**（CI）：Linux 打包作业里用 `xvfb` 真启动打包产物，检查界面是否真的渲染出内容、是否触发 `did-fail-load` 或渲染进程崩溃。类型检查、单测、打包全绿但"启动白屏"的情况，现在能被拦下。
 
 安全：
 
 - **依赖告警清零**：`pnpm audit` 从 **82 条降到 0 条**。
-- **Electron 40 → 45**：40 线已停止维护（修复版只在 41.10.3+，40.x 不再回补），升到当前受支持的 45 线。迁移处理了 45 的破坏性变更：剪贴板 API 改为异步（`readText`/`writeText`/`read` 返回 Promise，`readBuffer` 移除，资源管理器复制文件的粘贴兜底改走 `ClipboardItem` 原始格式）、`printToPDF` 的 `margins.marginType` 换成英寸数值。`node-pty` 是 N-API 模块，无需为 Electron 版本重编译。
-- 其余传递依赖用 overrides 钉到修复版：brace-expansion、shell-quote（critical）、postcss、axios、@xmldom/xmldom、joi、nanoid、tar、browserslist、follow-redirects、source-map-js、minimatch 等；`vite` 升到 8.1.6、`vitest` 升到 4.1.12、`electron-builder` 升到 26.18.0、`electron-vite` 升到 6.0.0。
+- **Electron 40 → 45**：40 线已停止维护（安全修复只发到 41.10.3+，40.x 不再回补），升到当前受支持的 45 线。迁移处理了 45 的破坏性变更：剪贴板 API 改为异步（`readText`/`writeText`/`read` 返回 Promise，`readBuffer` 移除 —— 资源管理器复制文件的粘贴兜底改走 `ClipboardItem` 原始格式）、`printToPDF` 的 `margins.marginType` 换成英寸数值。`node-pty` 是 N-API 模块，无需按 Electron 版本重编译。
+- 其余传递依赖用 overrides 钉到修复版：brace-expansion（三条线）、shell-quote（critical）、postcss、axios、@xmldom/xmldom、joi、nanoid、tar、browserslist、follow-redirects、source-map-js、minimatch 等；`vite` 升到 8.1.6、`vitest` 升到 4.1.12、`electron-builder` 升到 26.18.0、`electron-vite` 升到 6.0.0。
 
 修复：
 
-- `write_file` 同时给 `content` 与 `old_text/new_text` 时直接报错：之前会静默以 `content` 为准、把整个文件覆盖掉，只剩备份能救。
+- **退出时不再抛 `Object has been destroyed`**：终端数据流和定时器在窗口销毁后仍向渲染层发事件，导致退出时弹崩溃框。`send()` 增加销毁检查；冒烟模式改为先正常退出、再兜底强退。
+- **文件管理器「添加到对话」静默失效**（0.1.0 起就有）：订阅一直持有首次渲染时的处理函数，那时会话尚未恢复、`sessionId` 为空，导致读出的文件在最后落地时被丢掉 —— 没有报错也没有提示。改为用 ref 取最新的处理函数。
+- **`write_file` 参数歧义直接报错**：同时给 `content` 与 `old_text/new_text` 时，之前会静默以 `content` 为准、把整个文件覆盖掉（只剩备份能救）。现在直接报错并说明正确用法。
 
 工程：
 
