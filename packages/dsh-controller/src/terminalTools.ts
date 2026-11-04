@@ -270,6 +270,11 @@ export function sliceLines(text: string, start?: number, end?: number) {
  * 模型给的片段是 \n 换行，文件若是 CRLF 则按 CRLF 再试一次。
  */
 export function applyEdit(old: string | undefined, args: { content?: unknown; old_text?: unknown; new_text?: unknown }): string {
+  // content 与 old_text/new_text 互斥：同时给曾经会静默以 content 为准、把整个文件覆盖掉
+  // （模型一个笔误就丢内容，只剩备份能救）。这里直接报错，让人/模型立刻改正。
+  if (typeof args.content === 'string' && (typeof args.old_text === 'string' || typeof args.new_text === 'string')) {
+    throw new Error(tr('content 与 old_text/new_text 不能同时给：整文件重写用 content，局部替换用 old_text + new_text'))
+  }
   if (typeof args.content === 'string') return args.content
   if (typeof args.old_text !== 'string' || typeof args.new_text !== 'string') {
     throw new Error(tr('write_file 需要 content（整文件新内容）或 old_text + new_text（精确替换）'))
@@ -999,7 +1004,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       parameters: {
         terminal_id: str('终端 id，据此确定主机'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         path: str('文件绝对路径（远程可用 ~/ 开头）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        content: optStr('整文件新内容（与 old_text/new_text 二选一）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        content: optStr('整文件新内容（与 old_text/new_text 互斥，同时给会报错）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         old_text: optStr('要被替换的原文片段（须在文件中唯一出现）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         new_text: optStr('替换成的新片段'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },

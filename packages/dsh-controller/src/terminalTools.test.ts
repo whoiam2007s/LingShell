@@ -270,6 +270,10 @@ describe('文件工具', () => {
     expect(() => applyEdit('x\nx\n', { old_text: 'x', new_text: 'y' })).toThrow(/多次/)
     expect(() => applyEdit('abc', { old_text: 'zzz', new_text: 'y' })).toThrow(/未找到/)
     expect(() => applyEdit(undefined, { old_text: 'a', new_text: 'b' })).toThrow(/不存在/)
+    // content 与 old_text/new_text 同时给：必须报错，不能静默把整个文件换成 content
+    expect(() => applyEdit('a=1\n', { content: 'x', old_text: 'a=1', new_text: 'a=2' })).toThrow(/不能同时给/)
+    expect(() => applyEdit('a=1\n', { content: 'x', old_text: 'a=1' })).toThrow(/不能同时给/)
+    expect(() => applyEdit('a=1\n', { content: 'x', new_text: 'a=2' })).toThrow(/不能同时给/)
     expect(applyEdit('a=1\r\nb=2\r\n', { old_text: 'a=1\nb=2', new_text: 'a=1\nb=3' })).toBe('a=1\r\nb=3\r\n')
   })
 
