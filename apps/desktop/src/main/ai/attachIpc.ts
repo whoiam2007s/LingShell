@@ -12,7 +12,7 @@ export interface AttachIpcDeps {
   send(sessionId: string, prompt: string, attachments: TurnAttachment[]): Promise<void>
   readImage(id: string): Promise<string | null>
   openPath(p: string): Promise<string>   // electron shell.openPath：成功返回 ''，失败返回原因
-  clipboardFiles?(): string[]            // 系统剪贴板里复制的文件路径（粘贴兜底）
+  clipboardFiles?(): string[] | Promise<string[]>   // 系统剪贴板里复制的文件路径（粘贴兜底，Electron 45 起是异步）
 }
 
 const MEDIA = new Set<string>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
@@ -73,7 +73,7 @@ export function registerAttachments(d: AttachIpcDeps): void {
     } catch { return null }
   })
   // 粘贴文件的兜底：渲染层 paste 事件拿不到路径时，从系统剪贴板读（见 ipc.ts 的 clipboardFiles）
-  d.handle('attach:clipboardPaths', () => (d.clipboardFiles?.() ?? []).filter((p) => isAbsolute(p)).slice(0, MAX_PATHS))
+  d.handle('attach:clipboardPaths', async () => (await (d.clipboardFiles?.() ?? [])).filter((p) => isAbsolute(p)).slice(0, MAX_PATHS))
   d.handle('attach:send', (_e, sid, prompt, atts) => d.send(str(sid, tr('arg|会话')), typeof prompt === 'string' ? prompt : '', parseAttachments(atts)))
   d.handle('attach:image', (_e, id) => d.readImage(str(id, tr('arg|图片 id'))))
   // 文件用系统默认程序打开、目录在资源管理器打开；路径已不存在时返回原因（界面提示），不抛错

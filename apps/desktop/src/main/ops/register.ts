@@ -225,7 +225,9 @@ export function registerOpsIpc(ctx: MainContext, deps: Deps) {
       try {
         await writeFile(tmp, html, 'utf8')
         await pw.loadFile(tmp)
-        await writeFile(r.filePath, await pw.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'default' } }))
+        // Electron 45 起 printToPDF 的 margins 只认英寸数值（原来的 marginType 已移除），0.4in ≈ 1cm 与默认一致
+        const pdf = await pw.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
+        await writeFile(r.filePath, pdf)
       } finally { pw.destroy(); await rm(tmp, { force: true }) }
       return r.filePath
     },

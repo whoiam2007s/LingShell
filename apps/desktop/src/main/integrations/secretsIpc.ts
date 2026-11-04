@@ -16,7 +16,8 @@ export interface SecretsIpcDeps {
   store: Pick<SecretStore, 'list' | 'save' | 'delete' | 'resolve' | 'resolveAll'>
   hostKeyOf(terminalId: string): string | undefined          // 终端 → 'local' | 主机 id | host:port；不存在 undefined
   hosts(): { id: string; label: string; group?: string }[]
-  clipboard: { writeText(s: string): void; readText(): string }
+  // Electron 45 起剪贴板是异步 API（返回 Promise），这里两者都收
+  clipboard: { writeText(s: string): void | Promise<void>; readText(): string | Promise<string> }
   // 撰写栏：wire（已展开，含明文）写进终端；shown（占位符原文）记命令历史 / 录像键入
   write(terminalId: string, wire: string, shown: string): void
   busy?(terminalId: string): boolean

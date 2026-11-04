@@ -364,7 +364,23 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
 
   // AI 对话附件：选择文件 / 目录 / 图片、带附件发送、历史回放取图、打开附件（见 attachIpc.ts）
   registerAttachments({ handle: (ch, fn) => ipcMain.handle(ch, fn), send: (sid, p, a) => controller.sendTurn(sid, p, a), readImage: (id) => controller.readImage(id), openPath: (p) => shell.openPath(p),
-    clipboardFiles: () => (process.platform === 'win32' ? parseFileNameW(clipboard.readBuffer('FileNameW')) : []),
+    clipboardFiles: async () => {
+      if (process.platform !== 'win32') return []
+      // Electron 45 起剪贴板改成异步 API、readBuffer 已移除：资源管理器复制文件在 Windows 上是
+      // 原始格式 FileNameW，经 osclipboard 自定义 MIME 读回字节再交给 parseFileNameW
+      try {
+        const items = await clipboard.read()
+        for (const it of items) {
+          const t = it.types.find((x) => x.toLowerCase().includes('filenamew'))
+          if (!t) continue
+          const blob = await it.getType(t) as Blob
+          return parseFileNameW(Buffer.from(await blob.arrayBuffer()))
+        }
+      } catch (e) {
+        log('warn', 'main', 'attachments', `读取剪贴板文件失败：${String(e)}`)   // i18n-ignore 日志
+      }
+      return []
+    },
     pick: async (k) => (await dialog.showOpenDialog(win, k === 'dirs' ? { title: tr('选择目录'), properties: ['openDirectory', 'multiSelections'] } : k === 'images' ? { title: tr('选择图片'), properties: ['openFile', 'multiSelections'], filters: [IMAGE_FILTER] } : { title: tr('选择文件'), properties: ['openFile', 'multiSelections'] })).filePaths })
   // 对话：编辑重发 / 从这里分叉 / 重新生成（见 chatForkIpc.ts）
   registerChatFork({ handle: (ch, fn) => ipcMain.handle(ch, fn), fork: (sid, mid, mode) => controller.forkSession(sid, mid, mode) })
