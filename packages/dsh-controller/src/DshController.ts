@@ -1134,12 +1134,29 @@ export class DshController {
    */
   async compactNow(sessionId: string): Promise<boolean> {
     const ctx = await this.boot()
-    const live = this.sessions.get(sessionId)
-    if (!live) throw new Error(tr('会话还没启动，先发一条消息再试'))
+    if (!this.sessions.has(sessionId)) throw new Error(tr('会话还没启动，先发一条消息再试'))
     const engine = (ctx as any).compaction
     if (!engine?.compactNow) throw new Error(tr('当前模型配置不支持手动压缩'))
+    // 正在跑回合时先等它结束：① dsh 的 compactNow 走 idle admission，回合中调用只会被判 busy；
+    // ② 不打断正在进行的工具调用。等结束后再压 —— 最近这一轮的原文属于 recent tail，会逐字保留，
+    //    被压掉的是更早的历史（工具输出等），与自动压缩的保留策略一致。
+    await this.waitIdle(sessionId)
+    const live = this.sessions.get(sessionId)
+    if (!live) return false
     const out = await engine.compactNow(live.handle.agent as any, new AbortController().signal)
     return !!out
+  }
+
+  /** 等这个会话的回合结束（没有会话 / 已空闲立即返回）。轮询 500ms，代价可忽略 */
+  private waitIdle(sessionId: string): Promise<void> {
+    return new Promise((resolve) => {
+      const check = () => {
+        const l = this.sessions.get(sessionId)
+        if (!l || !l.turning) resolve()
+        else setTimeout(check, 500)
+      }
+      check()
+    })
   }
 
   async resetContext(sessionId: string, seed?: string): Promise<void> {
