@@ -2,6 +2,21 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)。版本号在 `apps/desktop/package.json` 与根 `package.json` 中同步维护。
 
+## [0.1.4] - 2026-11-04
+
+新增：
+
+- **启动冒烟测试**：CI 在 Linux 打包作业里用 `xvfb` 真启动打包产物，检查界面是否真的渲染出内容（`#root` 有子节点）、是否触发 `did-fail-load` 或渲染进程崩溃。类型检查、单测、打包全绿但启动白屏的情况，现在能被拦下。
+
+优化：
+
+- **构建链告警 82 → 14**：brace-expansion、shell-quote（critical）、postcss、axios、@xmldom/xmldom、joi、nanoid、tar、browserslist、follow-redirects、source-map-js、minimatch 等传递依赖用 overrides 钉到修复版；`vite` 升到 8.1.6、`vitest` 升到 4.1.12、`electron-builder` 升到 26.18.0。
+
+工程：
+
+- macOS 打包验证不再阻塞 PR（只在 master 推送 / 手动触发时跑）—— 产品上 macOS 只需在首个版本与系统兼容性调整时验证。
+- 剩余 14 条依赖告警全部来自 Electron 40：其修复版在 41.10.3+，属于大版本升级，见 issue #20。
+
 ## [0.1.3] - 2026-11-03
 
 安全：
