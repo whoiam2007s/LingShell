@@ -62,6 +62,9 @@ export function createMainContext(win: BrowserWindow) {
       cmdHistory.add(hostKey, { command, terminalId, terminalTitle, source })
     },
   })
+  // 冒烟模式（CI）：把终端服务挂到 globalThis，供 app/smoke.ts 真建一个本地终端验 PTY。
+  // 打包产物里 node-pty 的原生模块 / conpty 若缺失，只有这一步能发现 —— 只查渲染撑不住。
+  if (process.env.LINGSHELL_SMOKE) (globalThis as typeof globalThis & { __lingshellSmokeTerminals?: unknown }).__lingshellSmokeTerminals = terminals
   // 终端录像（见 recorder.ts）：系统设置里的开关只决定「允许录屏」，录不录由用户在终端上手动开始/停止。
   // 启动时按保留天数清旧目录
   const recorder = new TerminalRecorder(paths.recordings, (m, d) => log('warn', 'main', 'recording', m, d))

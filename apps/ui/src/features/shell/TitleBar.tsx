@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Settings, Minus, Square, Copy, X, Lock, Search, CircleHelp, Server, BarChart3, LayoutDashboard, Sun, Moon, Check, Monitor } from 'lucide-react'
+import { UpdateBadge } from './UpdateBadge.js'
 import { UI_THEMES, kindOf, themeLabel, tr, type UiTheme } from '@lingshell/shared'
 import { saveLook, useLook } from '../../lib/appearance.js'
 import { Logo } from '../../components/Logo'
@@ -88,6 +89,8 @@ export function TitleBar({ onOpenSettings, onOpenPalette, onOpenHelp, onOpenUsag
         >
           <Lock className="h-4 w-4" />
         </button>}
+        {/* 有新版本时出现在用量统计前面：点它下载 / 重启安装（见 UpdateBadge） */}
+        <UpdateBadge />
         {onOpenUsage && <button
           onClick={onOpenUsage}
           title={tr('用量统计')}
