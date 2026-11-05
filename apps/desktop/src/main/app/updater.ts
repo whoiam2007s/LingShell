@@ -1,6 +1,6 @@
 import { app, type BrowserWindow } from 'electron'
 import { join } from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 // electron-updater 是 CJS，autoUpdater 是 getter 导出，ESM 下只能走默认导入
 import electronUpdater, { type AppUpdater } from 'electron-updater'
 import { tr, type UpdateStatus } from '@lingshell/shared'
@@ -34,14 +34,30 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
 
   const au: AppUpdater = electronUpdater.autoUpdater
   au.autoDownload = true
-  au.autoInstallOnAppQuit = true
+  // 不在退出时自动安装：下载完成后只提示（顶栏红点 / 通知），装不装、什么时候装由用户点决定。
+  // 以前是 true —— 用户没点任何东西、只是关窗退出，也会被静默装上新版本，太突然。
+  au.autoInstallOnAppQuit = false
   au.logger = {
     info: (m: unknown) => log('info', 'main', 'updater', String(m)),
     warn: (m: unknown) => log('warn', 'main', 'updater', String(m)),
     error: (m: unknown) => log('error', 'main', 'updater', String(m)),
     debug: (m: string) => log('debug', 'main', 'updater', m),
   }
-  if (src.override) au.setFeedURL({ provider: 'generic', url: src.url })
+  if (src.override) {
+    // 下载阶段 electron-updater 还会读 app-update.yml（取 updaterCacheDirName），
+    // 这一步不在“检查”路径上：只用环境变量临时换源、包里又没打进这个文件的构建会在这里 ENOENT。
+    // 给它指一个临时生成的配置（必须先设 updateConfigPath，它的 setter 会清空 clientPromise）。
+    if (!existsSync(ymlPath)) {
+      try {
+        const tmp = join(app.getPath('temp'), 'lingshell-app-update.yml')
+        writeFileSync(tmp, `provider: generic\nurl: ${src.url}\nupdaterCacheDirName: lingshell-updater\n`)
+        ;(au as unknown as { updateConfigPath: string }).updateConfigPath = tmp
+      } catch (e) {
+        log('warn', 'main', 'updater', `临时更新配置写入失败：${String(e)}`)   // i18n-ignore 日志
+      }
+    }
+    au.setFeedURL({ provider: 'generic', url: src.url })
+  }
   log('info', 'main', 'updater', `更新源 ${src.url}${src.override ? '（环境变量 LINGSHELL_UPDATE_URL）' : ''}，当前版本 ${app.getVersion()}`)   // i18n-ignore 日志
 
   status = { state: 'none' }
@@ -66,6 +82,9 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
     return status
   }
   setTimeout(() => { void check() }, 10_000)   // 启动 10 秒后再查，不跟启动抢资源
+  // 之后每小时看一次：有新版会经 update:status 事件推到界面（顶栏出现更新图标）
+  const hourly = setInterval(() => { void check() }, 60 * 60 * 1000)
+  hourly.unref?.()   // 不因为它拖着进程不退出
   return {
     status: () => status,
     check,
