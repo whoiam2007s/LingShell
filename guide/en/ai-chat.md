@@ -11,7 +11,7 @@ The left pane is the AI chat, the right pane is your terminals and hosts. The AI
 - **Execution plans**: multi-step work can be laid out as a plan you approve; you may also delete individual steps.
 - **Rollback**: write operations must come with an undo command; the run log can replay it in one click.
 - **Run log**: time, host, command, exit code, duration and whether it was rejected — all recorded and exportable.
-- **Context management**: long sessions are compacted automatically; you can reset or fork a session.
+- **Context management**: long sessions are compacted automatically; click the usage chip in the chat header to compact on demand; you can also reset or fork a session.
 - **Attachments**: drag in screenshots, paste images or attach log files.
 - **Skills / MCP / knowledge**: turn team conventions into Skills, wire external tools via MCP, save host facts as knowledge cards — the AI pulls them in when relevant.
 - **`@` references**: point the AI at a specific terminal, host or past session.
