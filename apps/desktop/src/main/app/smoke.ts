@@ -6,6 +6,43 @@
 import { app, type BrowserWindow } from 'electron'
 
 const READY_TIMEOUT_MS = 20_000   // 等 React 首帧最多 20 秒
+const PTY_TIMEOUT_MS = 15_000     // 建本地终端 → echo → 等回显
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+type SmokeTerminals = {
+  createLocal(opts?: { cwd?: string; shell?: string }): { id: string }
+  onData(id: string, h: (d: string) => void): () => void
+  write(id: string, data: string): void
+  close(id: string): Promise<void>
+}
+
+/** 本地终端冒烟：真建一个 PTY、写 echo、等回显。打包产物里 node-pty 坏掉会在这里暴露 */
+async function ptyCheck(): Promise<string> {
+  const t = (globalThis as typeof globalThis & { __lingshellSmokeTerminals?: SmokeTerminals }).__lingshellSmokeTerminals
+  if (!t) return 'skipped'
+  let id = ''
+  let off: (() => void) | undefined
+  try {
+    const info = t.createLocal()
+    id = info.id
+    const buf: string[] = []
+    off = t.onData(id, (d) => buf.push(d))
+    await sleep(1500)                     // 等 shell 出提示符
+    t.write(id, 'echo SMOKE_PTY_OK\n')    // i18n-ignore 给 CI 抓的标记
+    const deadline = Date.now() + PTY_TIMEOUT_MS
+    while (Date.now() < deadline) {
+      if (buf.join('').includes('SMOKE_PTY_OK')) return 'ok'   // i18n-ignore
+      await sleep(200)
+    }
+    return `fail(no-echo: ${JSON.stringify(buf.join('').slice(-200))})`   // i18n-ignore 日志
+  } catch (e) {
+    return `fail(${String(e)})`   // i18n-ignore 日志
+  } finally {
+    off?.()
+    if (id) await t.close(id).catch(() => {})
+  }
+}
 const HARD_TIMEOUT_MS = 45_000    // 整体兜底
 
 export function runSmokeCheck(win: BrowserWindow): void {
@@ -50,7 +87,10 @@ export function runSmokeCheck(win: BrowserWindow): void {
         return
       }
       const title = win.webContents.getTitle()
-      finish(children > 0, `rootChildren=${children} title="${title}"`)   // i18n-ignore 日志
+      // 渲染有了还不够：终端是核心功能，顺带真起一个本地 PTY 验一遍
+      const pty = children > 0 ? await ptyCheck() : 'skipped'
+      const ptyOk = pty === 'ok' || pty === 'skipped'
+      finish(children > 0 && ptyOk, `rootChildren=${children} pty=${pty} title="${title}"`)   // i18n-ignore 日志
     })()
   })
 
