@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>灵壳 LingShell · 功能详解</title>
+  <meta name="description" content="灵壳 LingShell —— AI 终端与运维工作台：AI 对话、本地 / SSH 终端、主机管理、文件传输、数据库与容器操作，全部在一个窗口里。">
+  <meta property="og:title" content="灵壳 LingShell · 功能详解">
+  <meta property="og:description" content="AI 终端与运维工作台，单机本地优先，开源 Apache-2.0。">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+  <style>
+    /* 让内置截图在正文里不撑破版面 */
+    .markdown-section img { max-width: 100%; height: auto; }
+    .markdown-section table { display: table; width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="app">正在加载…</div>
+  <script>
+    window.$docsify = {
+      name: '灵壳 LingShell',
+      repo: 'whoiam2007s/LingShell',
+      homepage: 'index.md',
+      loadSidebar: true,
+      subMaxLevel: 2,
+      relativePath: true,
+      search: 'auto',
+      copyCode: { buttonText: '复制', errorText: '复制失败' },
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@2"></script>
+</body>
+</html>

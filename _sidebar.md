@@ -1,0 +1,23 @@
+- **中文**
+  - [AI 对话](zh/ai-chat.md)
+  - [终端](zh/terminal.md)
+  - [主机管理](zh/hosts.md)
+  - [文件与编辑器](zh/files.md)
+  - [Git](zh/git.md)
+  - [数据库](zh/database.md)
+  - [容器](zh/containers.md)
+  - [运维操作](zh/ops.md)
+  - [自动化](zh/automation.md)
+  - [安全与权限](zh/security.md)
+
+- **English**
+  - [AI chat](en/ai-chat.md)
+  - [Terminal](en/terminal.md)
+  - [Hosts](en/hosts.md)
+  - [Files & editor](en/files.md)
+  - [Git](en/git.md)
+  - [Database](en/database.md)
+  - [Containers](en/containers.md)
+  - [Ops](en/ops.md)
+  - [Automation](en/automation.md)
+  - [Security](en/security.md)
