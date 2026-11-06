@@ -133,6 +133,8 @@ export const sharedB: Record<string, string> = {
   '7 天': '7 days',
   '30 天': '30 days',
   '全部': 'All',
+  '等你确认': 'Waiting for you',
+  '上次执行失败': 'Last run failed',
   '只显示你在终端里手敲的命令': 'Only commands you typed in the terminal',
   '只显示 AI 执行的命令': 'Only commands run by the AI',
   '全部命令': 'All commands',

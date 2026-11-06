@@ -30,6 +30,7 @@ import { onSendToChat, onSendToNewChat, takeNewChatSend, sendToChat } from './li
 import type { SessionPhase } from './features/chat/index.js'
 import { tr, type SessionMeta } from '@lingshell/shared'
 import { client } from './client/index.js'
+import { noteSessionEvent } from './lib/sessionStates.js'
 import { logger } from './lib/logger.js'
 import { BookMarked } from 'lucide-react'
 import { KnowledgeModal } from './features/knowledge/index.js'
@@ -265,6 +266,8 @@ function AppShell() {
 
   // 定时巡检：新建了巡检会话 → 刷新会话列表；点了巡检通知 → 打开那个会话
   // 新一轮开始：「最近活动」变了（发送时主进程 touch），刷新列表让会话时间跟上
+  // 会话运行状态（历史列表的状态点）：所有事件都过一遍状态机，跨会话也能反映
+  useEffect(() => client.on((ev) => { noteSessionEvent(ev as { type?: string; sessionId?: string }) }), [])
   useEffect(() => client.on((ev) => {
     if (ev.type === 'inspection:run' || ev.type === 'agent:turnStarted') void refreshSessions()
     else if (ev.type === 'inspection:openSession') {
