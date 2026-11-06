@@ -214,7 +214,7 @@ export function registerSshKeys(d: SshKeysIpcDeps): void {
   d.handle('keys:useForHost', async (_e, id, hostId) => {
     const k = d.keys.get(str(id, tk('非法的密钥'))), h = hostOf(str(hostId, tk('非法的主机')))
     try { await d.test(withOnlyKey(d.hosts.resolveConnectOpts(h.id), d.keys.resolve(k.id))) }
-    catch (e) { throw new Error(tr('用该密钥连接失败，未切换：{err}', { err: e instanceof Error ? e.message : String(e) })) }
+    catch (e) { throw new Error(tr('用该密钥连接失败，未切换：{err}', { err: e instanceof Error ? e.message : String(e) }), { cause: e }) }
     d.hosts.save({ ...h, authType: 'key', keyId: k.id, credentialId: '' })   // 改为本主机自己的密钥认证（不再用凭据）
   })
 }

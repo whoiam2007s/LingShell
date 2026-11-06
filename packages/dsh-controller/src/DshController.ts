@@ -1004,7 +1004,7 @@ export class DshController {
     const hit = this.searchCache.get(dshId)
     if (hit && rev && hit.rev === rev) return hit.texts
     const reader = await store.open(dshId, 'read')
-    let events: DshEvent[] = []
+    let events: DshEvent[]
     try { events = ((await reader.read())?.events ?? []) as DshEvent[] } finally { await reader.close() }
     const texts = searchableTexts(events)
     this.searchCache.set(dshId, { rev, texts })

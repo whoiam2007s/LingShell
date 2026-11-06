@@ -38,7 +38,7 @@ export function registerSystemd(d: SystemdIpcDeps): void {
   d.handle('systemd:action', async (_e, id, svc, action) => {
     const t = target(id), s = svcOf(svc)
     if (!isSvcAction(action)) throw new Error(tr('非法的服务操作'))
-    let rc: number | undefined, text = ''
+    let rc: number | undefined, text: string
     try { ({ rc, text } = splitSvcRc(await d.exec(t.id)(systemdActionCommand(action, s), SYSTEMD_ACTION_TIMEOUT_MS))) }
     catch (e) { text = e instanceof Error ? e.message : String(e) }   // 超时 / 断线：照样记一笔（无退出码）
     d.audit(t.id, { command: systemdAuditCommand(action, s), decision: systemdDecision(action), exitCode: rc })

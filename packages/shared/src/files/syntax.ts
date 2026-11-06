@@ -141,7 +141,7 @@ export function tokenizeLine(line: string, lang: SyntaxLang, state: SyntaxState 
     }
     case 'code': {
       const toks: Tok[] = []
-      let i = 0, st: SyntaxState = state
+      let st: SyntaxState = state
       // 先找出块注释的起点，前面按规则切，后面递归
       const open = (() => { const m = /\/\*/.exec(line); return m ? m.index : -1 })()
       const body = open < 0 ? line : line.slice(0, open)
@@ -149,7 +149,7 @@ export function tokenizeLine(line: string, lang: SyntaxLang, state: SyntaxState 
       // 行注释吃掉了 /* 的情况：body 里已有 // 注释，后面整段算注释
       if (open >= 0) {
         if (toks.some((t) => t.kind === 'comment')) { toks.push({ text: line.slice(open), kind: 'comment' }); return { toks, state: st } }
-        i = open
+        const i = open
         const end = line.indexOf('*/', i + 2)
         if (end < 0) { toks.push({ text: line.slice(i), kind: 'comment' }); st = { block: 'c' } }
         else { toks.push({ text: line.slice(i, end + 2), kind: 'comment' }); const r = tokenizeLine(line.slice(end + 2), lang, {}); toks.push(...r.toks); st = r.state }

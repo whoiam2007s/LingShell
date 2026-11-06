@@ -126,7 +126,7 @@ export async function openMcp(cfg: McpServerConfig, timeoutMs = 30_000): Promise
     let tail = ''
     t.stderr?.on('data', (d) => { tail = (tail + String(d)).slice(-1000) })   // 一直读着：不读子进程写满 stderr 管道会卡死
     try { client = await connect(t) }
-    catch (e) { throw new Error(`${errText(e)}${tail.trim() ? `\nstderr: ${tail.trim()}` : ''}`) }
+    catch (e) { throw new Error(`${errText(e)}${tail.trim() ? `\nstderr: ${tail.trim()}` : ''}`, { cause: e }) }
   } else {
     if (!cfg.url?.trim()) throw new Error(tr('未填写 URL'))
     const url = new URL(cfg.url.trim())

@@ -56,7 +56,7 @@ export async function sendLocal(r: ResolvedRequest, f: typeof fetch = fetch): Pr
         const buf = await readFile(p)
         fd.append(k, new Blob([buf], { type: mimeOf(p) }), basename(p))
       } catch (e) {
-        throw new Error(tr('读取文件失败：{path}（{err}）', { path: p, err: e instanceof Error ? e.message : String(e) }))
+        throw new Error(tr('读取文件失败：{path}（{err}）', { path: p, err: e instanceof Error ? e.message : String(e) }), { cause: e })
       }
     }
     reqBody = fd
@@ -86,7 +86,7 @@ export async function sendLocal(r: ResolvedRequest, f: typeof fetch = fetch): Pr
       }
     } catch (e) {
       // 中途断流：已经收到的字节也没法当完整响应
-      throw new Error(tr('响应读取中断（已收到 {n} 字节）：{error}', { n: total, error: e instanceof Error ? e.message : String(e) }))
+      throw new Error(tr('响应读取中断（已收到 {n} 字节）：{error}', { n: total, error: e instanceof Error ? e.message : String(e) }), { cause: e })
     }
   }
   const ms = Math.round(performance.now() - t0)
@@ -171,7 +171,7 @@ export function registerApiDebug(d: ApiDebugDeps): void {
     } catch (e) {
       const error = errMsg(e)
       record({ ...hist, error })
-      throw new Error(error)
+      throw new Error(error, { cause: e })
     }
     record({ ...hist, status: res.status, ms: res.ms })
     // 响应里回显的密钥明文换回占位符（界面上只看到占位符）

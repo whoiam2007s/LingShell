@@ -75,7 +75,7 @@ export function pruneRecordings(root: string, days: number, now: Date): string[]
   if (days <= 0) return []
   const cutoff = makeStartedAtLabel(new Date(now.getTime() - days * 86_400_000)).split('_')[0]
   const removed: string[] = []
-  let names: string[] = []
+  let names: string[]
   try { names = readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && DAY.test(e.name)).map((e) => e.name) } catch { return [] }
   for (const n of names.sort()) {
     if (n >= cutoff) break
@@ -93,10 +93,10 @@ function readSlice(file: string, pos: number, len: number): string {
 /** 列出录像（新在前）。只读首行 header 和末尾 8KB 取时长，不读整份 */
 export function listRecordings(root: string, active: Set<string> = new Set()): RecordingInfo[] {
   const out: RecordingInfo[] = []
-  let days: string[] = []
+  let days: string[]
   try { days = readdirSync(root).filter((n) => DAY.test(n)) } catch { return [] }
   for (const day of days) {
-    let files: string[] = []
+    let files: string[]
     try { files = readdirSync(join(root, day)).filter((f) => f.endsWith('.cast')) } catch { continue }
     for (const f of files) {
       const file = join(root, day, f)
