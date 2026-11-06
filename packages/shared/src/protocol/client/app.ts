@@ -29,6 +29,8 @@ export interface AppApi {
     // installUpdate 仅在 downloaded 后由用户点「重启以更新」调用。状态变化经 update:status 事件推送
     getUpdateStatus(): Promise<{ currentVersion: string; status: UpdateStatus }>
     checkUpdate(): Promise<UpdateStatus>
+    // 用户点了更新图标：真正开始下载（autoDownload 已关，不点就不下）。已在下载/已下载时只回状态
+    downloadUpdate(): Promise<UpdateStatus>
     installUpdate(): Promise<void>
     // 系统通知 + 任务栏闪烁（长命令完成 / 关键字告警，由终端判断该不该发）；应用锁定时主进程换成通用文案
     notify(title: string, body: string): Promise<void>

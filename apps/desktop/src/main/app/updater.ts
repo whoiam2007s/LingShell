@@ -11,6 +11,8 @@ import { resolveUpdateSource, nextUpdateStatus } from './updateLogic.js'
 export interface Updater {
   status(): UpdateStatus
   check(): Promise<UpdateStatus>
+  // 用户点更新图标时才真正开始下载（autoDownload 已关）
+  download(): Promise<UpdateStatus>
   install(): void
 }
 
@@ -29,14 +31,16 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
   let status: UpdateStatus = { state: 'disabled' }
   if (!src.enabled) {
     log('info', 'main', 'updater', app.isPackaged ? '未配置更新源，自动更新已禁用' : '开发模式，自动更新已禁用')   // i18n-ignore 日志
-    return { status: () => status, check: async () => status, install: () => {} }
+    return { status: () => status, check: async () => status, download: async () => status, install: () => {} }
   }
 
   const au: AppUpdater = electronUpdater.autoUpdater
-  au.autoDownload = true
-  // 不在退出时自动安装：下载完成后只提示（顶栏红点 / 通知），装不装、什么时候装由用户点决定。
-  // 以前是 true —— 用户没点任何东西、只是关窗退出，也会被静默装上新版本，太突然。
-  au.autoInstallOnAppQuit = false
+  // 检测到新版本只提示、不自动下载：下载要用户点（点一下就是要装，意图明确）。
+  // 这样 autoInstallOnAppQuit 打开也不会出现"用户什么都没点、退出就被装"的情况。
+  au.autoDownload = false
+  // 下载是用户主动点的 → 退出时装上是对的（用户点了下载就是想升级）。
+  // 下载完成时也会弹窗问「现在重启 / 关闭后安装」，这里只是兜底：用户没在弹窗里选、直接关窗也能装上。
+  au.autoInstallOnAppQuit = true
   au.logger = {
     info: (m: unknown) => log('info', 'main', 'updater', String(m)),
     warn: (m: unknown) => log('warn', 'main', 'updater', String(m)),
@@ -68,8 +72,22 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
       const wasDownloaded = status.state === 'downloaded'
       status = next
       emit(status)
-      if (ev === 'update-downloaded' && !wasDownloaded) notify(win, tr('灵壳 {version} 已下载', { version: status.version ?? '' }), tr('在 设置 → 关于 点「重启以更新」，或下次退出时自动安装'))
+      if (ev === 'update-downloaded' && !wasDownloaded) notify(win, tr('灵壳 {version} 已下载', { version: status.version ?? '' }), tr('点「立即重启安装」，或关闭灵壳时自动安装'))
     })
+  }
+
+  /**
+   * 用户点了更新图标：真正开始下载。
+   * 已经在下载 / 已下载好就只回状态，不重复触发。
+   */
+  const download = async (): Promise<UpdateStatus> => {
+    if (status.state === 'downloading' || status.state === 'downloaded') return status
+    if (status.state !== 'available') return status   // 没有待下载的版本：先让界面去 check
+    try { await au.downloadUpdate() } catch (e) {
+      const cur: UpdateStatus = status
+      if (cur.state !== 'error') { status = nextUpdateStatus(cur, 'error', e) ?? cur; emit(status) }
+    }
+    return status
   }
 
   const check = async (): Promise<UpdateStatus> => {
@@ -88,6 +106,7 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
   return {
     status: () => status,
     check,
+    download,
     // 静默安装并重启；仅在已下载时生效
     install: () => { if (status.state === 'downloaded') au.quitAndInstall(true, true) },
   }
