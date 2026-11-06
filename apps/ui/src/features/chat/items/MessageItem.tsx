@@ -39,7 +39,7 @@ function UserText({ text }: { text: string }) {
 // memo：react-markdown+remark-gfm 每次渲染都重新解析整段(表格尤慢)。输入框每次击键会让整个
 // ChatPanel 重渲染，若不 memo，所有历史消息都被重新解析→输入卡顿。text/streaming 不变则跳过。
 // regenFrom：本轮用户消息的服务端 id，只给最后一轮的最后一条 AI 回复（出「重新生成」）
-export const MessageItem = memo(function MessageItem({ item, streaming, regenFrom }: { item: ConvItem; streaming: boolean; regenFrom?: string }) {
+export const MessageItem = memo(function MessageItem({ item, streaming, regenFrom, turnUserMsgId }: { item: ConvItem; streaming: boolean; regenFrom?: string; turnUserMsgId?: string }) {
   const isUser = item.kind === 'user_message'
   const [editing, setEditing] = useState(false)
   return (
@@ -76,7 +76,7 @@ export const MessageItem = memo(function MessageItem({ item, streaming, regenFro
       )}
       {/* 悬停才显示的操作：用户消息在气泡左侧，AI 回复在气泡右侧，底部对齐 */}
       {!editing && !streaming && item.text && item.status !== 'in_progress' && (
-        <MsgToolbar item={item} isUser={isUser} regenFrom={regenFrom} onEdit={() => setEditing(true)} />
+        <MsgToolbar item={item} isUser={isUser} regenFrom={regenFrom} turnUserMsgId={turnUserMsgId} onEdit={() => setEditing(true)} />
       )}
       {/* 发送时间：行是 row-reverse，放在这里就落在气泡左侧、底部对齐 */}
       {isUser && item.at && <UserMsgTime at={item.at} />}
@@ -105,7 +105,7 @@ const hastText = (n?: HNode): string => (!n ? '' : n.type === 'text' ? n.value ?
 
 const TB = 'flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--color-text-muted)]'
 
-function MsgToolbar({ item, isUser, regenFrom, onEdit }: { item: ConvItem; isUser: boolean; regenFrom?: string; onEdit: () => void }) {
+function MsgToolbar({ item, isUser, regenFrom, turnUserMsgId, onEdit }: { item: ConvItem; isUser: boolean; regenFrom?: string; turnUserMsgId?: string; onEdit: () => void }) {
   const act = useContext(MsgActionsContext)
   const [copied, setCopied] = useState(false)
   useEffect(() => { if (!copied) return; const t = setTimeout(() => setCopied(false), 1500); return () => clearTimeout(t) }, [copied])
@@ -113,6 +113,8 @@ function MsgToolbar({ item, isUser, regenFrom, onEdit }: { item: ConvItem; isUse
   // 进行中 / 还没拿到服务端 id（刚发出、未回显）不能编辑 / 分叉
   const why = act?.busy ? tr('（本轮进行中，结束后再操作）') : ''
   const msgId = isUser ? item.msgId : regenFrom
+  // AI 回复上的「从此分叉」用**该轮用户消息**的 id 作切点（主进程按它定位）
+  const forkFrom = isUser ? item.msgId : turnUserMsgId
   const off = !act || act.busy || !msgId
   const tip = (t: string) => (act?.busy ? `${t}${why}` : !msgId ? `${t}${tr('（消息还在同步，稍后再试）')}` : t)
   return (
@@ -127,6 +129,10 @@ function MsgToolbar({ item, isUser, regenFrom, onEdit }: { item: ConvItem; isUse
           <button data-msg-fork onClick={() => msgId && act.onFork(msgId)} disabled={off} className={TB}
             title={tip(tr('从这里分叉：从这条消息之前分叉出新会话，并把这条消息填进输入框（不发送）'))}><GitBranchPlus className="h-3.5 w-3.5" /></button>
         </>
+      )}
+      {!isUser && forkFrom && act && (
+        <button data-msg-fork-reply onClick={() => act.onFork(forkFrom)} disabled={!act || act.busy}
+          title={act.busy ? tr('从这里分叉：从这一轮之前分叉出新会话（本轮进行中，结束后再操作）') : tr('从这里分叉：以这一轮的提问为切点新建会话，后面的对话不带过去（原会话保留）')}><GitBranchPlus className="h-3.5 w-3.5" /></button>
       )}
       {!isUser && regenFrom && act && (
         <button data-msg-regen onClick={() => act.onRegenerate(regenFrom)} disabled={off} className={TB}

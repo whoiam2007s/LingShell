@@ -73,7 +73,7 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
   onManageModels?: () => void
   onManageSkills?: () => void
 }) {
-  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, sendTo, regenerate, fail, interrupt, resetContext, dismissContextPrompt } = useConversation(activeSessionId, onFirstUserMessage)
+  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, sendTo, regenerate, fail, interrupt, resetContext, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
   const models = useSessionModel(activeSessionId, busy, onManageModels)
   const turnChanges = useTurnChanges(activeSessionId, busy)   // 回合末「本轮改了 N 个文件」
   const hostChanges = useTurnHostChanges(activeSessionId)     // 回合末「本轮主机变化」
@@ -323,14 +323,24 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
   }), [busy, activeSessionId])
 
   // queue：本轮在跑时排到本轮结束后再发（Alt+Enter），默认是在下一步前插入
-  const submit = (opts?: { queue?: boolean }) => {
-    const cmd = bangCommand(input)
-    if (cmd !== null) { void runBang(cmd); return }   // `!命令`：不发给 AI，在当前终端执行
-    if (!input.trim() && !skill && !att.items.length) return
+  // 发送前要问「要不要用摘要开新会话」时，先把待发的状态存这里，用户选完再真正发出
+  const [resetAsk, setResetAsk] = useState<{ steps: number; compactions: number; summary: string } | null>(null)
+  // 真正发送（原 submit 的主体）
+  const doSend = (opts?: { queue?: boolean }) => {
     const out = att.outgoing()
     if (out === null) return   // 有图片但当前模型不支持：已提示，保留输入
     const text = withTermBlocks(input, att.blocks())   // 终端块拼成文本接在后面
     if (send(skill ? `/${skill} ${text}`.trim() : text, out, opts)) { setInput(''); draftRef.current.delete(activeSessionId); setSkill(undefined); att.clear() }
+  }
+  const submit = (opts?: { queue?: boolean }) => {
+    const cmd = bangCommand(input)
+    if (cmd !== null) { void runBang(cmd); return }   // `!命令`：不发给 AI，在当前终端执行
+    if (!input.trim() && !skill && !att.items.length) return
+    if (att.outgoing() === null) return   // 有图片但当前模型不支持：已提示，保留输入
+    // 发送前才问：主进程是在压缩完成时记下的建议，那时会话正在跑、弹了也开不了
+    const ask = takeResetSuggestion()
+    if (ask) { setResetAsk(ask); return }
+    doSend(opts)
   }
 
   // ── `!命令` 直通终端（参考 Gemini CLI / Claude Code 的 ! 模式）──────────
@@ -535,8 +545,19 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
 
       {/* 上下文超线：横幅常驻（收起弹窗后仍在），弹窗问是否重置 */}
       {context && <ContextBanner state={context} onDismiss={dismissContextPrompt} />}
-      {context?.stage === 'suggest' && (
-        <ContextResetDialog state={context} busy={busy} onReset={(s) => resetContext(s)} onCancel={dismissContextPrompt} />
+      {/* 该开新会话的提示改到「发送前」问：主进程在压缩完成时记下，用户真要发消息时才弹（见 submit / resetAsk） */}
+      {resetAsk && (
+        <ContextResetDialog busy={busy} state={{ stage: 'suggest', steps: resetAsk.steps, compactions: resetAsk.compactions, summary: resetAsk.summary }}
+          onCancel={() => { setResetAsk(null); doSend() }}
+          onReset={(summary) => {
+            const s = resetAsk
+            setResetAsk(null)
+            // 先清空历史（不带 seed，避免多跑一轮模型），再把摘要作为上下文标签，和用户这条消息一起发出去
+            void resetContext('').then(() => {
+              att.addContext('session', tr('上一次会话的摘要'), summary || s.summary)
+              doSend()
+            })
+          }} />
       )}
 
       {/* 输入区 */}
@@ -719,7 +740,7 @@ function TurnBlock({ turn, active, last, times, end }: { turn: Turn; active: boo
                 {turn.steps.map((item) => <TimelineItem key={item.itemId} item={item} active={active} />)}
               </TurnSteps>
             ) : times?.firstAt && <div className="px-5 pt-1.5 leading-none">{first}</div>}
-            {turn.final.map((item, i) => <TimelineItem key={item.itemId} item={item} regenFrom={i === turn.final.length - 1 ? regenFrom : undefined} />)}
+            {turn.final.map((item, i) => <TimelineItem key={item.itemId} item={item} regenFrom={i === turn.final.length - 1 ? regenFrom : undefined} turnUserMsgId={turn.userMsg?.msgId} />)}
             {end}
           </div>
         </div>
@@ -740,15 +761,15 @@ function UserAttachments({ items }: { items: MsgAttachment[] }) {
 }
 
 // 按 item.kind 路由到对应卡片。外包一层带 id / 类型的 div：Ctrl+↑↓ 找「我的提问」、跨会话搜索跳到命中那条都按它定位
-function TimelineItem(props: { item: ConvItem; active?: boolean; regenFrom?: string }) {
+function TimelineItem(props: { item: ConvItem; active?: boolean; regenFrom?: string; turnUserMsgId?: string }) {
   return <div data-item-id={props.item.itemId} data-item-kind={props.item.kind} {...(props.item.msgId ? { 'data-msg-id': props.item.msgId } : {})}><TimelineItemBody {...props} /></div>
 }
-function TimelineItemBody({ item, active = false, regenFrom }: { item: ConvItem; active?: boolean; regenFrom?: string }) {
+function TimelineItemBody({ item, active = false, regenFrom, turnUserMsgId }: { item: ConvItem; active?: boolean; regenFrom?: string; turnUserMsgId?: string }) {
   const streaming = item.status === 'in_progress'
   switch (item.kind) {
     case 'user_message':
     case 'agent_message':
-      return <MessageItem item={item} streaming={streaming && item.kind === 'agent_message'} regenFrom={regenFrom} />
+      return <MessageItem item={item} streaming={streaming && item.kind === 'agent_message'} regenFrom={regenFrom} turnUserMsgId={turnUserMsgId} />
     case 'agent_reasoning':
       return <ReasoningItem item={item} streaming={streaming} live={active} />
     case 'tool_call':
