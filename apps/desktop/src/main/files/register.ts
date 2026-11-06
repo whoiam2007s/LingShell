@@ -83,6 +83,13 @@ export function registerFilesIpc(ctx: MainContext) {
     } })
 
   ipcMain.handle('fs:openLocal', async (_e, targetPath: string) => { await shell.openPath(targetPath) })
+  // 在系统资源管理器里定位：文件用 showItemInFolder（打开所在目录并选中），目录直接 openPath
+  ipcMain.handle('fs:showItemInFolder', async (_e, targetPath: string) => {
+    const { stat } = await import('node:fs/promises')
+    const st = await stat(targetPath).catch(() => undefined)
+    if (st?.isDirectory()) await shell.openPath(targetPath)
+    else shell.showItemInFolder(targetPath)
+  })
 
   // 用本地编辑器打开远程文件，保存自动回传（见 externalEdit.ts）；终端关闭 / 窗口关闭时停止监视并删临时文件
   const externalEdit = registerExternalEdit({

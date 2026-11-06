@@ -160,6 +160,7 @@ fs:readText
 fs:remove
 fs:rename
 fs:search
+fs:showItemInFolder
 fs:stats
 fs:sudoAuth
 fs:sudoForget

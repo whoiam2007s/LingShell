@@ -12,6 +12,7 @@ export function createFilesIpc(): FilesApi {
       create: (scope: FsScope, dir: string, name: string, kind: 'file' | 'dir') => window.electronAPI.invoke('fs:create', scope, dir, name, kind) as Promise<string>,
       rename: (scope: FsScope, path: string, name: string) => window.electronAPI.invoke('fs:rename', scope, path, name) as Promise<string>,
       openLocal: (path: string) => window.electronAPI.invoke('fs:openLocal', path) as Promise<void>,
+      showInFolder: (path: string) => window.electronAPI.invoke('fs:showItemInFolder', path) as Promise<void>,
       readText: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:readText', scope, path) as Promise<string>,
       diffText: (scope: FsScope, path: string, base: string, next: string) => window.electronAPI.invoke('fs:diffText', scope, path, base, next) as Promise<string>,
       writeText: (scope: FsScope, path: string, base: string, next: string) => window.electronAPI.invoke('fs:writeText', scope, path, base, next) as Promise<void>,

@@ -158,6 +158,7 @@ fs.remove → fs:remove
 fs.rename → fs:rename
 fs.search → fs:search
 fs.searchContent → fs:search
+fs.showInFolder → fs:showItemInFolder
 fs.stats → fs:stats
 fs.sudoAuth → fs:sudoAuth
 fs.sudoForget → fs:sudoForget
