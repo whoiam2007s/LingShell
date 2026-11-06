@@ -12,6 +12,12 @@ describe('模型配置 → dsh 路由 / key 变量', () => {
     expect(routeOf('qwen', 'a1', 'anthropic')).toBe('lingshell-p-a1')
     expect(usesPiAi('deepseek')).toBe(false)
     expect(usesPiAi('deepseek', 'openai')).toBe(true)
+    // 第三种协议：单独一条路由，同样走 pi-ai
+    expect(routeOf('openai', 'a1', 'openai-responses')).toBe('lingshell-r-a1')
+    expect(routeOf('deepseek', 'a1', 'openai-responses')).toBe('lingshell-r-a1')
+    expect(usesPiAi('openai', 'openai-responses')).toBe(true)
+    expect(usesPiAi('openai')).toBe(true)
+    expect(usesPiAi('anthropic', 'openai-responses')).toBe(false)   // Anthropic 只有 Messages
     expect(keyEnvOf('mp_x9')).toBe('LINGSHELL_MP_MP_X9_KEY')
     expect(keyEnvOf()).toBe('LINGSHELL_MP_DEFAULT_KEY')
   })
@@ -63,6 +69,25 @@ describe('withRoute', () => {
     // DeepSeek 选「高」→ max
     const max = withRoute({}, { profileId: 'd3', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'high' })['lingshell-p-d3']
     expect(max.reasoning).toBe('max')
+  })
+  it('Responses 协议：独立路由 + 本协议白名单内的 compat，不声明推理档位', () => {
+    const r = withRoute({}, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai-responses', thinking: 'high' })
+    const route = r['lingshell-r-gpt']
+    expect(route).toMatchObject({
+      api: 'openai-responses', baseURL: 'https://api.openai.com/v1',
+      compat: { supportsDeveloperRole: false, supportsMaxOutputTokens: true, supportsStrictMode: false },
+      models: [{ id: 'gpt-5', name: 'gpt-5' }],
+    })
+    // completions 那套字段不能混进 Responses 路由（pi-ai 的 compat 按协议白名单校验）
+    expect(route.compat).not.toHaveProperty('supportsStore')
+    expect(route.compat).not.toHaveProperty('maxTokensField')
+    // 第一版不发思考参数、也不声明档位（各家字段名还不一致，先不自造）
+    expect(route).not.toHaveProperty('reasoning')
+    expect(route.models[0]).not.toHaveProperty('reasoningEfforts')
+    // 同一套配置切回 Chat Completions 走另一条路由，互不覆盖
+    const back = withRoute(r, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai' })
+    expect(Object.keys(back).sort()).toEqual(['lingshell-p-gpt', 'lingshell-r-gpt'])
+    expect(back['lingshell-p-gpt'].api).toBe('openai-completions')
   })
   it('换模型保留旧模型；同模型改窗口就地更新；不改入参', () => {
     const a = withRoute({}, { profileId: 'o', provider: 'ollama', model: 'qwen3:8b', baseUrl: '' })

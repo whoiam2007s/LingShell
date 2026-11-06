@@ -25,6 +25,12 @@ const server: Server = createServer((req, res) => {
       if (req.url.includes('nomodels')) { res.writeHead(404); return res.end('{}') }
       return res.end(JSON.stringify({ data: [{ id: 'm1' }, { id: 'm2' }] }))
     }
+    // OpenAI Responses：/noresponses 下回 404（端点不支持该协议）；其余回一个最小 Responses 结构
+    if (req.url?.endsWith('/responses')) {
+      if (req.url.startsWith('/noresponses/')) { res.writeHead(404); return res.end(JSON.stringify({ error: { message: 'Not Found' } })) }
+      if (JSON.parse(body || '{}').model === 'bad') { res.writeHead(400); return res.end(JSON.stringify({ error: { message: 'Model Not Exist' } })) }
+      return res.end(JSON.stringify({ id: 'resp_1', object: 'response', output: [] }))
+    }
     if (JSON.parse(body || '{}').model === 'bad') { res.writeHead(400); return res.end(JSON.stringify({ error: { message: 'Model Not Exist' } })) }
     res.end(JSON.stringify({ choices: [{ message: { content: 'p' } }] }))
   })
@@ -104,6 +110,31 @@ describe('testModelConnection：Anthropic Messages 协议', () => {
     const b = await base
     await testModelConnection({ provider: 'qwen', model: 'm1', baseUrl: `${b}/v1`, apiKey: 'sk-ok', protocol: 'anthropic' })
     expect(seen.at(-1)).toMatchObject({ url: '/v1/models', auth: 'Bearer sk-ok' })
+  })
+})
+
+describe('testModelConnection：OpenAI Responses 协议', () => {
+  it('先查模型列表（不耗 token），查不到再发极小 Responses 请求（input + max_output_tokens）', async () => {
+    const b = await base
+    expect(await testModelConnection({ provider: 'openai', model: 'm1', baseUrl: `${b}/v1`, apiKey: 'sk-ok', protocol: 'openai-responses' })).toMatchObject({ ok: true })
+    expect(seen.at(-1)).toMatchObject({ url: '/v1/models', auth: 'Bearer sk-ok' })
+    expect(await testModelConnection({ provider: 'openai', model: 'm1', baseUrl: `${b}/nomodels`, apiKey: 'sk-ok', protocol: 'openai-responses' })).toMatchObject({ ok: true })
+    const last = seen.at(-1)!
+    expect(last.url).toBe('/nomodels/responses')
+    expect(JSON.parse(last.body)).toMatchObject({ model: 'm1', input: 'ping', max_output_tokens: 16 })
+  })
+  it('端点不支持 Responses（404）：提示改用「OpenAI 兼容（Chat Completions）」', async () => {
+    const r = await testModelConnection({ provider: 'openai', model: 'm1', baseUrl: `${(await base)}/noresponses/nomodels`, apiKey: 'sk-ok', protocol: 'openai-responses' })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('HTTP 404')
+    expect(r.error).toContain('不支持 OpenAI Responses 协议')
+  })
+  it('与另两种协议互不影响：切回 completions 走 /chat/completions，Anthropic 厂商仍走 Messages', async () => {
+    const b = await base
+    expect(await testModelConnection({ provider: 'openai', model: 'm1', baseUrl: `${b}/nomodels`, apiKey: 'sk-ok', protocol: 'openai' })).toMatchObject({ ok: true })
+    expect(seen.at(-1)!.url).toBe('/nomodels/chat/completions')
+    expect(await testModelConnection({ provider: 'anthropic', model: 'claude', baseUrl: `${b}/am`, apiKey: 'sk-ok', protocol: 'openai-responses' })).toMatchObject({ ok: true })
+    expect(seen.at(-1)!.url).toBe('/am/v1/messages')
   })
 })
 

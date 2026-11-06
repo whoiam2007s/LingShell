@@ -921,15 +921,20 @@ export interface SkillImportPreview {
 export interface SkillInput { name: string; description: string; body: string }
 
 // ── 模型接口协议 ────────────────────────────────────────
-// anthropic = Anthropic Messages（{base}/v1/messages，x-api-key）；openai = OpenAI Chat Completions（{base}/chat/completions，Bearer）
-export type ModelProtocol = 'anthropic' | 'openai'
-// 只有 DeepSeek 可选：缺省 / 非法值 = anthropic（保持 dsh 0.2 升级后的行为）；其它提供商一律 openai
+// anthropic = Anthropic Messages（{base}/v1/messages，x-api-key）；
+// openai = OpenAI Chat Completions（{base}/chat/completions，Bearer）；
+// openai-responses = OpenAI Responses（{base}/responses，Bearer；只有 OpenAI 官方 / Azure / Codex 这类端点支持）
+export type ModelProtocol = 'anthropic' | 'openai' | 'openai-responses'
+// Anthropic 只有 Messages 协议，没有 OpenAI 入口；其它提供商明选「openai / openai-responses」就照办，
+// 没选 / 非法值回落缺省：DeepSeek = anthropic（保持 dsh 0.2 升级后的行为），其余 = openai
 export const protocolOf = (provider: string, protocol?: unknown): ModelProtocol => {
-  // Anthropic 只有 Messages 协议，没有 OpenAI 兼容入口
   if (provider === 'anthropic') return 'anthropic'
-  // DeepSeek 两种都支持，缺省 anthropic（保持 dsh 0.2 升级后的行为）
-  return provider === 'deepseek' && protocol !== 'openai' ? 'anthropic' : 'openai'
+  if (protocol === 'openai' || protocol === 'openai-responses') return protocol
+  return provider === 'deepseek' ? 'anthropic' : 'openai'
 }
+/** 各协议实际请求的路径（界面上显示「实际请求 …」用；根地址见 endpointBaseOf） */
+export const protocolPathOf = (protocol: ModelProtocol): string =>
+  protocol === 'anthropic' ? '/v1/messages' : protocol === 'openai-responses' ? '/responses' : '/chat/completions'
 export const DEEPSEEK_ANTHROPIC_BASE = 'https://api.deepseek.com/anthropic'
 export const DEEPSEEK_OPENAI_BASE = 'https://api.deepseek.com'
 /**

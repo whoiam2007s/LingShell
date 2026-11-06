@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Cpu, Pencil, Trash2, Plus, Copy, Star, Loader2, CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react'
-import { PROVIDERS, providerMeta, contextWindowOf, protocolOf, endpointBaseOf, multimodalDefault, thinkingSupported, thinkingWireOf, THINKING_LEVELS, tr, dateLocale, type ModelProfile, type ModelProtocol, type ModelTestResult } from '@lingshell/shared'
+import { PROVIDERS, providerMeta, contextWindowOf, protocolOf, protocolPathOf, endpointBaseOf, multimodalDefault, thinkingSupported, thinkingWireOf, THINKING_LEVELS, tr, dateLocale, type ModelProfile, type ModelProtocol, type ModelTestResult } from '@lingshell/shared'
 import { NumberInput } from '../../../components/ui/NumberInput.js'
 import { Switch } from '../../../components/ui/Switch.js'
 import { client } from '../../../client/index.js'
@@ -17,11 +17,12 @@ import { trx } from '../../../lib/trx.js'
 
 const log = logger.scope('settings')
 const newId = () => `mp_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`
-const PROTOCOL_TAG: Record<ModelProtocol, string> = { anthropic: 'Anthropic', openai: 'OpenAI' }
+const PROTOCOL_TAG: Record<ModelProtocol, string> = { anthropic: 'Anthropic', openai: 'OpenAI', 'openai-responses': 'Responses' }
 const protocolTip = () => tr('Anthropic Messages：请求发到「地址/v1/messages」，Key 放 x-api-key 请求头；DeepSeek 官方地址（https://api.deepseek.com/anthropic）原生支持，推荐。')
   + tr('OpenAI 兼容：请求发到「地址/chat/completions」，Key 放 Authorization: Bearer；适合只支持 OpenAI 格式的自建 / 第三方网关。')
+  + tr('OpenAI Responses：请求发到「地址/responses」，只有 OpenAI 官方 / Azure / Codex 这类端点支持；多数「OpenAI 兼容」网关没有这个接口，选了会 404。')
   + tr('API 地址填 DeepSeek 官方地址时会按协议自动修正（Anthropic → https://api.deepseek.com/anthropic，OpenAI → https://api.deepseek.com），自定义地址原样使用。')
-  + tr('其它提供商（千问、Kimi、Ollama、OpenAI 兼容端点）固定走 OpenAI 兼容。改了协议，用这套配置的会话从下一回合起按新协议请求，历史对话保留。')
+  + tr('其它提供商的接口协议默认是 OpenAI 兼容；端点确实支持 Responses（OpenAI 官方 / Azure 这类）时可以切到 OpenAI Responses。改了协议，用这套配置的会话从下一回合起按新协议请求，历史对话保留。')
 type Form = ModelProfile & { apiKey: string; isNew?: boolean; savedProvider?: string; keyFromName?: string }
 
 // 设置 → 模型设置：多套模型配置（列表 + 编辑表单）。默认配置用于新会话和一次性调用（自然语言写命令、命令解释等）；
@@ -169,13 +170,14 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
         <Row label={tr('提供商')}>
           <div className="w-60"><Sel value={form.provider} onChange={(v) => { const np = providerMeta(v); set({ provider: np.id, model: np.models[0].id, baseUrl: np.defaultBaseUrl, contextWindow: 0, protocol: protocolOf(np.id), multimodal: multimodalDefault(np.id, np.models[0].id) }, DELAY_QUICK) }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{tr(p.label)}</option>)}</Sel></div>
         </Row>
-        <Row label={tr('接口协议')} hint={isDs ? undefined : isAnthropic ? tr('该提供商只支持 Anthropic Messages') : tr('该提供商固定走 OpenAI 兼容')} tip={protocolTip()}>
-          {isDs
-            ? <div className="w-60"><Sel value={protocol} onChange={(v) => set({ protocol: v as ModelProtocol }, DELAY_QUICK)}>
-              <option value="anthropic">{tr('Anthropic Messages（推荐，官方支持）')}</option>
+        <Row label={tr('接口协议')} hint={isAnthropic ? tr('该提供商只支持 Anthropic Messages') : tr('默认 OpenAI 兼容；端点支持 Responses 时可切到 OpenAI Responses')} tip={protocolTip()}>
+          {isAnthropic
+            ? <span className="text-[12px] text-[var(--color-text-muted)]">{tr('Anthropic Messages')}</span>
+            : <div className="w-60"><Sel value={protocol} onChange={(v) => set({ protocol: v as ModelProtocol }, DELAY_QUICK)}>
+              {isDs && <option value="anthropic">{tr('Anthropic Messages（推荐，官方支持）')}</option>}
               <option value="openai">{tr('OpenAI 兼容（Chat Completions）')}</option>
-            </Sel></div>
-            : <span className="text-[12px] text-[var(--color-text-muted)]">{isAnthropic ? tr('Anthropic Messages') : tr('OpenAI 兼容（Chat Completions）')}</span>}
+              <option value="openai-responses">{tr('OpenAI Responses（仅官方 / Azure 等支持）')}</option>
+            </Sel></div>}
         </Row>
         {isDs && (
           <div className="px-3.5 py-2">
@@ -192,13 +194,15 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
             : <Sel value={form.model} onChange={(v) => set({ model: v, multimodal: multimodalDefault(form.provider, v) }, DELAY_QUICK)}>{meta.models.map((m) => <option key={m.id} value={m.id}>{tr(m.label)}</option>)}</Sel>}</div>
         </Row>
         <Row label={tr('思考深度')}
-          hint={thinkingSupported(form.provider)
-            ? tr('实际发送：{wire}', { wire: thinkingWireOf(form.provider, form.thinking ?? 'medium') ?? '' })
-            : tr('该厂商不支持')}
+          hint={protocol === 'openai-responses'
+            ? tr('Responses 协议暂不发思考参数')
+            : thinkingSupported(form.provider)
+              ? tr('实际发送：{wire}', { wire: thinkingWireOf(form.provider, form.thinking ?? 'medium') ?? '' })
+              : tr('该厂商不支持')}
           tip={tr('控制模型思考多少：低 = 更快更省，高 = 想得更久但更慢更贵。不设则沿用厂商默认（DeepSeek 目前默认就等于「中」）。')}>
           <div className="flex items-center gap-1">
             {THINKING_LEVELS.map((lv) => (
-              <button key={lv} data-thinking={lv} disabled={!thinkingSupported(form.provider)}
+              <button key={lv} data-thinking={lv} disabled={protocol === 'openai-responses' || !thinkingSupported(form.provider)}
                 onClick={() => set({ thinking: lv }, DELAY_QUICK)}
                 className={`h-7 rounded border px-2.5 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${(form.thinking ?? 'medium') === lv ? 'border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-accent)]' : 'border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}>
                 {lv === 'low' ? tr('低') : lv === 'medium' ? tr('中') : tr('高')}
@@ -210,7 +214,7 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
           tip={tr('开了才能在对话里附图片（输入框「+」→「图片…」、Ctrl+V 粘贴截图、拖入图片），图片作为多模态内容随消息发给模型。按模型名给默认值：已知支持视觉的（如 gpt-4o、qwen-vl、glm-4v、llava、DeepSeek V4.1 Flash）默认开，其它默认关；换模型会重新按默认值设置。开了但模型其实不支持图片时，带图片的请求会被接口报错。')}>
           <Switch checked={!!form.multimodal} onCheckedChange={(v) => set({ multimodal: v }, DELAY_QUICK)} aria-label={tr('支持图片')} />
         </Row>
-        <Row label={tr('API 地址')} hint={isDs ? tr('实际请求 {url}', { url: `${endpointBaseOf(form)}${protocol === 'anthropic' ? '/v1/messages' : '/chat/completions'}` }) : tr('Base URL，留空用提供商默认')}>
+        <Row label={tr('API 地址')} hint={tr('实际请求 {url}', { url: `${endpointBaseOf(form)}${protocolPathOf(protocol)}` })}>
           <input value={form.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} spellCheck={false} placeholder={meta.defaultBaseUrl} className={`${INPUT} w-72`} />
         </Row>
         <Row label="API Key" hint={keyHint}
@@ -226,7 +230,7 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
           <NumberInput className="w-36" value={form.contextWindow ?? 0} min={0} max={2_000_000} step={1024} onChange={(n) => set({ contextWindow: n })} />
         </Row>
         <Row label={tr('测试连接')} hint={protocol === 'anthropic' ? tr('点了才发请求：按 Anthropic 协议发一个极小请求') : tr('点了才发请求：先查模型列表，查不到再发一个极小请求')}
-          tip={tr('用表单当前的地址、模型、Key 和接口协议测试（Key 留空用已存的），不会自动测试。OpenAI 兼容：先请求 /models（不耗 token），端点不提供模型列表时发一条 1 token 的对话请求。Anthropic Messages：向 /v1/messages 发一条 1 token 的请求；返回 404 / 405 或格式不对时，多半是这个地址不支持 Anthropic 协议，可一键改用 OpenAI 兼容并重试。')}>
+          tip={tr('用表单当前的地址、模型、Key 和接口协议测试（Key 留空用已存的），不会自动测试。OpenAI 兼容：先请求 /models（不耗 token），端点不提供模型列表时发一条 1 token 的对话请求。OpenAI Responses：先同样查 /models，再向 /responses 发一条最小请求；返回 404 / 405 说明这个地址多半不支持该协议。Anthropic Messages：向 /v1/messages 发一条 1 token 的请求；返回 404 / 405 或格式不对时，多半是这个地址不支持 Anthropic 协议，可一键改用 OpenAI 兼容并重试。')}>
           <TestResult r={test} />
           {isDs && protocol === 'anthropic' && test !== 'running' && test?.protocolMismatch
             ? <button onClick={switchToOpenAi} className={BTN2}>{tr('改用 OpenAI 兼容并重试')}</button>

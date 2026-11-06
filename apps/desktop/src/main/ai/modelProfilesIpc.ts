@@ -20,12 +20,14 @@ const TIMEOUT_MS = 15_000
 // 疑似协议不匹配时附在错误后的建议（界面另给「改用 OpenAI 兼容并重试」按钮）
 export const ANTHROPIC_MISMATCH_TIP = tk('这个地址可能不支持 Anthropic 协议，试试把「接口协议」改为「OpenAI 兼容」')
 const OPENAI_MISMATCH_TIP = tk('地址可能不对；若这个网关只支持 Anthropic 协议，把「接口协议」改回「Anthropic Messages」')
+const RESPONSES_MISMATCH_TIP = tk('这个地址可能不支持 OpenAI Responses 协议，试试把「接口协议」改为「OpenAI 兼容（Chat Completions）」')
 // 端点不认这个路径 / 方法：多半是协议不对（或地址少了一段）
 const isMismatchStatus = (s: number) => s === 404 || s === 405
 
 /**
  * 测试一套配置能不能用（只在用户点「测试连接」时调用），按配置的接口协议测：
- *  - openai：先 GET {base}/models（不耗 token，验证地址与 Key），端点不提供模型列表（404/405 等）再发一个极小的对话请求（max_tokens=1）；
+ *  - openai / openai-responses：先 GET {base}/models（不耗 token，验证地址与 Key），端点不提供模型列表（404/405 等）
+ *    再发一个极小的对话请求（openai → /chat/completions，max_tokens=1；openai-responses → /responses，max_output_tokens=16）；
  *  - anthropic（DeepSeek 默认）：POST {base}/v1/messages 极小请求（max_tokens=1，x-api-key）。404/405 或返回的不是 Messages 格式
  *    → protocolMismatch，提示改用 OpenAI 兼容。
  * DeepSeek 官方地址按协议自动修正（同引擎，见 endpointBaseOf）。错误信息里抹掉 Key。
@@ -34,7 +36,9 @@ export async function testModelConnection(p: { provider: string; model: string; 
   const meta = providerMeta(p.provider)
   if (meta.needsApiKey && !p.apiKey) return { ok: false, error: tr('还没填 API Key') }
   const base = endpointBaseOf(p)
-  const anthropic = protocolOf(p.provider, p.protocol) === 'anthropic'
+  const protocol = protocolOf(p.provider, p.protocol)
+  const anthropic = protocol === 'anthropic'
+  const responses = protocol === 'openai-responses'
   const headers: Record<string, string> = anthropic
     ? { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }
     : { authorization: `Bearer ${p.apiKey || 'no-key'}`, 'content-type': 'application/json' }
@@ -71,13 +75,20 @@ export async function testModelConnection(p: { provider: string; model: string; 
       return { ok: true, ms: Date.now() - t0, ...(ids.length && !ids.includes(p.model) ? { warning: tr('连接正常，但模型列表里没有「{model}」，请核对模型 id', { model: p.model }) } : {}) }
     }
     if (auth(r.status)) return { ok: false, error: tr('认证失败（HTTP {status}），请检查 API Key{detail}', { status: r.status, detail: await detail(r) }) }
-    const c = await f(`${base}/chat/completions`, {
-      method: 'POST', headers, signal,
-      body: JSON.stringify({ model: p.model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false }),
-    })
+    const c = responses
+      ? await f(`${base}/responses`, {
+        method: 'POST', headers, signal,
+        body: JSON.stringify({ model: p.model, input: 'ping', max_output_tokens: 16, stream: false }),
+      })
+      : await f(`${base}/chat/completions`, {
+        method: 'POST', headers, signal,
+        body: JSON.stringify({ model: p.model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1, stream: false }),
+      })
     if (c.ok) return { ok: true, ms: Date.now() - t0 }
-    // 只有 DeepSeek 能换协议，才提示换回 Anthropic
-    const tip = p.provider === 'deepseek' && isMismatchStatus(c.status) ? tr('。{tip}', { tip: tr(OPENAI_MISMATCH_TIP) }) : ''
+    // Responses 端点不认这个路径 → 多半是不支持该协议；DeepSeek 换过协议的提示换回 Anthropic
+    const tip = responses
+      ? (isMismatchStatus(c.status) ? tr('。{tip}', { tip: tr(RESPONSES_MISMATCH_TIP) }) : '')
+      : p.provider === 'deepseek' && isMismatchStatus(c.status) ? tr('。{tip}', { tip: tr(OPENAI_MISMATCH_TIP) }) : ''
     return { ok: false, error: auth(c.status) ? tr('认证失败（HTTP {status}）{detail}{tip}', { status: c.status, detail: await detail(c), tip }) : tr('请求失败（HTTP {status}）{detail}{tip}', { status: c.status, detail: await detail(c), tip }) }
   } catch (e) {
     if (signal.aborted) return { ok: false, error: tr('连接超时（{n} 秒没有响应）：{base}', { n: Math.round(timeoutMs / 1000), base }) }

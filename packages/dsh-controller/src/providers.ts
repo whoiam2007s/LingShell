@@ -2,24 +2,28 @@
 //
 // 每套模型配置一条自己的路由、一个自己的 key 环境变量：同一家提供商可以配多套（不同 key / 地址），互不串用；
 // 会话切换模型 = 下一回合的请求改走另一条路由（见 DshController 的 agent/request 覆盖）。
-// 按「接口协议」分两类（protocolOf：只有 DeepSeek 可选，缺省 anthropic；其它固定 openai）：
+// 按「接口协议」分三类（protocolOf：Anthropic 固定 Messages；DeepSeek 缺省 anthropic、可选 openai / openai-responses；其它厂商缺省 openai）：
 // anthropic —— 官方适配器 dsh-llm-deepseek 的 DeepSeekAdapter（Messages 协议；插件本身只能注册唯一的 deepseek-official 路由，
 //   多套 DeepSeek 配置要各自的地址 / key，所以由我们按配置各注册一个适配器实例）；
-// openai —— OpenAI 兼容端点（含选了「OpenAI 兼容」的 DeepSeek），交给 dsh-llm-pi-ai 的手工声明路由（openai-completions 协议）。
+// openai / openai-responses —— 交给 dsh-llm-pi-ai 的手工声明路由（分别为 openai-completions / openai-responses 协议）。
 // 路由名加 lingshell- 前缀，避开 pi-ai 内置 catalog 的同名路由（如 moonshotai），否则会继承其端点与模型表。
 import { contextWindowOf, endpointBaseOf, protocolOf, providerMeta, tr, type ModelProtocol } from '@lingshell/shared'
 
 // 没带配置 id 时（旧调用 / 冒烟脚本）当作默认配置
 const pid = (profileId?: string) => profileId || 'default'
 
-// 两种协议的路由前缀不同：同一套配置切协议 = 换一条路由（会话下一回合改走它，历史照常带上）
-export const routeOf = (provider: string, profileId?: string, protocol?: ModelProtocol): string =>
-  protocolOf(provider, protocol) === 'anthropic' ? `lingshell-ds-${pid(profileId)}` : `lingshell-p-${pid(profileId)}`
+// 三种协议的路由前缀不同：同一套配置切协议 = 换一条路由（会话下一回合改走它，历史照常带上）
+export const routeOf = (provider: string, profileId?: string, protocol?: ModelProtocol): string => {
+  const p = protocolOf(provider, protocol)
+  if (p === 'anthropic') return `lingshell-ds-${pid(profileId)}`
+  return p === 'openai-responses' ? `lingshell-r-${pid(profileId)}` : `lingshell-p-${pid(profileId)}`
+}
 
 // 适配器只认环境变量名，不收明文 key。每套配置一个变量、路由只引用自己那个，key 不会串到别的端点
 export const keyEnvOf = (profileId?: string): string => `LINGSHELL_MP_${pid(profileId).toUpperCase().replace(/[^A-Z0-9]/g, '_')}_KEY`
 
-export const usesPiAi = (provider: string, protocol?: ModelProtocol): boolean => protocolOf(provider, protocol) === 'openai'
+// 除 Anthropic Messages 外都走 pi-ai（openai-completions / openai-responses 两条协议）
+export const usesPiAi = (provider: string, protocol?: ModelProtocol): boolean => protocolOf(provider, protocol) !== 'anthropic'
 
 // 思考深度：三档 → 各家实际值（表在 shared，界面也要用同一份，避免两处对不上）
 import { THINKING_WIRE, thinkingWireOf, type ThinkingLevel } from '@lingshell/shared'
@@ -35,6 +39,10 @@ const COMPAT = { supportsStore: false, supportsDeveloperRole: false, maxTokensFi
 const DEEPSEEK_COMPAT = { ...COMPAT, thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true } as const
 // 声明成推理模型，上面两项才生效；路由默认推理强度 high（与官方 Messages 适配器的默认一致：开思考）
 const DEEPSEEK_EFFORTS = { off: null, high: 'high', max: 'max' } as const
+// Responses 协议（OpenAI 官方 / Azure / Codex 系）的兼容开关：只能填 pi-ai 给本协议的白名单字段，
+// completions 那套（supportsStore、maxTokensField）混进来会被配置校验拒，所以单独一份。
+// 保守取值：不带 developer 角色、不发 strict 工具 schema；max_output_tokens 是官方端点都认的，留着让输出上限生效
+const RESPONSES_COMPAT = { supportsDeveloperRole: false, supportsMaxOutputTokens: true, supportsStrictMode: false } as const
 // 其它支持思考深度的厂商：pi-ai 的档位名与线上值同名
 const COMMON_EFFORTS = { low: 'low', medium: 'medium', high: 'high' } as const
 /** 该厂商声明给 pi-ai 的档位；undefined = 不支持（界面上会置灰） */
@@ -52,9 +60,9 @@ export const maxTokensOf = (contextWindow: number): number => Math.max(1, Math.m
 export interface PiRoute {
   displayName: string
   apiKeyEnv: string
-  api: 'openai-completions'
+  api: 'openai-completions' | 'openai-responses'
   baseURL: string
-  compat: typeof COMPAT | typeof DEEPSEEK_COMPAT
+  compat: typeof COMPAT | typeof DEEPSEEK_COMPAT | typeof RESPONSES_COMPAT
   reasoning?: string   // 实际派发值（high/max/low/…），见 thinkingWireOf
   models: PiModel[]
 }
@@ -82,25 +90,28 @@ export function deepseekModels<M extends { id: string; inputModalities?: string[
 export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings): Record<string, PiRoute> {
   const route = routeOf(s.provider, s.profileId, s.protocol)
   const meta = providerMeta(s.provider)
-  const ds = s.provider === 'deepseek'
+  const protocol = protocolOf(s.provider, s.protocol)
+  const responses = protocol === 'openai-responses'
+  const ds = s.provider === 'deepseek' && !responses
   const contextWindow = contextWindowOf(s.provider, s.model, s.contextWindow)
-  const efforts = effortsOf(s.provider)
+  // Responses 第一版不声明推理档位：各家该发哪个字段还不一致，先不自造（界面上思考深度对它不生效）
+  const efforts = responses ? undefined : effortsOf(s.provider)
   const model: PiModel = { id: s.model, name: s.model, contextWindow, maxTokens: maxTokensOf(contextWindow), input: inputOf(s.multimodal), ...(efforts ? { reasoningEfforts: efforts } : {}) }
   // 用户选的档位 → 实际派发值（'off' = 支持但什么都不发，pi-ai 用它表示"不思考"）。
   // 没选时保持原有行为：DeepSeek 一直默认按 high 发（= 界面上的「中」）；
   // 其它厂商以前不发这个参数，没选就不发 —— 免得给不认识它的端点添麻烦。
   const level = s.thinking ?? (s.provider === 'deepseek' ? 'medium' : undefined)
-  const wire = thinkingWireOf(s.provider, level)
+  const wire = responses ? undefined : thinkingWireOf(s.provider, level)
   const others = (routes[route]?.models ?? []).filter((m) => m.id !== s.model)
   return {
     ...routes,
     [route]: {
       displayName: meta.label,
       apiKeyEnv: keyEnvOf(s.profileId),
-      api: 'openai-completions',
+      api: responses ? 'openai-responses' : 'openai-completions',
       // DeepSeek 官方地址在 openai 协议下修回 https://api.deepseek.com（填了 /anthropic 也修回）
       baseURL: endpointBaseOf(s),
-      compat: ds ? DEEPSEEK_COMPAT : COMPAT,
+      compat: responses ? RESPONSES_COMPAT : ds ? DEEPSEEK_COMPAT : COMPAT,
       ...(wire && wire !== 'off' ? { reasoning: wire } : {}),
       models: [...others, model],
     },
