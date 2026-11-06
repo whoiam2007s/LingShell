@@ -962,7 +962,7 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
   const meta: Record<ExecMode, { icon: typeof FlaskConical; label: string; tip: string }> = {
     preview: { icon: FlaskConical, label: tr('预演'), tip: tr('只做只读排查、把要改的列成方案，不执行任何写操作（删除与危险命令也拦）') },
     confirm: { icon: ShieldCheck, label: tr('逐条确认'), tip: tr('同一台主机批过一次就记住；删除与危险命令每次都问') },
-    auto: { icon: Zap, label: tr('确认一次'), tip: tr('同一类操作（按工具 + 工作目录内外）批过一次就不再问，跨主机复用；删除与危险命令仍问') },
+    auto: { icon: Zap, label: tr('确认一次'), tip: tr('同类操作批过一次就不再问，换主机也复用（写文件只记工作目录内的）；目录外的写、删除与危险命令仍问') },
     trust: { icon: ShieldAlert, label: tr('信任'), tip: tr('工作目录内的写和只读命令直接放行；目录外的写、会改东西的命令、删除仍要确认') },
   }
   const cur = meta[mode]

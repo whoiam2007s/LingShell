@@ -380,7 +380,7 @@ export const chat: Record<string, string> = {
   '保存为 Markdown 文件': 'Save as Markdown file',
   '保存为文件': 'Save as file',
   // PreviewMode.tsx
-  '{mode}：AI 只排查和出方案，不执行任何写操作': '{mode}: the AI only investigates and proposes a plan, no write operations',
+  '{mode}：AI 只排查和出方案，不执行任何写操作（执行模式四档之一，可在标题栏切换）': '{mode}: the AI only investigates and proposes a plan, no write operations (one of the four execution modes; switch it in the title bar)',
   '预演模式': 'Preview mode',
   '关闭预演模式': 'Turn off preview mode',
   '回复里的命令': 'Commands in the reply',

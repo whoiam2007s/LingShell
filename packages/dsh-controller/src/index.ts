@@ -1,6 +1,7 @@
 export { createRelay, contextTokensOf, type DshEvent } from './relay.js'
 export { DshController, type DshControllerConfig, type ApprovalRequest, type LogFn } from './DshController.js'
-export { terminalToolDefs, decideFor, commitGrant, terminalIdOf, type TerminalToolDeps, type TerminalLike, type AuditRecord, type Decision } from './terminalTools.js'
+export { terminalToolDefs, decideFor, commitGrant, terminalIdOf, alwaysAskTool, type TerminalToolDeps, type TerminalLike, type AuditRecord, type Decision } from './terminalTools.js'
+export { execKindOf, isOutsideWorkDir, grantKeyOf, modeFacts, modeLabelOf, relaxByMode, ToolGrants, type ExistingGate, type FactsInput } from './execGate.js'
 export { PlanBook, planDecision, type PlanRequest } from './plan.js'
 export { unifiedDiff } from './diff.js'
 export { McpManager } from './mcp.js'

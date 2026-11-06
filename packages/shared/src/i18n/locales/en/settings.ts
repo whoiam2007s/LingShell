@@ -306,7 +306,7 @@ export const settings: Record<string, string> = {
   '执行模式：{m}': 'Execution mode: {m}',
   '只做只读排查、把要改的列成方案，不执行任何写操作（删除与危险命令也拦）': 'Read-only investigation only; it lists the changes as a plan and executes nothing (deletes and dangerous commands are blocked too)',
   '同一台主机批过一次就记住；删除与危险命令每次都问': 'One approval per host is remembered; deletes and dangerous commands always ask',
-  '同一类操作（按工具 + 工作目录内外）批过一次就不再问，跨主机复用；删除与危险命令仍问': 'Approving one operation of a kind (by tool + inside/outside the working dir) stops asking for it, across hosts; deletes and dangerous commands still ask',
+  '同类操作批过一次就不再问，换主机也复用（写文件只记工作目录内的）；目录外的写、删除与危险命令仍问': 'Approving one operation of a kind stops the asking, and it is reused on other hosts (file writes are only remembered inside the working dir); writes outside it, deletes and dangerous commands still ask',
   '工作目录内的写和只读命令直接放行；目录外的写、会改东西的命令、删除仍要确认': 'Writes inside the working dir and read-only commands run directly; writes outside it, modifying commands and deletes still need confirmation',
   '实际发送：{wire}': 'Sends: {wire}',
   '该厂商不支持': 'Not supported by this provider',

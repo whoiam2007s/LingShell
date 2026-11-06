@@ -114,6 +114,8 @@ const NEEDS: Record<string, 'read' | 'write'> = {
 // write_file 不在此列：覆盖前自动备份、可一键还原，按信任档走（首次写入/确认档/生产主机仍弹卡看 diff），
 // 否则同一文件连改几处就要连点几次。
 const ALWAYS_ASK = new Set(['upload_file', 'download_file'])
+/** 上传 / 下载每次都要确认（与执行模式无关：它们能把文件在本机与主机之间搬运） */
+export const alwaysAskTool = (toolName: string) => ALWAYS_ASK.has(toolName)
 
 // 可被 turn 取消打断的等待（用户点停止不必干等）
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {

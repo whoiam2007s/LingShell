@@ -38,7 +38,7 @@ import type { LocalSkills } from './skills.js'
 import * as LlmRetry from '@deepseek-ai/dsh-llm-retry'
 import { createRelay, createStreamAdapter, contextTokensOf, requestUsageOf, searchableTexts, type DshEvent } from './relay.js'
 import {
-  terminalToolDefs, decideFor, commitGrant, neededForCall, describeCall, approvalView, targetTerminalsOf, planWrite, explainOf, EXPLAIN_GUIDANCE, rollbackDeny, hostsTouchedBy, fleetTargetsOf,
+  terminalToolDefs, decideFor, commitGrant, neededForCall, describeCall, approvalView, targetTerminalsOf, planWrite, explainOf, EXPLAIN_GUIDANCE, rollbackDeny, hostsTouchedBy, fleetTargetsOf, alwaysAskTool,
   type TerminalToolDeps, type UserOverride,
 } from './terminalTools.js'
 import { unifiedDiff } from './diff.js'
@@ -58,6 +58,7 @@ import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
 import { forkPoint, forkTitle } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
+import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
 import type { AiReviewResult, AiReviewAction, PlanStep } from '@lingshell/shared'
 
 /** AI 复核请求（弹授权卡前，见 DshControllerConfig.reviewCommand） */
@@ -403,7 +404,7 @@ export class DshController {
       this.touch(sessionId, exec.name, exec.arguments)
       const mcp = this.cfg.mcp?.lookup(String(exec.name))
       // 预演模式：写类工具一律拦（原因进模型，让它改成列计划），只读照常。最先判，计划 / 规则放行都不突破
-      if (this.preview.has(sessionId) && (mcp ? previewBlocksMcp(mcp.autoApproved) : previewBlocks(String(exec.name), exec.arguments, this.cfg.isReadOnly))) {
+      if (this.execModeOf(sessionId) === 'preview' && (mcp ? previewBlocksMcp(mcp.autoApproved) : previewBlocks(String(exec.name), exec.arguments, this.cfg.isReadOnly))) {
         if (mcp) this.mcpAudit(sessionId, mcp, exec.arguments, 'deny:preview_mode')
         else {
           const tids = targetTerminalsOf(exec.name, exec.arguments)
@@ -437,6 +438,12 @@ export class DshController {
       // 已批准计划内的步骤免卡（只读信任档、命令规则「禁止」照样拒，见 planDecision）
       if (planDecision(this.cfg, this.plans, sessionId, exec.name, exec.arguments)) return next()
       const d = decideFor(this.cfg, sessionId, exec.name, exec.arguments)
+      // 四档执行模式：auto / trust 档在既有结论之上放宽（只放宽、不收紧）。
+      // confirm 与 preview 在这里恒为 false，各自走原路径 —— 默认档行为与升级前完全一致
+      if (this.relaxedByMode(sessionId, String(exec.name), exec.arguments, d)) {
+        this.overrides.set(String(exec.callId), { sessionId, rule: this.modeRuleOf(sessionId) })   // 执行记录注明是哪个档放行的
+        return next()
+      }
       if (d.kind === 'allow') {
         if (d.rule) this.overrides.set(String(exec.callId), { sessionId, rule: d.rule })   // 执行记录里注明按哪条规则放行
         return next()
@@ -489,6 +496,7 @@ export class DshController {
       if (rv?.action === 'allow') {
         if (base !== undefined) this.overrides.set(key, { sessionId: pend.sessionId, base })
         this.overrides.set(key, { ...this.overrides.get(key), sessionId: pend.sessionId, review, ...(pend.rule ? { rule: pend.rule } : {}) })
+        this.rememberToolGrant(pend.sessionId, pend.name, pend.args)   // auto 档：复核放行也算「确认过一次」
         commitGrant(withReview, pend.sessionId, pend.name, pend.args, pend.reason, pend.rule ? `${pend.rule} · ${tr('AI 复核通过')}` : tr('AI 复核通过'))
         return 'allowed-once'
       }
@@ -524,6 +532,7 @@ export class DshController {
       if (base !== undefined) this.overrides.set(key, { sessionId: pend.sessionId, base })
       if (pend.rule) this.overrides.set(key, { ...this.overrides.get(key), sessionId: pend.sessionId, rule: pend.rule })
       if (review) this.overrides.set(key, { ...this.overrides.get(key), sessionId: pend.sessionId, review })
+      this.rememberToolGrant(pend.sessionId, pend.name, edited ? { ...(pend.args as any), command: edited } : pend.args)   // auto 档：批准一次即记「工具 + 范围」
       commitGrant(withReview, pend.sessionId, pend.name, edited ? { ...(pend.args as any), command: edited } : pend.args, pend.reason, pend.rule)
       return 'allowed-once'
     }) as any)
@@ -560,6 +569,46 @@ export class DshController {
     else this.preview.delete(sessionId)
     if (mode === DEFAULT_EXEC_MODE) this.modes.delete(sessionId)
     else this.modes.set(sessionId, mode)
+    this.toolGrants.clear(sessionId)   // 换档即忘掉 auto 的「工具 + 范围」记忆，别把旧档的宽松带过去
+  }
+
+  // ── 四档执行模式的网关层（规则在 execGate.ts，这里只收集事实 / 落记忆）──
+  private toolGrants = new ToolGrants()   // auto 档的「工具 + 范围」授权记忆（只在内存，重启即失效）
+
+  /** 这次调用的事实：工作目录、只读判定、已记住的授权都现取 */
+  private modeFactsOf(sessionId: string, name: string, args: unknown) {
+    return modeFacts({
+      name, args,
+      isReadOnly: this.cfg.isReadOnly,
+      workDir: this.getWorkDir(sessionId),
+      granted: (key) => this.toolGrants.has(sessionId, key),
+    })
+  }
+
+  /** 目标里有生产主机（生产主机上写操作逐条确认，任何执行模式都不放宽） */
+  private onProdHost(name: string, args: unknown): boolean {
+    if (name === 'run_on_hosts') return fleetTargetsOf(this.cfg, args).some((h) => h.env === 'prod')
+    return targetTerminalsOf(name, args).some((tid) => this.cfg.hostMeta?.(tid)?.env === 'prod')
+  }
+
+  /** 模式层是否放行这次调用：只放宽，既有授权链说拒 / 必问时不放 */
+  private relaxedByMode(sessionId: string, name: string, args: unknown, d: ReturnType<typeof decideFor>): boolean {
+    const mode = this.execModeOf(sessionId)
+    if (mode !== 'auto' && mode !== 'trust') return false   // confirm / preview 走各自原路径，行为不变
+    const existing: ExistingGate = d.kind === 'ask' ? { kind: 'ask', ...(d.rule ? { rule: d.rule } : {}) } : { kind: d.kind }
+    return relaxByMode(mode, existing, this.modeFactsOf(sessionId, name, args), alwaysAskTool(name) || this.onProdHost(name, args))
+  }
+
+  /** 执行记录里注明这次是哪个执行模式放行的 */
+  private modeRuleOf(sessionId: string): string {
+    return tr('执行模式：{m}', { m: modeLabelOf(this.execModeOf(sessionId)) })
+  }
+
+  /** auto 档：用户（含 AI 复核自动放行）批准后记「工具 + 范围」，同范围下次不再问 */
+  private rememberToolGrant(sessionId: string, name: string, args: unknown): void {
+    if (this.execModeOf(sessionId) !== 'auto') return
+    const key = grantKeyOf(name, this.modeFactsOf(sessionId, name, args))
+    if (key) this.toolGrants.remember(sessionId, key)
   }
   /** 「执行选中步骤」：关掉预演，把勾选的步骤记为已批准计划（下一轮里逐字一致的命令免逐条授权，同 propose_plan 批准） */
   approvePlan(sessionId: string, steps: PlanStep[]): number {
@@ -1120,6 +1169,7 @@ export class DshController {
     const meta = this.cfg.sessionStore?.list().find((m) => m.id === sessionId)
     await this.closeSession(sessionId)
     this.preview.delete(sessionId)
+    this.toolGrants.clear(sessionId)
     this.cfg.sessionStore?.remove(sessionId)
     // 连同磁盘上的 dsh 日志一起删（含上下文重置前的旧日志 <id>_xxx），否则删掉的会话日志永远留着占空间。
     // 删日志失败不影响删会话（记录已删、界面已看不到）
