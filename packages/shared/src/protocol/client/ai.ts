@@ -156,6 +156,9 @@ export interface AiApi {
     setGroupRules(group: string, text: string): Promise<void>
     setHostRules(hostId: string, text: string): Promise<void>
     preview(sessionId: string): Promise<boolean>
+    // 会话级执行模式（四档）：preview 预演 / confirm 逐条确认 / auto 确认一次 / trust 信任
+    execMode(sessionId: string): Promise<'preview' | 'confirm' | 'auto' | 'trust'>
+    setExecMode(sessionId: string, mode: 'preview' | 'confirm' | 'auto' | 'trust'): Promise<void>
     setPreview(sessionId: string, on: boolean): Promise<void>
     approvePlan(sessionId: string, steps: import('../types.js').PlanStep[]): Promise<void>
     sudoLeases(sessionId: string): Promise<import('../../ai/index.js').SudoLease[]>

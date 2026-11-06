@@ -311,9 +311,11 @@ runbooks.delete → runbooks:delete
 runbooks.list → runbooks:list
 runbooks.save → runbooks:save
 safety.approvePlan → safety:approvePlan
+safety.execMode → safety:execMode
 safety.preview → safety:preview
 safety.revokeSudo → safety:revokeSudo
 safety.rules → safety:rules
+safety.setExecMode → safety:setExecMode
 safety.setGroupRules → safety:setGroupRules
 safety.setHostRules → safety:setHostRules
 safety.setPreview → safety:setPreview

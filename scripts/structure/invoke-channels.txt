@@ -310,9 +310,11 @@ runbooks:delete
 runbooks:list
 runbooks:save
 safety:approvePlan
+safety:execMode
 safety:preview
 safety:revokeSudo
 safety:rules
+safety:setExecMode
 safety:setGroupRules
 safety:setHostRules
 safety:setPreview

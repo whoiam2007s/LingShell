@@ -79,7 +79,7 @@ export class HttpTransport implements AppClient {
   topology: AppClient['topology'] = { get: ni }
   configExplain: AppClient['configExplain'] = { run: ni }
   preview: AppClient['preview'] = { read: ni, openExternal: ni }
-  safety: AppClient['safety'] = { rules: ni, setGroupRules: ni, setHostRules: ni, preview: ni, setPreview: ni, approvePlan: ni, sudoLeases: ni, revokeSudo: ni }
+  safety: AppClient['safety'] = { rules: ni, setGroupRules: ni, setHostRules: ni, preview: ni, setPreview: ni, execMode: ni, setExecMode: ni, approvePlan: ni, sudoLeases: ni, revokeSudo: ni }
   trend: AppClient['trend'] = { get: ni }
   deployReview: AppClient['deployReview'] = { list: ni, get: ni, create: ni, delete: ni, update: ni, importDoc: ni, pasteDoc: ni, addArtifacts: ni, removeArtifact: ni, analyze: ni, probe: ni, toRunbook: ni, exportPdf: ni }
   compliance: AppClient['compliance'] = { config: ni, setDisabled: ni, run: ni, batch: ni }

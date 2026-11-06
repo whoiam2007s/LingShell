@@ -114,6 +114,8 @@ export function createAiIpc(): AiApi {
       setGroupRules: (g, t) => window.electronAPI.invoke('safety:setGroupRules', g, t) as Promise<void>,
       setHostRules: (id, t) => window.electronAPI.invoke('safety:setHostRules', id, t) as Promise<void>,
       preview: (sid) => window.electronAPI.invoke('safety:preview', sid) as Promise<boolean>,
+      execMode: (sid) => window.electronAPI.invoke('safety:execMode', sid) as Promise<'preview' | 'confirm' | 'auto' | 'trust'>,
+      setExecMode: (sid, mode) => window.electronAPI.invoke('safety:setExecMode', sid, mode) as Promise<void>,
       setPreview: (sid, on) => window.electronAPI.invoke('safety:setPreview', sid, on) as Promise<void>,
       approvePlan: (sid, steps) => window.electronAPI.invoke('safety:approvePlan', sid, steps) as Promise<void>,
       sudoLeases: (sid) => window.electronAPI.invoke('safety:sudoLeases', sid) as ReturnType<AppClient['safety']['sudoLeases']>,

@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
 import { rm } from 'node:fs/promises'
-import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol , ThinkingLevel } from '@lingshell/shared'
+import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
+import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -540,9 +541,26 @@ export class DshController {
   }
 
   // ── 预演模式（只说不做）：会话级，只在内存（重启后回到正常模式）──
-  private preview = new Set<string>()
+  private preview = new Set<string>()   // 老接口：预演开关（execMode 的 preview 子集）
+  private modes = new Map<string, ExecMode>()   // 会话级四档执行模式（缺省 confirm）
   setPreview(sessionId: string, on: boolean): void { if (on) this.preview.add(sessionId); else this.preview.delete(sessionId) }
-  isPreview(sessionId: string): boolean { return this.preview.has(sessionId) }
+  isPreview(sessionId: string): boolean { return this.execModeOf(sessionId) === 'preview' }
+
+  /**
+   * 会话级执行模式（四档）。缺省 = confirm（与升级前行为一致）。
+   * preview 模式与老的 preview 布尔开关互通：设成 preview 等价于老的开预演，其它模式等价于关。
+   */
+  execModeOf(sessionId: string): ExecMode {
+    return this.modes.get(sessionId) ?? (this.preview.has(sessionId) ? 'preview' : DEFAULT_EXEC_MODE)
+  }
+
+  /** 设会话模式；同时同步老的 preview 集合，避免两条路径给出不同答案 */
+  setExecMode(sessionId: string, mode: ExecMode): void {
+    if (mode === 'preview') this.preview.add(sessionId)
+    else this.preview.delete(sessionId)
+    if (mode === DEFAULT_EXEC_MODE) this.modes.delete(sessionId)
+    else this.modes.set(sessionId, mode)
+  }
   /** 「执行选中步骤」：关掉预演，把勾选的步骤记为已批准计划（下一轮里逐字一致的命令免逐条授权，同 propose_plan 批准） */
   approvePlan(sessionId: string, steps: PlanStep[]): number {
     this.preview.delete(sessionId)
