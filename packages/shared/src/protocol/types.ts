@@ -45,7 +45,14 @@ export interface SessionInfo {
 
 // 支持的 provider。deepseek 走官方适配器（每套模型配置一个实例）；其余都是 OpenAI 兼容端点，
 // 走 dsh-llm-pi-ai 的 openai-completions 协议（路由换算见 dsh-controller/providers.ts）。
-export type ProviderId = 'deepseek' | 'qwen' | 'moonshot' | 'ollama' | 'openai-compatible'
+export type ProviderId =
+  | 'deepseek' | 'qwen' | 'moonshot' | 'ollama' | 'openai-compatible'
+  // 聚合网关：一个 key 覆盖一大片厂商
+  | 'openrouter' | 'siliconflow'
+  // 国内直连
+  | 'glm' | 'minimax' | 'volc' | 'hunyuan' | 'qianfan' | 'spark'
+  // 国际直连
+  | 'openai' | 'anthropic' | 'gemini' | 'xai' | 'mistral'
 
 export interface ModelOption {
   id: string        // 传给引擎的模型 id
@@ -68,6 +75,7 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: 'deepseek',
     label: 'DeepSeek',
+    freeModel: true,
     defaultBaseUrl: 'https://api.deepseek.com',
     needsApiKey: true,
     defaultContextWindow: 1_000_000,
@@ -80,6 +88,7 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: 'qwen',
     label: tk('通义千问（DashScope）'),
+    freeModel: true,
     defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     needsApiKey: true,
     defaultContextWindow: 131_072,
@@ -92,6 +101,7 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: 'moonshot',
     label: tk('Kimi（Moonshot）'),
+    freeModel: true,
     defaultBaseUrl: 'https://api.moonshot.cn/v1',
     needsApiKey: true,
     defaultContextWindow: 131_072,
@@ -118,6 +128,131 @@ export const PROVIDERS: ProviderMeta[] = [
     freeModel: true,
     defaultContextWindow: 131_072,
     models: [{ id: 'gpt-4o', label: 'gpt-4o' }],
+  },
+  // ── 聚合网关（一个 key 用多家模型，性价比最高）──
+  {
+    id: 'openrouter',
+    label: tk('OpenRouter（聚合网关）'),
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'deepseek/deepseek-chat', label: 'deepseek/deepseek-chat' }],
+  },
+  {
+    id: 'siliconflow',
+    label: tk('硅基流动（SiliconFlow）'),
+    defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'deepseek-ai/DeepSeek-V3', label: 'deepseek-ai/DeepSeek-V3' }],
+  },
+
+  // ── 国内直连 ──
+  // 下列模型 id 只是**建议值**（各家改名很快），因为 freeModel: true，用户可以自己填
+  {
+    id: 'glm',
+    label: tk('智谱 GLM'),
+    defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'glm-4.6', label: 'GLM-4.6' }],
+  },
+  {
+    id: 'minimax',
+    label: tk('MiniMax'),
+    defaultBaseUrl: 'https://api.minimax.chat/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'MiniMax-M2', label: 'MiniMax M2' }],
+  },
+  {
+    id: 'volc',
+    label: tk('火山方舟（豆包）'),
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    // 火山常用「推理接入点 ID」（ep-xxxx）当模型名，所以必须自由填
+    // 模型名可自由填：火山常用 ep-xxxx 推理接入点 ID
+    models: [{ id: 'doubao-seed-1.6', label: 'doubao-seed-1.6' }],
+  },
+  {
+    id: 'hunyuan',
+    label: tk('腾讯混元'),
+    defaultBaseUrl: 'https://api.hunyuan.cloud.tencent.com/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'hunyuan-turbos-latest', label: 'hunyuan-turbos-latest' }],
+  },
+  {
+    id: 'qianfan',
+    label: tk('百度文心（千帆）'),
+    defaultBaseUrl: 'https://qianfan.baidubce.com/v2',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'ernie-4.5-turbo-128k', label: 'ernie-4.5-turbo-128k' }],
+  },
+  {
+    id: 'spark',
+    label: tk('讯飞星火'),
+    defaultBaseUrl: 'https://spark-api-open.xf-yun.com/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: '4.0Ultra', label: '4.0Ultra' }],
+  },
+
+  // ── 国际直连 ──
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'gpt-4o', label: 'gpt-4o' }],
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic Claude',
+    defaultBaseUrl: 'https://api.anthropic.com',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 200_000,
+    models: [{ id: 'claude-sonnet-4', label: 'claude-sonnet-4' }],
+  },
+  {
+    id: 'gemini',
+    label: 'Google Gemini',
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 1_000_000,
+    models: [{ id: 'gemini-2.5-pro', label: 'gemini-2.5-pro' }],
+  },
+  {
+    id: 'xai',
+    label: 'xAI Grok',
+    defaultBaseUrl: 'https://api.x.ai/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'grok-4', label: 'grok-4' }],
+  },
+  {
+    id: 'mistral',
+    label: 'Mistral',
+    defaultBaseUrl: 'https://api.mistral.ai/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'mistral-large-latest', label: 'mistral-large-latest' }],
   },
 ]
 
@@ -738,8 +873,12 @@ export interface SkillInput { name: string; description: string; body: string }
 // anthropic = Anthropic Messages（{base}/v1/messages，x-api-key）；openai = OpenAI Chat Completions（{base}/chat/completions，Bearer）
 export type ModelProtocol = 'anthropic' | 'openai'
 // 只有 DeepSeek 可选：缺省 / 非法值 = anthropic（保持 dsh 0.2 升级后的行为）；其它提供商一律 openai
-export const protocolOf = (provider: string, protocol?: unknown): ModelProtocol =>
-  provider === 'deepseek' && protocol !== 'openai' ? 'anthropic' : 'openai'
+export const protocolOf = (provider: string, protocol?: unknown): ModelProtocol => {
+  // Anthropic 只有 Messages 协议，没有 OpenAI 兼容入口
+  if (provider === 'anthropic') return 'anthropic'
+  // DeepSeek 两种都支持，缺省 anthropic（保持 dsh 0.2 升级后的行为）
+  return provider === 'deepseek' && protocol !== 'openai' ? 'anthropic' : 'openai'
+}
 export const DEEPSEEK_ANTHROPIC_BASE = 'https://api.deepseek.com/anthropic'
 export const DEEPSEEK_OPENAI_BASE = 'https://api.deepseek.com'
 /**

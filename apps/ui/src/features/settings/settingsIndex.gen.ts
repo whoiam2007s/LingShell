@@ -21,7 +21,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "model",
   "kind": "row",
-  "label": "模型"
+  "label": "模型",
+  "tip": "可以直接输入模型 id（列表只是建议值）。各家改名很快、火山方舟这类还要填 ep- 接入点 ID，所以永远以你填的为准；模型需支持工具调用。"
  },
  {
   "tab": "model",

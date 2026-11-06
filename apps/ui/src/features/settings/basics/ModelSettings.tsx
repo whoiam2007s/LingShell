@@ -149,6 +149,7 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
         : meta.needsApiKey ? undefined : tr('本地服务可不填')
   const autoWindow = contextWindowOf(form.provider, form.model)
   const isDs = form.provider === 'deepseek'
+  const isAnthropic = form.provider === 'anthropic'   // 只有 Messages 协议，没有 OpenAI 兼容入口
   const protocol = protocolOf(form.provider, form.protocol)
   // f：「改用 OpenAI 兼容并重试」时传入刚改过协议的表单（setForm 还没生效）
   const runTest = async (f: Form = form) => {
@@ -168,13 +169,13 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
         <Row label={tr('提供商')}>
           <div className="w-60"><Sel value={form.provider} onChange={(v) => { const np = providerMeta(v); set({ provider: np.id, model: np.models[0].id, baseUrl: np.defaultBaseUrl, contextWindow: 0, protocol: protocolOf(np.id), multimodal: multimodalDefault(np.id, np.models[0].id) }, DELAY_QUICK) }}>{PROVIDERS.map((p) => <option key={p.id} value={p.id}>{tr(p.label)}</option>)}</Sel></div>
         </Row>
-        <Row label={tr('接口协议')} hint={isDs ? undefined : tr('该提供商固定走 OpenAI 兼容')} tip={protocolTip()}>
+        <Row label={tr('接口协议')} hint={isDs ? undefined : isAnthropic ? tr('该提供商只支持 Anthropic Messages') : tr('该提供商固定走 OpenAI 兼容')} tip={protocolTip()}>
           {isDs
             ? <div className="w-60"><Sel value={protocol} onChange={(v) => set({ protocol: v as ModelProtocol }, DELAY_QUICK)}>
               <option value="anthropic">{tr('Anthropic Messages（推荐，官方支持）')}</option>
               <option value="openai">{tr('OpenAI 兼容（Chat Completions）')}</option>
             </Sel></div>
-            : <span className="text-[12px] text-[var(--color-text-muted)]">{tr('OpenAI 兼容（Chat Completions）')}</span>}
+            : <span className="text-[12px] text-[var(--color-text-muted)]">{isAnthropic ? tr('Anthropic Messages') : tr('OpenAI 兼容（Chat Completions）')}</span>}
         </Row>
         {isDs && (
           <div className="px-3.5 py-2">
@@ -185,7 +186,7 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
             </div>
           </div>
         )}
-        <Row label={tr('模型')} tip={form.provider === 'ollama' ? tr('填本地模型名，如 qwen3:8b；模型需支持工具调用。') : tr('传给接口的模型 id。')}>
+        <Row label={tr('模型')} tip={tr('可以直接输入模型 id（列表只是建议值）。各家改名很快、火山方舟这类还要填 ep- 接入点 ID，所以永远以你填的为准；模型需支持工具调用。')}>
           <div className="w-60">{meta.freeModel
             ? <Combobox value={form.model} onChange={(v) => set({ model: v, multimodal: multimodalDefault(form.provider, v) })} options={meta.models.map((m) => m.id)} placeholder={form.provider === 'ollama' ? tr('如 qwen3:8b') : tr('模型 id')} />
             : <Sel value={form.model} onChange={(v) => set({ model: v, multimodal: multimodalDefault(form.provider, v) }, DELAY_QUICK)}>{meta.models.map((m) => <option key={m.id} value={m.id}>{tr(m.label)}</option>)}</Sel>}</div>
