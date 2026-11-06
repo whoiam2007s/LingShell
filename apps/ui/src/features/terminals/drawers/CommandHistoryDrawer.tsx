@@ -13,12 +13,24 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
 }) {
   const [entries, setEntries] = useState<CommandHistoryEntry[]>([])
   const [onlyCurrent, setOnlyCurrent] = useState(false)
+  // 来源筛选：默认只看用户手敲的（AI 执行的命令太杂，会把列表刷满）
+  const [src, setSrc] = useState<'user' | 'ai' | 'all'>('user')
   const [confirmClear, setConfirmClear] = useState(false)
 
   const reload = () => { client.history.list(hostKey).then(setEntries).catch(() => setEntries([])) }
   useEffect(reload, [hostKey])
 
-  const shown = onlyCurrent ? entries.filter((e) => e.terminalId === activeTerminalId) : entries
+  const shown = entries
+    .filter((e) => (src === 'all' ? true : e.source === src))
+    .filter((e) => (onlyCurrent ? e.terminalId === activeTerminalId : true))
+
+  // hover 看完整命令：最多 10 行，超出就截断并说明总行数（命令经常很长，列表里是省略号）
+  const TIP_MAX_LINES = 10
+  const cmdTip = (cmd: string) => {
+    const lines = cmd.split(/\r?\n/)
+    if (lines.length <= TIP_MAX_LINES) return cmd
+    return lines.slice(0, TIP_MAX_LINES).join('\n') + '\n' + tr('…（共 {n} 行，只显示前 {max} 行）', { n: lines.length, max: TIP_MAX_LINES })
+  }
 
   // 填入前先发 Ctrl-U 清掉终端里未回车的半行输入，避免历史命令拼接到已敲内容后面
   const fill = (cmd: string) => {
@@ -48,6 +60,13 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
     <div className="flex h-full flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-3">
         <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">{tr('命令历史')}</span>
+        {/* 来源筛选：用户 / AI / 全部。默认用户 —— AI 执行的命令太多，列表会被刷满 */}
+        {([['user', tr('用户')], ['ai', tr('AI')], ['all', tr('全部')]] as const).map(([k, label]) => (
+          <button key={k} data-hist-src={k} title={k === 'user' ? tr('只显示你在终端里手敲的命令') : k === 'ai' ? tr('只显示 AI 执行的命令') : tr('全部命令')} onClick={() => setSrc(k)}
+            className={`flex h-6 items-center rounded px-1.5 text-[11px] ${src === k ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
+            {label}
+          </button>
+        ))}
         <button title={tr('只显示当前终端')} onClick={() => setOnlyCurrent((v) => !v)}
           className={`ml-auto flex h-6 items-center gap-1 rounded px-1.5 text-[11px] ${onlyCurrent ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
           <Filter className="h-3 w-3" />{tr('当前')}
@@ -58,7 +77,7 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {shown.length === 0 && <div className="px-2 py-3 text-[11px] text-[var(--color-text-muted)]">{tr('（无历史命令）')}</div>}
         {shown.map((e) => (
-          <div key={`${e.at}-${e.terminalId}`} onDoubleClick={() => fill(e.command)} title={tr('双击填入终端（不执行）')}
+          <div key={`${e.at}-${e.terminalId}`} onDoubleClick={() => fill(e.command)} title={`${cmdTip(e.command)}\n\n${tr('双击填入终端（不执行）')}`}
             className="group flex items-center gap-2 rounded px-2 py-1 text-[12px] hover:bg-[var(--color-bg-hover)]">
             <span className="min-w-0 flex-1 truncate font-mono text-[var(--color-text-primary)]">{e.command}</span>
             <span className="shrink-0 rounded bg-[var(--color-bg-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">{e.terminalTitle}</span>
