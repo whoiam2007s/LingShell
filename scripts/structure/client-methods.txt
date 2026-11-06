@@ -272,7 +272,9 @@ mobile.revokeAll → mobile:revokeAll
 mobile.setEnabled → mobile:setEnabled
 mobile.status → mobile:status
 modelProfiles.sessionModel → agent:getModel
+modelProfiles.sessionThinking → agent:sessionThinking
 modelProfiles.setSessionModel → agent:setModel
+modelProfiles.setSessionThinking → agent:setSessionThinking
 modelProfiles.test → modelProfiles:test
 portForward.deleteSaved → portForward:deleteSaved
 portForward.list → portForward:list
@@ -344,6 +346,7 @@ sshAuth.answer → sshAuth:answer
 sshUrl.takePending → sshUrl:takePending
 system.appInfo → system:appInfo
 system.checkUpdate → system:checkUpdate
+system.downloadUpdate → system:downloadUpdate
 system.exportDiagnostics → system:exportDiagnostics
 system.getUpdateStatus → system:getUpdateStatus
 system.installUpdate → system:installUpdate

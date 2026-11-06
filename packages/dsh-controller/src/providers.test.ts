@@ -40,13 +40,29 @@ describe('withRoute', () => {
     expect(r['lingshell-p-d']).toMatchObject({
       api: 'openai-completions', baseURL: 'https://api.deepseek.com', reasoning: 'high',
       compat: { thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true, supportsStore: false },
-      models: [{ id: 'deepseek-v4-pro', reasoningEfforts: { high: 'high', max: 'max' } }],
+      models: [{ id: 'deepseek-v4-pro', reasoningEfforts: { off: null, high: 'high', max: 'max' } }],
     })
     // 其它提供商不带 DeepSeek 专属项
     const q = withRoute({}, { profileId: 'q', provider: 'qwen', model: 'qwen-max', baseUrl: '' })['lingshell-p-q']
     expect(q.compat).not.toHaveProperty('thinkingFormat')
+    // 没选过思考深度就不发这个参数（以前各厂商都不发，这里必须保持）
     expect(q).not.toHaveProperty('reasoning')
-    expect(q.models[0]).not.toHaveProperty('reasoningEfforts')
+    // 但档位要声明出来，界面才能让用户选（低/中/高）
+    expect(q.models[0]).toHaveProperty('reasoningEfforts', { low: 'low', medium: 'medium', high: 'high' })
+  })
+  it('不支持思考深度的厂商不声明档位；选了档位就按厂商派发', () => {
+    // ollama：本地端点不认识 reasoningEffort，不声明
+    const o = withRoute({}, { profileId: 'o2', provider: 'ollama', model: 'qwen3:8b', baseUrl: '' })['lingshell-p-o2']
+    expect(o.models[0]).not.toHaveProperty('reasoningEfforts')
+    // qwen 选了「高」→ 发 high
+    const hi = withRoute({}, { profileId: 'q2', provider: 'qwen', model: 'qwen-max', baseUrl: '', thinking: 'high' })['lingshell-p-q2']
+    expect(hi.reasoning).toBe('high')
+    // DeepSeek 选「低」→ 不思考（off 不发送）
+    const off = withRoute({}, { profileId: 'd2', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'low' })['lingshell-p-d2']
+    expect(off).not.toHaveProperty('reasoning')
+    // DeepSeek 选「高」→ max
+    const max = withRoute({}, { profileId: 'd3', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'high' })['lingshell-p-d3']
+    expect(max.reasoning).toBe('max')
   })
   it('换模型保留旧模型；同模型改窗口就地更新；不改入参', () => {
     const a = withRoute({}, { profileId: 'o', provider: 'ollama', model: 'qwen3:8b', baseUrl: '' })

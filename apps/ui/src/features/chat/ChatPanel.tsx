@@ -16,7 +16,7 @@ import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
 import type { TurnTimes } from '@lingshell/shared'
-import { tr, tk } from '@lingshell/shared'
+import { tr, tk , type ThinkingLevel } from '@lingshell/shared'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
@@ -301,6 +301,20 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
     prevSidRef.current = activeSessionId
   }, [activeSessionId])
   // 附件（文件 / 目录 / 图片）：tag 栏、粘贴 / 拖入、「+」菜单的选择框都在 useAttachments 里
+  // 会话级思考深度（只影响本会话；空 = 跟随模型配置里的默认值）
+  const [thinkLevel, setThinkLevel] = useState<ThinkingLevel | undefined>(undefined)
+  useEffect(() => {
+    setThinkLevel(undefined)
+    if (!activeSessionId) return
+    let alive = true
+    client.modelProfiles.sessionThinking(activeSessionId).then((r) => { if (alive) setThinkLevel(r.level) }, () => {})
+    return () => { alive = false }
+  }, [activeSessionId])
+  const pickThinking = (lv: ThinkingLevel) => {
+    if (!activeSessionId) return
+    setThinkLevel(lv)
+    client.modelProfiles.setSessionThinking(activeSessionId, lv).catch(() => {})
+  }
   const att = useAttachments(!!models.current?.multimodal, activeSessionId)
   // 消息操作：编辑后重发 / 从这里分叉 → 主进程从该消息之前分叉出新会话并切过去；重新生成 → 本会话原地重跑最后一轮。
   // 回调经 ref 取最新闭包，context 值只随 busy / 会话变化，不带动所有消息重渲染
@@ -483,7 +497,8 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
       {/* 会话 header */}
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
         postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
-        preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined} />
+        preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
+        thinking={thinkLevel} onPickThinking={pickThinking} />
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -928,8 +943,10 @@ function useSessionModel(sessionId: string, busy: boolean, onManage?: () => void
   return { profiles: mp.profiles, defaultId: mp.defaultId, current: profileOf(mp, st.profileId), pending: st.pending, note, onPick, onManage }
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking }: {
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
+  thinking?: ThinkingLevel                          // 会话级思考深度（低/中/高）
+  onPickThinking?: (lv: ThinkingLevel) => void
   busy?: boolean   // 本轮是否在跑：点用量标签压缩时要等它结束
   models?: SessionModel
   postmortem?: PostmortemAction
@@ -971,7 +988,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
         </div>
       )}
       {hasSession && models?.note && <span className={`max-w-[160px] shrink-0 truncate text-[11px] ${models.note.ok ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-danger)]'}`} title={models.note.text}>{models.note.text}</span>}
-      {hasSession && models && <ModelChip profile={models.current} pending={models.pending} profiles={models.profiles} defaultId={models.defaultId} onPick={models.onPick} onManage={models.onManage} />}
+      {hasSession && models && <ModelChip profile={models.current} pending={models.pending} profiles={models.profiles} defaultId={models.defaultId} onPick={models.onPick} onManage={models.onManage} thinking={thinking} onPickThinking={onPickThinking} />}
       {hasSession && sessionId && <UsageChip sessionId={sessionId} usage={usage} busy={busy} />}
       {hasSession && preview && (
         <button data-preview-toggle onClick={preview.onToggle} aria-pressed={preview.on}

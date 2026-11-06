@@ -417,6 +417,57 @@ export interface ModelProfile {
   protocol?: ModelProtocol
   // 支持图片（多模态）：开了才能在对话里附图片。缺省按模型名猜（multimodalDefault）；读取时总有值
   multimodal?: boolean
+  // 思考深度：低/中/高（缺省 = 不设，沿用厂商默认）。具体发什么值见 thinkingWireOf
+  thinking?: ThinkingLevel
+}
+
+/**
+ * 思考深度：只暴露三档，各厂商内部词汇不同（DeepSeek 只有 high/max、OpenAI 只到 high），
+ * 由下面的表把三档翻译成各家认识的值。pi-ai 的完整档位是
+ * off/minimal/low/medium/high/xhigh/max，这里不全部暴露 —— 多数用户分不清 minimal 和 low。
+ */
+export type ThinkingLevel = 'low' | 'medium' | 'high'
+export const THINKING_LEVELS: ThinkingLevel[] = ['low', 'medium', 'high']
+
+/**
+ * 各厂商三档对应的实际派发值（pi-ai 的 reasoningEffort 词汇）。
+ * undefined = 该厂商不支持思考深度（界面上置灰，不发参数）。
+ */
+export const THINKING_WIRE: Record<string, Record<ThinkingLevel, string> | undefined> = {
+  // DeepSeek 只有 high / max；低档 = 不思考（不发参数由调用方处理，这里给 'off'）
+  deepseek: { low: 'off', medium: 'high', high: 'max' },
+  openai: { low: 'low', medium: 'medium', high: 'high' },
+  xai: { low: 'low', medium: 'medium', high: 'high' },
+  glm: { low: 'low', medium: 'medium', high: 'high' },
+  minimax: { low: 'low', medium: 'medium', high: 'high' },
+  volc: { low: 'low', medium: 'medium', high: 'high' },
+  hunyuan: { low: 'low', medium: 'medium', high: 'high' },
+  qianfan: { low: 'low', medium: 'medium', high: 'high' },
+  spark: { low: 'low', medium: 'medium', high: 'high' },
+  qwen: { low: 'low', medium: 'medium', high: 'high' },
+  moonshot: { low: 'low', medium: 'medium', high: 'high' },
+  gemini: { low: 'low', medium: 'medium', high: 'high' },
+  mistral: { low: 'low', medium: 'medium', high: 'high' },
+  // 聚合网关：模型名带厂商前缀，能力跟着上游走，这里按通用三档放行
+  openrouter: { low: 'low', medium: 'medium', high: 'high' },
+  siliconflow: { low: 'low', medium: 'medium', high: 'high' },
+  // Anthropic 走的是 thinking token 预算而不是 effort 名字，暂不支持（置灰）
+  // ollama / openai-compatible：本地与自定义端点，不认识 reasoningEffort，置灰
+}
+
+/** 该厂商是否支持思考深度 */
+export const thinkingSupported = (provider: string): boolean => !!THINKING_WIRE[provider]
+
+/** 三档 → 实际派发值；不支持返回 undefined */
+export function thinkingWireOf(provider: string, level?: ThinkingLevel): string | undefined {
+  if (!level) return undefined
+  return THINKING_WIRE[provider]?.[level]
+}
+
+/** 档位往下标；没设时按「中」显示（与各厂商默认一致） */
+export const thinkingIndexOf = (level?: ThinkingLevel): number => {
+  const i = level ? THINKING_LEVELS.indexOf(level) : -1
+  return i < 0 ? 1 : i
 }
 export const MODEL_PROFILE_ID_RE = /^[a-z0-9_]{1,40}$/
 // 测试连接的结果：ok=false 时 error 是给人看的原因；warning = 连上了但有需要注意的地方（如模型列表里没有该模型）

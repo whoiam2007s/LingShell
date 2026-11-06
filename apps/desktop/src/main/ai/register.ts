@@ -357,6 +357,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     stored: (id) => { const p = settings.get().modelProfiles?.find((x) => x.id === id); return p && { provider: p.provider, apiKey: settings.getProfileKey(id) } },
     setSessionModel: (sid, pid) => controller.setSessionModel(sid, pid),
     sessionModel: (sid) => controller.sessionModel(sid),
+    setSessionThinking: (sid, level) => controller.setSessionThinking(sid, level),
+    sessionThinking: (sid) => controller.sessionThinking(sid),
   })
   // 设置 → Skills（见 skillsIpc.ts）：<数据目录>/skills，接到 dsh 的 ctx.skills
   registerSkills({ handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'skills'), attach: (lib) => controller.attachSkills(lib), openPath: (p) => shell.openPath(p), log: (lv, m, d) => log(lv, 'main', 'skills', m, d),

@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
 import { rm } from 'node:fs/promises'
-import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol } from '@lingshell/shared'
+import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol , ThinkingLevel } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -141,6 +141,7 @@ interface Live {
   model: string
   profileId?: string      // 会话选的模型配置（缺省 = 默认配置）；回合进行中改了要等下一回合才生效
   applied?: string        // 当前生效的配置 id（= resolveSettings 实际用的那套）
+  thinking?: ThinkingLevel   // 会话级思考深度覆盖（缺省 = 跟随模型配置）
   route: { provider: string; model: string }   // 当前生效的 dsh 路由，agent/request 每步按它改写
   handle: { agent: any; dispose(): Promise<void> }
   relay: (ev: DshEvent) => void
@@ -857,7 +858,9 @@ export class DshController {
 
   // 把会话所选配置落到引擎并作为本会话之后请求的路由
   private async applyProfile(live: Live): Promise<void> {
-    const s = this.cfg.resolveSettings(live.profileId)
+    const base = this.cfg.resolveSettings(live.profileId)
+    // 会话级思考深度：会话里选过就用它，否则用模型配置里的默认值
+    const s = live.thinking !== undefined ? { ...base, thinking: live.thinking } : base
     live.window = await this.applySettings(s)
     live.route = { provider: routeOf(s.provider, s.profileId, s.protocol), model: s.model }
     live.provider = s.provider
@@ -882,6 +885,26 @@ export class DshController {
     if (live.turning) return { pending: true }
     await this.applyProfile(live)
     return { pending: false }
+  }
+
+  /**
+   * 会话级思考深度：只影响本会话（不动模型配置）。空闲时立即生效，
+   * 回合进行中只记下、下一回合生效（pending=true）。level 空 = 跟随模型配置。
+   */
+  async setSessionThinking(sessionId: string, level?: ThinkingLevel): Promise<{ pending: boolean }> {
+    const live = this.sessions.get(sessionId)
+    if (!live) throw new Error('session_not_found')
+    live.thinking = level
+    if (live.turning) return { pending: true }
+    await this.applyProfile(live)
+    return { pending: false }
+  }
+
+  /** 当前会话生效的思考深度（未覆盖时 undefined = 跟随配置） */
+  sessionThinking(sessionId: string): { level?: ThinkingLevel; pending: boolean } {
+    const live = this.sessions.get(sessionId)
+    if (!live) return { level: undefined, pending: false }
+    return { level: live.thinking, pending: live.turning }
   }
 
   /** 会话所选配置 + 是否还没生效（回合进行中切换的） */

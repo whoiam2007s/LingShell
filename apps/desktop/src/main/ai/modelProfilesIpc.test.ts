@@ -114,6 +114,7 @@ describe('registerModelProfiles', () => {
       handle: (ch, fn) => h.set(ch, fn),
       stored: (id) => (id === 'a' ? { provider: 'qwen', apiKey: 'sk-stored' } : undefined),
       setSessionModel: async () => ({ pending: false }), sessionModel: () => ({ pending: false }),
+      setSessionThinking: async () => ({ pending: false }), sessionThinking: () => ({ pending: false }),
     })
     const b = await base
     await h.get('modelProfiles:test')!(null, { id: 'a', provider: 'qwen', model: 'm1', baseUrl: b })

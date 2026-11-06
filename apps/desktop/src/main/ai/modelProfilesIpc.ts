@@ -9,6 +9,9 @@ export interface ModelProfilesIpcDeps {
   stored(id: string): { provider: string; apiKey: string } | undefined
   setSessionModel(sessionId: string, profileId?: string): Promise<{ pending: boolean }>
   sessionModel(sessionId: string): { profileId?: string; pending: boolean }
+  // 会话级思考深度（低/中/高）；空 = 跟随模型配置
+  setSessionThinking(sessionId: string, level?: 'low' | 'medium' | 'high'): Promise<{ pending: boolean }>
+  sessionThinking(sessionId: string): { level?: 'low' | 'medium' | 'high'; pending: boolean }
   fetch?: typeof fetch
 }
 
@@ -95,4 +98,10 @@ export function registerModelProfiles(d: ModelProfilesIpcDeps): void {
   })
   d.handle('agent:setModel', (_e, sessionId, profileId) => d.setSessionModel(str(sessionId, tk('arg|会话')), typeof profileId === 'string' && profileId ? profileId : undefined))
   d.handle('agent:getModel', (_e, sessionId) => d.sessionModel(str(sessionId, tk('arg|会话'))))
+  // 会话级思考深度：只影响本会话（低/中/高），空 = 跟随模型配置
+  d.handle('agent:setSessionThinking', (_e, sessionId, level) => d.setSessionThinking(
+    str(sessionId, tk('arg|会话')),
+    level === 'low' || level === 'medium' || level === 'high' ? level : undefined,
+  ))
+  d.handle('agent:sessionThinking', (_e, sessionId) => d.sessionThinking(str(sessionId, tk('arg|会话'))))
 }

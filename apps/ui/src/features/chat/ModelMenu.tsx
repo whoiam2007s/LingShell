@@ -1,9 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, Cpu, Settings2 } from 'lucide-react'
-import { providerMeta, tr, type ModelProfile } from '@lingshell/shared'
+import { providerMeta, thinkingSupported, thinkingWireOf, THINKING_LEVELS, tr, type ModelProfile, type ThinkingLevel } from '@lingshell/shared'
 
 // 会话所用模型 + 切换回调（会话头部模型标签用）
 export interface ModelMenuProps { profiles: ModelProfile[]; current?: ModelProfile; defaultId?: string; onPick: (id: string) => void; onManage?: () => void }
+
+/** 会话级思考深度：只影响当前会话，不动模型配置里的默认值 */
+export function ThinkingRow({ provider, level, onPick }: { provider: string; level?: ThinkingLevel; onPick: (lv: ThinkingLevel) => void }) {
+  const ok = thinkingSupported(provider)
+  return (
+    <div className="border-t border-[var(--color-border-subtle)] px-2.5 py-2" data-thinking-row>
+      <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--color-text-muted)]">
+        <span>{tr('思考深度')}</span>
+        <span>{ok ? tr('实际发送：{wire}', { wire: thinkingWireOf(provider, level ?? 'medium') ?? '' }) : tr('该厂商不支持')}</span>
+      </div>
+      <div className="flex items-center gap-1">
+        {THINKING_LEVELS.map((lv) => (
+          <button key={lv} data-thinking={lv} disabled={!ok} onClick={() => onPick(lv)}
+            title={ok ? tr('本会话改为「{lv}」档，只影响当前会话', { lv: lv === 'low' ? tr('低') : lv === 'medium' ? tr('中') : tr('高') }) : tr('该厂商不支持思考深度')}
+            className={`h-6 flex-1 rounded border text-[11.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${(level ?? 'medium') === lv ? 'border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-accent)]' : 'border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}>
+            {lv === 'low' ? tr('低') : lv === 'medium' ? tr('中') : tr('高')}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // 会话级切换模型的列表：会话头部的模型标签点开即是
 export function ModelList({ profiles, currentId, defaultId, onPick, onManage }: {
@@ -43,8 +65,9 @@ export function ModelList({ profiles, currentId, defaultId, onPick, onManage }: 
 }
 
 // 会话头部的当前模型短标签：点开就是同一份列表。pending = 回合进行中切的，下一回合生效
-export function ModelChip({ profile, pending, profiles, defaultId, onPick, onManage }: {
+export function ModelChip({ profile, pending, profiles, defaultId, onPick, onManage, thinking, onPickThinking }: {
   profile?: ModelProfile; pending: boolean; profiles: ModelProfile[]; defaultId?: string
+  thinking?: ThinkingLevel; onPickThinking?: (lv: ThinkingLevel) => void
   onPick: (id: string) => void; onManage?: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -67,6 +90,7 @@ export function ModelChip({ profile, pending, profiles, defaultId, onPick, onMan
         <div className="absolute right-0 top-7 z-50 w-[260px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl">
           <ModelList profiles={profiles} currentId={profile.id} defaultId={defaultId}
             onPick={(id) => { setOpen(false); onPick(id) }} onManage={onManage && (() => { setOpen(false); onManage() })} />
+          {onPickThinking && <ThinkingRow provider={profile.provider} level={thinking} onPick={onPickThinking} />}
         </div>
       )}
     </span>

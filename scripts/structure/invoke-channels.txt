@@ -11,7 +11,9 @@ agent:renameSession
 agent:resetContext
 agent:search
 agent:sendTurn
+agent:sessionThinking
 agent:setModel
+agent:setSessionThinking
 agent:setWorkDir
 agent:steer
 agent:suggestCommand
@@ -343,6 +345,7 @@ sshAuth:answer
 sshUrl:takePending
 system:appInfo
 system:checkUpdate
+system:downloadUpdate
 system:exportDiagnostics
 system:getUpdateStatus
 system:installUpdate

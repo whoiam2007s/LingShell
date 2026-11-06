@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Cpu, Pencil, Trash2, Plus, Copy, Star, Loader2, CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react'
-import { PROVIDERS, providerMeta, contextWindowOf, protocolOf, endpointBaseOf, multimodalDefault, tr, dateLocale, type ModelProfile, type ModelProtocol, type ModelTestResult } from '@lingshell/shared'
+import { PROVIDERS, providerMeta, contextWindowOf, protocolOf, endpointBaseOf, multimodalDefault, thinkingSupported, thinkingWireOf, THINKING_LEVELS, tr, dateLocale, type ModelProfile, type ModelProtocol, type ModelTestResult } from '@lingshell/shared'
 import { NumberInput } from '../../../components/ui/NumberInput.js'
 import { Switch } from '../../../components/ui/Switch.js'
 import { client } from '../../../client/index.js'
@@ -190,6 +190,21 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
           <div className="w-60">{meta.freeModel
             ? <Combobox value={form.model} onChange={(v) => set({ model: v, multimodal: multimodalDefault(form.provider, v) })} options={meta.models.map((m) => m.id)} placeholder={form.provider === 'ollama' ? tr('如 qwen3:8b') : tr('模型 id')} />
             : <Sel value={form.model} onChange={(v) => set({ model: v, multimodal: multimodalDefault(form.provider, v) }, DELAY_QUICK)}>{meta.models.map((m) => <option key={m.id} value={m.id}>{tr(m.label)}</option>)}</Sel>}</div>
+        </Row>
+        <Row label={tr('思考深度')}
+          hint={thinkingSupported(form.provider)
+            ? tr('实际发送：{wire}', { wire: thinkingWireOf(form.provider, form.thinking ?? 'medium') ?? '' })
+            : tr('该厂商不支持')}
+          tip={tr('控制模型思考多少：低 = 更快更省，高 = 想得更久但更慢更贵。不设则沿用厂商默认（DeepSeek 目前默认就等于「中」）。')}>
+          <div className="flex items-center gap-1">
+            {THINKING_LEVELS.map((lv) => (
+              <button key={lv} data-thinking={lv} disabled={!thinkingSupported(form.provider)}
+                onClick={() => set({ thinking: lv }, DELAY_QUICK)}
+                className={`h-7 rounded border px-2.5 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${(form.thinking ?? 'medium') === lv ? 'border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-accent)]' : 'border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}>
+                {lv === 'low' ? tr('低') : lv === 'medium' ? tr('中') : tr('高')}
+              </button>
+            ))}
+          </div>
         </Row>
         <Row label={tr('支持图片')} hint={tr('多模态：对话里可以附图片')}
           tip={tr('开了才能在对话里附图片（输入框「+」→「图片…」、Ctrl+V 粘贴截图、拖入图片），图片作为多模态内容随消息发给模型。按模型名给默认值：已知支持视觉的（如 gpt-4o、qwen-vl、glm-4v、llava、DeepSeek V4.1 Flash）默认开，其它默认关；换模型会重新按默认值设置。开了但模型其实不支持图片时，带图片的请求会被接口报错。')}>

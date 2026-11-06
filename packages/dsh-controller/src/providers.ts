@@ -21,6 +21,9 @@ export const keyEnvOf = (profileId?: string): string => `LINGSHELL_MP_${pid(prof
 
 export const usesPiAi = (provider: string, protocol?: ModelProtocol): boolean => protocolOf(provider, protocol) === 'openai'
 
+// 思考深度：三档 → 各家实际值（表在 shared，界面也要用同一份，避免两处对不上）
+import { THINKING_WIRE, thinkingWireOf, type ThinkingLevel } from '@lingshell/shared'
+
 // 无需 key 的本地端点（ollama）也得给个占位：pi-ai 的 OpenAI 兼容实现没有 key 会直接拒绝发请求
 export const NO_KEY_PLACEHOLDER = 'no-key'
 
@@ -31,10 +34,17 @@ const COMPAT = { supportsStore: false, supportsDeveloperRole: false, maxTokensFi
 // 回放助手消息带 reasoning_content（思考模式下多轮工具调用不带会被拒）
 const DEEPSEEK_COMPAT = { ...COMPAT, thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true } as const
 // 声明成推理模型，上面两项才生效；路由默认推理强度 high（与官方 Messages 适配器的默认一致：开思考）
-const DEEPSEEK_EFFORTS = { high: 'high', max: 'max' } as const
+const DEEPSEEK_EFFORTS = { off: null, high: 'high', max: 'max' } as const
+// 其它支持思考深度的厂商：pi-ai 的档位名与线上值同名
+const COMMON_EFFORTS = { low: 'low', medium: 'medium', high: 'high' } as const
+/** 该厂商声明给 pi-ai 的档位；undefined = 不支持（界面上会置灰） */
+const effortsOf = (provider: string) => {
+  if (provider === 'deepseek') return DEEPSEEK_EFFORTS
+  return THINKING_WIRE[provider] ? COMMON_EFFORTS : undefined
+}
 
 // input：模型接受的输入模态。pi-ai 对手工声明的模型默认只认文本，带图片的请求会被拒；「支持图片」开了才声明 image
-export interface PiModel { id: string; name: string; contextWindow: number; maxTokens: number; input: ('text' | 'image')[]; reasoningEfforts?: typeof DEEPSEEK_EFFORTS }
+export interface PiModel { id: string; name: string; contextWindow: number; maxTokens: number; input: ('text' | 'image')[]; reasoningEfforts?: Record<string, string | null> }
 
 // 单次输出上限：pi-ai 默认 32768。dsh 0.2 的压缩把它从窗口里预留出来，小窗口模型（如 32K 的本地模型）
 // 预留整个默认值就没有消息预算、压缩直接报配置错误，所以封顶到窗口的 1/4
@@ -45,11 +55,11 @@ export interface PiRoute {
   api: 'openai-completions'
   baseURL: string
   compat: typeof COMPAT | typeof DEEPSEEK_COMPAT
-  reasoning?: 'high'
+  reasoning?: string   // 实际派发值（high/max/low/…），见 thinkingWireOf
   models: PiModel[]
 }
 
-export interface ProviderSettings { profileId?: string; provider: string; model: string; baseUrl: string; contextWindow?: number; protocol?: ModelProtocol; multimodal?: boolean }
+export interface ProviderSettings { profileId?: string; provider: string; model: string; baseUrl: string; contextWindow?: number; protocol?: ModelProtocol; multimodal?: boolean; thinking?: ThinkingLevel }
 
 const inputOf = (multimodal?: boolean): ('text' | 'image')[] => (multimodal ? ['text', 'image'] : ['text'])
 
@@ -74,7 +84,13 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
   const meta = providerMeta(s.provider)
   const ds = s.provider === 'deepseek'
   const contextWindow = contextWindowOf(s.provider, s.model, s.contextWindow)
-  const model: PiModel = { id: s.model, name: s.model, contextWindow, maxTokens: maxTokensOf(contextWindow), input: inputOf(s.multimodal), ...(ds ? { reasoningEfforts: DEEPSEEK_EFFORTS } : {}) }
+  const efforts = effortsOf(s.provider)
+  const model: PiModel = { id: s.model, name: s.model, contextWindow, maxTokens: maxTokensOf(contextWindow), input: inputOf(s.multimodal), ...(efforts ? { reasoningEfforts: efforts } : {}) }
+  // 用户选的档位 → 实际派发值（'off' = 支持但什么都不发，pi-ai 用它表示"不思考"）。
+  // 没选时保持原有行为：DeepSeek 一直默认按 high 发（= 界面上的「中」）；
+  // 其它厂商以前不发这个参数，没选就不发 —— 免得给不认识它的端点添麻烦。
+  const level = s.thinking ?? (s.provider === 'deepseek' ? 'medium' : undefined)
+  const wire = thinkingWireOf(s.provider, level)
   const others = (routes[route]?.models ?? []).filter((m) => m.id !== s.model)
   return {
     ...routes,
@@ -85,7 +101,7 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
       // DeepSeek 官方地址在 openai 协议下修回 https://api.deepseek.com（填了 /anthropic 也修回）
       baseURL: endpointBaseOf(s),
       compat: ds ? DEEPSEEK_COMPAT : COMPAT,
-      ...(ds ? { reasoning: 'high' as const } : {}),
+      ...(wire && wire !== 'off' ? { reasoning: wire } : {}),
       models: [...others, model],
     },
   }

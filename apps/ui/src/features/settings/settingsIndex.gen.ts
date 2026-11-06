@@ -27,6 +27,12 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "model",
   "kind": "row",
+  "label": "思考深度",
+  "tip": "控制模型思考多少：低 = 更快更省，高 = 想得更久但更慢更贵。不设则沿用厂商默认（DeepSeek 目前默认就等于「中」）。"
+ },
+ {
+  "tab": "model",
+  "kind": "row",
   "label": "支持图片",
   "hint": "多模态：对话里可以附图片",
   "tip": "开了才能在对话里附图片（输入框「+」→「图片…」、Ctrl+V 粘贴截图、拖入图片），图片作为多模态内容随消息发给模型。按模型名给默认值：已知支持视觉的（如 gpt-4o、qwen-vl、glm-4v、llava、DeepSeek V4.1 Flash）默认开，其它默认关；换模型会重新按默认值设置。开了但模型其实不支持图片时，带图片的请求会被接口报错。"

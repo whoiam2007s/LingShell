@@ -57,6 +57,8 @@ export function createAiIpc(): AiApi {
       test: (p) => window.electronAPI.invoke('modelProfiles:test', p) as ReturnType<AppClient['modelProfiles']['test']>,
       sessionModel: (sid) => window.electronAPI.invoke('agent:getModel', sid) as ReturnType<AppClient['modelProfiles']['sessionModel']>,
       setSessionModel: (sid, pid) => window.electronAPI.invoke('agent:setModel', sid, pid) as ReturnType<AppClient['modelProfiles']['setSessionModel']>,
+      setSessionThinking: (sid, level) => window.electronAPI.invoke('agent:setSessionThinking', sid, level) as ReturnType<AppClient['modelProfiles']['setSessionThinking']>,
+      sessionThinking: (sid) => window.electronAPI.invoke('agent:sessionThinking', sid) as ReturnType<AppClient['modelProfiles']['sessionThinking']>,
     },
     skills: {
       list: () => window.electronAPI.invoke('skills:list') as ReturnType<AppClient['skills']['list']>,

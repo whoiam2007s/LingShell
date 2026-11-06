@@ -1,5 +1,5 @@
 // AppClient 的AI：会话与对话、授权、执行记录、用量、MCP、模板、Skills、附件、知识库、安全规则、改动汇总与回滚。主进程注册见 apps/desktop/src/main/ai/register.ts，渲染层实现见 apps/ui/src/client/transports/ipc/ai.ts
-import type { SessionInfo, SessionMeta, ApprovalAnswer, AuthLevel, TrustLevel, AuditEntry, McpServerSummary, McpServerInput, McpServerStatus, McpToolInfo } from '../types.js'
+import type { SessionInfo, SessionMeta, ApprovalAnswer, AuthLevel, TrustLevel, AuditEntry, McpServerSummary, McpServerInput, McpServerStatus, McpToolInfo, ThinkingLevel } from '../types.js'
 import type { PromptTemplate, TemplateInput } from '../../ops/index.js'
 import type { NlCommandRequest } from '../../terminal/index.js'
 import type { UsageRange, UsageSummary, UsageTotals, UsageCurrency, UsagePrices } from '../../ai/index.js'
@@ -79,6 +79,11 @@ export interface AiApi {
     test(profile: import('../types.js').ModelProfile): Promise<import('../types.js').ModelTestResult>
     sessionModel(sessionId: string): Promise<{ profileId?: string; pending: boolean }>
     setSessionModel(sessionId: string, profileId?: string): Promise<{ pending: boolean }>
+    // 会话级思考深度：只影响本会话（不动模型配置里的默认值）；回合进行中改会在下一回合生效。
+    // level 传 undefined = 跟随模型配置
+    setSessionThinking(sessionId: string, level?: ThinkingLevel): Promise<{ pending: boolean }>
+    // 当前会话实际生效的思考深度（缺省 = 跟随配置，返回 undefined）
+    sessionThinking(sessionId: string): Promise<{ level?: ThinkingLevel; pending: boolean }>
   }
   // Skills（设置 → Skills，见 desktop/main/ai/skillsIpc.ts）：<数据目录>/skills/<name>/SKILL.md。改动后立即生效（无需重启）。
   // 导入两步走：pickImport / inspect 暂存校验并返回预览（取消选择返回 null）→ 用户确认 commitImport（重名时 overwrite 或 rename）
