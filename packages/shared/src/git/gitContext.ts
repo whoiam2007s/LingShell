@@ -3,6 +3,7 @@
 // 纯函数，便于单测；内容给模型读，所以是纯文本（不进 i18n 词表，同 buildCommitPrompt）。
 import { GIT_PROMPT_DIFF_MAX, groupGitFiles, gitCodeLabel } from './gitStatus.js'
 import type { GitFile } from './gitStatus.js'
+import { redactSecrets } from '../ai/redact.js'
 
 export interface GitContextInput {
   root: string
@@ -57,5 +58,7 @@ export function gitContextText(o: GitContextInput): string {
   } else if (o.files.length) {
     lines.push('', '（没有可显示的文本 diff：可能是二进制文件或改动都在未跟踪文件里）')
   }
-  return lines.join('\n')
+  // 最后过一道正则脱敏：diff 里常有 .env / 配置改动、curl 命令、私钥块，发模型前把能认出来的机密换成占位符
+  // （已知机密的精确替换在发送链路上另有 maskSecrets，这里补的是按样式识别那层）
+  return redactSecrets(lines.join('\n'))
 }

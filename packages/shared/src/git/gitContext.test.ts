@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { gitContextText } from './gitContext.js'
 import { GIT_PROMPT_DIFF_MAX } from './gitStatus.js'
+import { REDACTED } from '../ai/redact.js'
 import type { GitFile } from './gitStatus.js'
 
 const f = (path: string, x: string, y: string, extra: Partial<GitFile> = {}): GitFile =>
@@ -45,5 +46,26 @@ describe('gitContextText：发到对话的仓库上下文', () => {
     const files = Array.from({ length: 35 }, (_, i) => f(`f${i}.ts`, 'M', '.'))
     const t = gitContextText({ root: '/r', branch: 'main', files })
     expect(t).toContain('… 还有 5 个')
+  })
+
+  it('diff 里的机密按样式脱敏（.env 值 / Bearer / 私钥块 / sk- key），正常代码不受影响', () => {
+    const diff = [
+      '+DB_PASSWORD=hunter2',
+      '+GITHUB_TOKEN="ghp_abcdefghijklmnopqrstuvwxyz0123"',
+      '+Authorization: Bearer abcdef0123456789',
+      '+const API_KEY = "sk-abcdefghijklmnopqrstuvwx"',
+      '+-----BEGIN RSA PRIVATE KEY-----',
+      '+MIIEowIBAAKCAQEA1234',
+      '+-----END RSA PRIVATE KEY-----',
+      '+const retries = 3   // 普通代码原样',
+    ].join('\n')
+    const t = gitContextText({ root: '/r', branch: 'main', files: [f('app.env', 'M', '.')], diff })
+    expect(t).toContain(REDACTED)
+    expect(t).not.toContain('hunter2')
+    expect(t).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123')
+    expect(t).not.toContain('abcdef0123456789')
+    expect(t).not.toContain('sk-abcdefghijklmnopqrstuvwx')
+    expect(t).not.toContain('MIIEowIBAAKCAQEA1234')
+    expect(t).toContain('const retries = 3   // 普通代码原样')
   })
 })
