@@ -255,6 +255,20 @@ export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, o
 
       case 'step/start': step = d.step; break
 
+      // 请求级自动重试（网络 / 服务端 / 限流 / 超时）：dsh 在退避等待前先落这条事件。
+      // 翻成我方事件，界面才知道「是在等重试，不是卡死」。
+      case 'llm/retry': {
+        const f = d.failure ?? {}
+        emit({
+          type: 'agent:requestRetrying', sessionId, turnId: turnIdOf(d.turn ?? turn),
+          attempt: Number(d.retry) || 1,
+          max: Number(d.maxRetries ?? 0),
+          delayMs: Math.max(0, Number(d.delayMs) || 0),
+          error: friendlyError(String(f.message ?? f.code ?? d.policyKey ?? 'request failed')),
+        })
+        break
+      }
+
       case 'user/message': {
         // 跳过系统注入的 runtime-context 快照（source.kind==='plugin'），那不是用户说的话
         if (d.source?.kind !== 'user') break

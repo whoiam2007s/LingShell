@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { routeOf, keyEnvOf, withRoute, friendlyError, maxTokensOf, deepseekBaseOf, usesPiAi } from './providers.js'
+import { routeOf, keyEnvOf, withRoute, friendlyError, maxTokensOf, deepseekBaseOf, usesPiAi, RETRY_POLICY } from './providers.js'
 
 describe('模型配置 → dsh 路由 / key 变量', () => {
   it('每套配置一条路由、一个 key 变量；deepseek 与 OpenAI 兼容的前缀不同；缺省配置 id = default', () => {
@@ -88,6 +88,19 @@ describe('withRoute', () => {
     const back = withRoute(r, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai' })
     expect(Object.keys(back).sort()).toEqual(['lingshell-p-gpt', 'lingshell-r-gpt'])
     expect(back['lingshell-p-gpt'].api).toBe('openai-completions')
+  })
+  it('重试策略显式带上：5 次、指数退避 0.5s 起 / 10s 封顶、网络与服务类失败码', () => {
+    const r = withRoute({}, { profileId: 'q', provider: 'qwen', model: 'qwen-max', baseUrl: '' })['lingshell-p-q']
+    expect(r.retryPolicy).toMatchObject({
+      mode: 'normal', maxRetries: 5,
+      backoff: { initialDelayMs: 500, maxDelayMs: 10_000, jitterRatio: 0.1 },
+    })
+    expect(r.retryPolicy.retryableCodes).toEqual(['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT'])
+    // 与总表常量同源（改曲线只需改 RETRY_POLICY）
+    expect(r.retryPolicy.maxRetries).toBe(RETRY_POLICY.maxRetries)
+    // Responses 协议同样带策略
+    const g = withRoute({}, { profileId: 'g', provider: 'openai', model: 'gpt-5', baseUrl: '', protocol: 'openai-responses' })['lingshell-r-g']
+    expect(g.retryPolicy.maxRetries).toBe(5)
   })
   it('换模型保留旧模型；同模型改窗口就地更新；不改入参', () => {
     const a = withRoute({}, { profileId: 'o', provider: 'ollama', model: 'qwen3:8b', baseUrl: '' })

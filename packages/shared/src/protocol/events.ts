@@ -56,6 +56,9 @@ export type TurnFailedEvent = { type: 'agent:turnFailed'; sessionId: string; tur
 // 模型输出的工具参数不是合法 JSON（流里断了 / 拼坏了）：本轮虽然失败，但引擎会自动补一轮让它重出，
 // 界面据此把红条换成「正在自动重试（n/max）」，别让用户以为要手动点重新生成
 export type TurnRetryingEvent = { type: 'agent:turnRetrying'; sessionId: string; turnId: string; attempt: number; max: number; error: string }
+// 请求级自动重试（网络 / 服务端 / 限流 / 超时）：dsh 的 llm/retry 事件翻成人话，
+// 界面显示「网络/服务暂不可用，N 秒后自动重试（n/max）」，别让人以为回合卡死了
+export type RequestRetryingEvent = { type: 'agent:requestRetrying'; sessionId: string; turnId: string; attempt: number; max: number; delayMs: number; error: string }
 
 // item 生命周期：started（出现）→ delta（流式追加文本）→ updated/completed/failed
 export type ItemStartedEvent = {
@@ -114,7 +117,7 @@ export type HistoryUnrecoverableEvent = {
 export type TurnTimingEvent = { type: 'agent:turnTiming'; sessionId: string; turnId: string; startedAt?: number; firstAt?: number; endedAt?: number }
 
 export type AgentEvent =
-  | TurnStartedEvent | TurnCompletedEvent | TurnFailedEvent | TurnRetryingEvent
+  | TurnStartedEvent | TurnCompletedEvent | TurnFailedEvent | TurnRetryingEvent | RequestRetryingEvent
   | ItemStartedEvent | ItemDeltaEvent | ItemUpdatedEvent
   | ContextCompactingEvent | ContextCompactedEvent | ResetSuggestedEvent | ContextUsageEvent
   | HistoryUnrecoverableEvent

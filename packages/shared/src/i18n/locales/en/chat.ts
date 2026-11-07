@@ -176,6 +176,8 @@ export const chat: Record<string, string> = {
   '数据库·删除 key': 'Database · Delete key',
   '预演拦截（未执行）': 'Blocked by dry run (not run)',
   '🔄 模型返回的工具参数格式不对，正在自动重试（{n}/{max}）…': '🔄 The model returned malformed tool arguments; retrying automatically ({n}/{max})…',
+  '📶 网络或服务暂不可用，{s} 秒后自动重试（{n}/{max}）：{err}': '📶 Network or service unavailable; retrying automatically in {s}s ({n}/{max}): {err}',
+  '📶 网络或服务暂不可用，{s} 秒后自动重试（第 {n} 次）：{err}': '📶 Network or service unavailable; retrying automatically in {s}s (attempt {n}): {err}',
   'AI 复核拦截：{reason}': 'Blocked by AI review: {reason}',
   '显示全部会话': 'Show all sessions',
   '把本会话执行成功的命令保存为可重复执行的运维手册': 'Save the commands that succeeded in this session as a reusable runbook',

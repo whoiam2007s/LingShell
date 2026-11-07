@@ -51,6 +51,16 @@ const effortsOf = (provider: string) => {
   return THINKING_WIRE[provider] ? COMMON_EFFORTS : undefined
 }
 
+// 请求级重试策略（网络 / 服务端 / 限流 / 超时）：显式写下来，不依赖 provider 的隐含默认 ——
+// 想调曲线（例如改成 2s 起步）只改这一处。5 次指数退避 + 10% 抖动，封顶 10 秒：
+// 约 0.5s → 1s → 2s → 4s → 8s。可重试码沿用 dsh 的默认集合（传输 / 超时 / 5xx / 429 / 空响应）。
+export const RETRY_POLICY = {
+  mode: 'normal',
+  maxRetries: 5,
+  backoff: { initialDelayMs: 500, maxDelayMs: 10_000, jitterRatio: 0.1 },
+} as const
+const RETRYABLE_CODES = ['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT']
+
 // input：模型接受的输入模态。pi-ai 对手工声明的模型默认只认文本，带图片的请求会被拒；「支持图片」开了才声明 image
 export interface PiModel { id: string; name: string; contextWindow: number; maxTokens: number; input: ('text' | 'image')[]; reasoningEfforts?: Record<string, string | null> }
 
@@ -63,6 +73,7 @@ export interface PiRoute {
   api: 'openai-completions' | 'openai-responses'
   baseURL: string
   compat: typeof COMPAT | typeof DEEPSEEK_COMPAT | typeof RESPONSES_COMPAT
+  retryPolicy: typeof RETRY_POLICY & { retryableCodes: string[] }   // 网络 / 服务 / 限流 / 超时：5 次退避重试
   reasoning?: string   // 实际派发值（high/max/low/…），见 thinkingWireOf
   models: PiModel[]
 }
@@ -112,6 +123,7 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
       // DeepSeek 官方地址在 openai 协议下修回 https://api.deepseek.com（填了 /anthropic 也修回）
       baseURL: endpointBaseOf(s),
       compat: responses ? RESPONSES_COMPAT : ds ? DEEPSEEK_COMPAT : COMPAT,
+      retryPolicy: { ...RETRY_POLICY, backoff: { ...RETRY_POLICY.backoff }, retryableCodes: [...RETRYABLE_CODES] },
       ...(wire && wire !== 'off' ? { reasoning: wire } : {}),
       models: [...others, model],
     },

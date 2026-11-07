@@ -205,6 +205,19 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
           })
           break
         }
+        case 'agent:requestRetrying': {
+          // 网络 / 服务端 / 限流 / 超时：dsh 会在退避后自动重试 5 次。给一条明确提示，
+          // 否则这段时间界面看起来就是「卡住了」。回合仍是进行中，不要按失败处理。
+          if (!sid) break
+          const secs = Math.max(1, Math.round(e.delayMs / 1000))
+          upsert(sid, {
+            itemId: `retry_${e.turnId}`, kind: 'agent_message', status: 'completed',
+            text: e.max > 0
+              ? tr('📶 网络或服务暂不可用，{s} 秒后自动重试（{n}/{max}）：{err}', { s: secs, n: e.attempt, max: e.max, err: e.error })
+              : tr('📶 网络或服务暂不可用，{s} 秒后自动重试（第 {n} 次）：{err}', { s: secs, n: e.attempt, err: e.error }),
+          })
+          break
+        }
         case 'agent:itemStarted':
           // itemStarted 无 text 字段。user_message 跳过（其文本在 itemUpdated 才来）；
           // 其余 kind 建占位项，text 由后续 delta/updated 填充。

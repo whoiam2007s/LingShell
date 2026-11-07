@@ -45,7 +45,7 @@ import { unifiedDiff } from './diff.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
 import { compactionConfig, effectiveLimit, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
-import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
+import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, RETRY_POLICY, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
 import { mcpDecision, mcpArgsView, stripExplain, MCP_GUIDANCE, type McpManager, type McpToolRef } from './mcp.js'
 import { withRedaction, placeholderError, REDACT_GUIDANCE } from './redaction.js'
 import { secretError } from './secretVault.js'
@@ -370,7 +370,8 @@ export class DshController {
     const options = () => {
       const key = JSON.stringify(holder)
       if (cache?.key !== key) {
-        const opts = deepseek.resolveAdapterOptions({ baseURL: holder.baseURL } as any, undefined as any) as any
+        // retryPolicy：与 pi-ai 路由同一份（网络 / 服务 / 限流 / 超时 5 次退避重试，见 providers.RETRY_POLICY）
+        const opts = deepseek.resolveAdapterOptions({ baseURL: holder.baseURL, retryPolicy: { ...RETRY_POLICY, backoff: { ...RETRY_POLICY.backoff } } } as any, undefined as any) as any
         cache = { key, opts: { ...opts, models: deepseekModels(opts.models, holder.model, holder.multimodal) } }
       }
       return cache.opts
