@@ -28,7 +28,7 @@ export function registerFilePreview(d: FilePreviewDeps): void {
     const fa = await d.access(scope as FsScope)
     let buf: Buffer | undefined
     try { buf = await fa.read(path, max) } catch (e) {
-      if (tooBig(e)) throw new Error(how === 'open' ? tr('文件超过 {n}MB，请用「下载」保存到本地后再打开', { n: Math.round(max / 1024 / 1024) }) : tr('文件超过 {n}MB，不在应用内预览，请下载后查看', { n: Math.round(max / 1024 / 1024) }))
+      if (tooBig(e)) throw new Error(how === 'open' ? tr('文件超过 {n}MB，请用「下载」保存到本地后再打开', { n: Math.round(max / 1024 / 1024) }) : tr('文件超过 {n}MB，不在应用内预览，请下载后查看', { n: Math.round(max / 1024 / 1024) }), { cause: e })
       throw e
     }
     if (buf === undefined) throw new Error(tr('文件不存在：{path}', { path }))

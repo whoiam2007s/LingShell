@@ -16,6 +16,8 @@ export interface FilesApi {
     create(scope: FsScope, dir: string, name: string, kind: 'file' | 'dir'): Promise<string>   // 返回新路径；同名已存在报错
     rename(scope: FsScope, path: string, name: string): Promise<string>  // 同目录改名，目标已存在拒绝；远程记执行记录
     openLocal(path: string): Promise<void>                   // shell.openPath（仅本地）
+    // 在系统资源管理器里定位：文件 → 打开所在目录并选中它；目录 → 直接打开该目录（仅本地）
+    showInFolder(path: string): Promise<void>
     // 用户手动编辑文本文件：二进制/非 UTF-8/超 2MB 拒绝。base = 打开时的原文，磁盘内容已变则拒绝（需重新打开）
     readText(scope: FsScope, path: string): Promise<string>
     diffText(scope: FsScope, path: string, base: string, next: string): Promise<string>   // unified diff，无变化返回 ''

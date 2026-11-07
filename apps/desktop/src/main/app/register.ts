@@ -44,6 +44,7 @@ export function registerAppIpc(ctx: MainContext, deps: Deps) {
   const updater = initUpdater(win, (s) => send({ type: 'update:status', ...s }))
   ipcMain.handle('system:getUpdateStatus', () => ({ currentVersion: app.getVersion(), status: updater.status() }))
   ipcMain.handle('system:checkUpdate', () => updater.check())
+  ipcMain.handle('system:downloadUpdate', () => updater.download())
   ipcMain.handle('system:installUpdate', () => updater.install())
   // 切换界面语言后重启：带上原来的启动参数（--hidden 除外，用户正看着窗口）
   ipcMain.handle('system:relaunch', () => { app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--hidden') }); beginQuit(); app.quit() })

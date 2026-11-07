@@ -41,6 +41,10 @@ export default tseslint.config(
     rules: {
       // 下划线前缀的参数/变量允许未用（惯例：标记"故意不用"的参数，如接口要求但实现不需要的）
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // 抛错时保留原始错误：catch 后重抛要带 cause，否则排查只剩一句转述、看不到根因
+      'preserve-caught-error': 'error',
+      // 赋值了却再没读过（多半是重构后的残留）
+      'no-useless-assignment': 'error',
     }
   },
   {

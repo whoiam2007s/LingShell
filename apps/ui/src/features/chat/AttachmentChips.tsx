@@ -2,7 +2,7 @@
 // 统一一行高：图标或小缩略图（16px）+ 名称 + ×。图片 = 图片附件，或文件名是图片的文件（按路径发出的图片文件）。
 // 点击打开：图片 → 应用内预览（可缩放、多张左右切换）；文件 → 系统默认程序打开；目录 → 系统资源管理器。
 import { useEffect, useState } from 'react'
-import { FileText, Folder, Image as ImageIcon, Info, X, TerminalSquare, Server, MessageSquare, SquareTerminal } from 'lucide-react'
+import { FileText, Folder, Image as ImageIcon, Info, X, TerminalSquare, Server, MessageSquare, SquareTerminal, GitBranch } from 'lucide-react'
 import { tr, tk, type MsgAttachment, type ContextKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { imageSrc, isImageAtt, errMsg, PATH_ONLY_HINT, NO_IMAGE_HINT, type ChipView } from './attachments.js'
@@ -40,8 +40,8 @@ export function AttachmentChips({ items, onRemove, onError, noImage, className }
 }
 
 // 上下文标签（@ 终端 / 主机 / 历史会话、`!命令` 终端块）：悬停看随消息发给 AI 的文字
-const CTX_ICON: Record<ContextKind, typeof FileText> = { terminal: TerminalSquare, host: Server, session: MessageSquare, shell: SquareTerminal }
-const CTX_LABEL: Record<ContextKind, string> = { terminal: tk('终端'), host: tk('主机'), session: tk('会话'), shell: tk('终端块') }
+const CTX_ICON: Record<ContextKind, typeof FileText> = { terminal: TerminalSquare, host: Server, session: MessageSquare, shell: SquareTerminal, git: GitBranch }
+const CTX_LABEL: Record<ContextKind, string> = { terminal: tk('终端'), host: tk('主机'), session: tk('会话'), shell: tk('终端块'), git: tk('仓库') }
 function CtxChip({ a, onRemove }: { a: MsgAttachment & { key?: string }; onRemove?: () => void }) {
   const ctx = a.ctx ?? 'terminal'
   const Icon = CTX_ICON[ctx]
@@ -86,6 +86,7 @@ function AttChip({ a, onOpen, onRemove, warn }: { a: MsgAttachment & { key?: str
   const how = img && src ? tr('点击预览') : a.kind === 'dir' ? tr('点击在资源管理器打开') : tr('点击用系统程序打开')
   return (
     <span data-att-kind={img ? 'image' : a.kind} title={warn}
+      onContextMenu={(ev) => { if (!a.path) return; ev.preventDefault(); void client.fs.showInFolder(a.path) }}
       className="group flex h-6 max-w-[240px] items-center gap-1 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] pl-1 pr-0.5 text-[11.5px] text-[var(--color-text-secondary)]">
       <button onClick={() => onOpen(src ?? null)} className="flex min-w-0 items-center gap-1.5 hover:text-[var(--color-accent)]" title={`${a.path ?? a.name}\n${how}`}>
         {icon}<span className="truncate">{a.name}</span>

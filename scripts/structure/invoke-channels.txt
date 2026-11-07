@@ -11,7 +11,9 @@ agent:renameSession
 agent:resetContext
 agent:search
 agent:sendTurn
+agent:sessionThinking
 agent:setModel
+agent:setSessionThinking
 agent:setWorkDir
 agent:steer
 agent:suggestCommand
@@ -160,6 +162,7 @@ fs:readText
 fs:remove
 fs:rename
 fs:search
+fs:showItemInFolder
 fs:stats
 fs:sudoAuth
 fs:sudoForget
@@ -307,9 +310,11 @@ runbooks:delete
 runbooks:list
 runbooks:save
 safety:approvePlan
+safety:execMode
 safety:preview
 safety:revokeSudo
 safety:rules
+safety:setExecMode
 safety:setGroupRules
 safety:setHostRules
 safety:setPreview
@@ -342,6 +347,7 @@ sshAuth:answer
 sshUrl:takePending
 system:appInfo
 system:checkUpdate
+system:downloadUpdate
 system:exportDiagnostics
 system:getUpdateStatus
 system:installUpdate

@@ -90,7 +90,7 @@ async function postOnce(url: string, body: unknown, checkCode: boolean, timeoutM
   } catch (e) {
     // 报错文案不带 URL（含 token）
     const err = e as Error & { cause?: { code?: string } }
-    throw new Error(err.name === 'TimeoutError' || err.name === 'AbortError' ? tr('超时（{s}s）', { s: timeoutMs / 1000 }) : tr('网络错误 {err}', { err: err.cause?.code ?? err.message }))
+    throw new Error(err.name === 'TimeoutError' || err.name === 'AbortError' ? tr('超时（{s}s）', { s: timeoutMs / 1000 }) : tr('网络错误 {err}', { err: err.cause?.code ?? err.message }), { cause: e })
   }
   if (!res.ok) { await res.body?.cancel().catch(() => {}); throw new Error(`HTTP ${res.status}`) }
   if (!checkCode) { await res.body?.cancel().catch(() => {}); return }

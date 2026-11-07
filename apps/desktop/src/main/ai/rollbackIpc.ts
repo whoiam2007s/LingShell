@@ -53,7 +53,7 @@ export async function runRollback(d: RollbackDeps, sessionId: string, at: string
   try { r = await d.exec(c.terminalId, c.command) }
   catch (e) {
     const m = e instanceof Error ? e.message : String(e)
-    throw new Error(/terminal_busy/.test(m) ? tr('终端正忙（AI 正在执行命令），稍后再试') : m)
+    throw new Error(/terminal_busy/.test(m) ? tr('终端正忙（AI 正在执行命令），稍后再试') : m, { cause: e })
   }
   d.audit({
     sessionId, terminalId: c.terminalId, terminalTitle: c.terminalTitle, hostKey: c.hostKey, command: c.command,

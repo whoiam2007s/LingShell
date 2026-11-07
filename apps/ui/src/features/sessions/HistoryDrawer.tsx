@@ -5,6 +5,7 @@ import { client } from '../../client/index.js'
 import { useNow } from '../../lib/useNow.js'
 import { Highlight } from '../help/index.js'
 import { pushChatContext, requestChatJump } from '../../lib/chatBus.js'
+import { useRunStates } from '../../lib/sessionStates.js'
 
 const KIND = { user: { icon: User, label: tk('提问') }, ai: { icon: Bot, label: 'AI' }, cmd: { icon: TerminalSquare, label: tk('命令') } } as const
 
@@ -22,6 +23,7 @@ export function HistoryDrawer({ sessions, activeId, onSelect, onRename, onDelete
   initialQuery?: string   // 命令面板「搜索历史会话内容」带进来的词
 }) {
   const now = useNow(60_000)   // 相对时间每分钟刷新
+  const runState = useRunStates()   // 会话运行状态：进行中 / 待确认 / 失败
   const [editing, setEditing] = useState('')
   const [draft, setDraft] = useState('')
   const commit = (id: string, fallback: string) => { onRename(id, draft.trim() || fallback); setEditing('') }
@@ -100,7 +102,19 @@ export function HistoryDrawer({ sessions, activeId, onSelect, onRename, onDelete
                   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.id) }
                 }}
                 className={`group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${isActive ? 'bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}>
-                <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+                <span className="relative flex shrink-0">
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+                  {/* 状态点：进行中(蓝，呼吸) / 待确认(橙) / 失败(红)；正常结束不画 */}
+                  {(() => {
+                    const st = runState(s.id)
+                    if (!st) return null
+                    const color = st === 'running' ? 'var(--color-accent)' : st === 'awaiting' ? 'var(--color-warn)' : 'var(--color-danger)'
+                    const title = st === 'running' ? tr('正在进行中') : st === 'awaiting' ? tr('等你确认') : tr('上次执行失败')
+                    return <span data-session-state={st} title={title}
+                      className={`absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full ${st === 'running' ? 'animate-pulse' : ''}`}
+                      style={{ background: color }} />
+                  })()}
+                </span>
                 {editing === s.id ? (
                   <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') commit(s.id, s.title); else if (e.key === 'Escape') setEditing('') }}

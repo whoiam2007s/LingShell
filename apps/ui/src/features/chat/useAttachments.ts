@@ -132,8 +132,16 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
   useEffect(() => onAttachPaths((ps) => { void addPathsRef.current(ps) }), [])
 
   // 上下文标签（@ 引用 / 终端块）：同一个终端 / 主机 / 会话只留一个（终端块每次执行都是新的，不去重）
-  const addContext = (ctx: ContextKind, name: string, text: string) => setItems((cur) =>
-    ctx !== 'shell' && cur.some((a) => a.kind === 'context' && a.ctx === ctx && a.name === name) ? cur : [...cur, contextAtt(ctx, name, text)])
+  // 同一个来源（ctx + name）再发一次：更新内容而不是叠加 —— git / 容器这类上下文每次都是"当前状态"，
+  // 用户可能反复点；shell（终端块）每次都是新的执行，仍然叠加。
+  const addContext = (ctx: ContextKind, name: string, text: string) => setItems((cur) => {
+    if (ctx === 'shell') return [...cur, contextAtt(ctx, name, text)]
+    const i = cur.findIndex((a) => a.kind === 'context' && a.ctx === ctx && a.name === name)
+    if (i < 0) return [...cur, contextAtt(ctx, name, text)]
+    const next = cur.slice()
+    next[i] = contextAtt(ctx, name, text)
+    return next
+  })
 
   return {
     addContext,

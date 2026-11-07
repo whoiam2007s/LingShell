@@ -17,6 +17,7 @@ export function createAppIpc(): AppApi {
       exportDiagnostics: () => window.electronAPI.invoke('system:exportDiagnostics') as Promise<string | undefined>,
       getUpdateStatus: () => window.electronAPI.invoke('system:getUpdateStatus') as Promise<{ currentVersion: string; status: UpdateStatus }>,
       checkUpdate: () => window.electronAPI.invoke('system:checkUpdate') as Promise<UpdateStatus>,
+      downloadUpdate: () => window.electronAPI.invoke('system:downloadUpdate') as Promise<UpdateStatus>,
       installUpdate: () => window.electronAPI.invoke('system:installUpdate') as Promise<void>,
       notify: (title: string, body: string) => window.electronAPI.invoke('system:notify', title, body) as Promise<void>,
       relaunch: () => window.electronAPI.invoke('system:relaunch') as Promise<void>,

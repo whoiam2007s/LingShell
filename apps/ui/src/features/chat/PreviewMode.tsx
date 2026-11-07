@@ -31,7 +31,7 @@ export function PreviewBanner({ onOff }: { onOff: () => void }) {
   return (
     <div data-preview-banner className="mb-1.5 flex items-center gap-1.5 rounded-md border border-[color:color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_8%,transparent)] px-2 py-1 text-[11.5px] text-[var(--color-text-secondary)]">
       <FlaskConical className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-      <span className="min-w-0 flex-1 truncate">{trx('{mode}：AI 只排查和出方案，不执行任何写操作', { mode: <span className="font-medium text-[var(--color-accent)]">{tr('预演模式')}</span> })}</span>
+      <span className="min-w-0 flex-1 truncate">{trx('{mode}：AI 只排查和出方案，不执行任何写操作（执行模式四档之一，可在标题栏切换）', { mode: <span className="font-medium text-[var(--color-accent)]">{tr('预演模式')}</span> })}</span>
       <button onClick={onOff} title={tr('关闭预演模式')} className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"><X className="h-3 w-3" /></button>
     </div>
   )

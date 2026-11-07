@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { AgentEvent } from '@lingshell/shared'
 import { createRelay, createStreamAdapter, contextTokensOf, requestUsageOf, searchableTexts, type DshEvent } from './relay.js'
+import { RETRY_SENTINEL } from './turnRetry.js'
 // 真实轨迹：实测抓的两轮对话（第一轮带工具调用，第二轮纯问答）
 import fixture from './__fixtures__/turn-with-tool.json' with { type: 'json' }
 
@@ -44,6 +45,29 @@ describe('relay：真实 dsh 轨迹 → AgentEvent', () => {
     const o = runAll([ts(1), um('m1', '先做 A'), um('m2', '改一下：顺便做 B'), ts(2), um('m3', '新问题')])
     const users = o.filter((e) => e.type === 'agent:itemUpdated' && e.kind === 'user_message') as any[]
     expect(users.map((u) => [u.itemId, !!u.steered])).toEqual([['m1', false], ['m2', true], ['m3', false]])
+  })
+
+  it('请求级重试（llm/retry）翻成 agent:requestRetrying：带第几次 / 上限 / 等多久 / 错因', () => {
+    const ts = (t: number) => ({ type: 'turn/start', data: { turn: t } }) as unknown as DshEvent
+    const retry = (retry: number, delayMs: number) => ({
+      type: 'llm/retry',
+      data: { retryId: `r${retry}`, turn: 7, step: 1, provider: 'p', mode: 'normal', policyKey: 'k', retry, maxRetries: 5, delayMs, failure: { code: 'TRANSPORT', message: 'fetch failed: ECONNRESET' } },
+    }) as unknown as DshEvent
+    const o = runAll([ts(7), retry(1, 500), retry(2, 1000)])
+    const rs = o.filter((e) => e.type === 'agent:requestRetrying') as any[]
+    expect(rs.map((r) => [r.turnId, r.attempt, r.max, r.delayMs])).toEqual([
+      ['turn_7', 1, 5, 500],
+      ['turn_7', 2, 5, 1000],
+    ])
+    expect(rs[0].error).toContain('ECONNRESET')   // 错因带给界面，别只显示「重试中」
+  })
+
+  it('自动重试提示（带 sentinel）不进对话，普通用户消息照常', () => {
+    const um = (id: string, text: string) => ({ type: 'user/message', data: { id, source: { kind: 'user' }, content: [{ type: 'text', text }] } }) as unknown as DshEvent
+    const ts = (t: number) => ({ type: 'turn/start', data: { turn: t } }) as unknown as DshEvent
+    const o = runAll([ts(1), um('m1', `${RETRY_SENTINEL} 上一轮参数不是合法 JSON，请重出`), um('m2', '帮我看下磁盘')])
+    const users = o.filter((e) => e.type === 'agent:itemUpdated' && e.kind === 'user_message') as any[]
+    expect(users.map((u) => u.itemId)).toEqual(['m2'])   // 只有真人说的那条
   })
 
   it('工具调用：流里先识别出「生成参数中」卡，started 带解析好的入参，updated 带输出', () => {

@@ -68,7 +68,7 @@ export async function extractArchive(file: string, dest: string): Promise<void> 
   let viaUnzip = false
   try { list = (await run(tarBin(), ['-tf', file])).split(/\r?\n/).filter(Boolean) }
   catch (e) {
-    if (process.platform === 'win32') throw new Error(tr('无法读取压缩包：{error}', { error: (e as Error).message }))
+    if (process.platform === 'win32') throw new Error(tr('无法读取压缩包：{error}', { error: (e as Error).message }), { cause: e })
     list = (await run('unzip', ['-Z1', file])).split(/\r?\n/).filter(Boolean)
     viaUnzip = true
   }
@@ -114,7 +114,7 @@ export class LocalSkills {
 
   /** 全部 skill（含坏的，坏的带 error） */
   async list(): Promise<SkillInfo[]> {
-    let dirs: string[] = []
+    let dirs: string[]
     try { dirs = (await readdir(this.root, { withFileTypes: true })).filter((d) => d.isDirectory() && !isHidden(d.name)).map((d) => d.name).sort() }
     catch { return [] }
     const st = await this.state()

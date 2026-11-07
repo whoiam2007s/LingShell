@@ -92,7 +92,7 @@ export class PortForwardManager {
         await new Promise<void>((resolve, reject) => conn.client.forwardIn(bind, input.remotePort, (err) => err ? reject(err) : resolve()))
       } catch (e) {
         conn.close()
-        throw new Error(`remote_bind_failed: ${tr('服务器拒绝在 {addr} 监听（{error}）。可能是端口已被占用、1024 以下端口需要 root，或服务器 sshd_config 设置了 AllowTcpForwarding no / 禁止远程转发；监听 0.0.0.0 还需 GatewayPorts yes 或 clientspecified', { addr: `${bind}:${input.remotePort}`, error: errMsg(e) })}`)
+        throw new Error(`remote_bind_failed: ${tr('服务器拒绝在 {addr} 监听（{error}）。可能是端口已被占用、1024 以下端口需要 root，或服务器 sshd_config 设置了 AllowTcpForwarding no / 禁止远程转发；监听 0.0.0.0 还需 GatewayPorts yes 或 clientspecified', { addr: `${bind}:${input.remotePort}`, error: errMsg(e) }) }`, { cause: e })
       }
       if (f.dead) { conn.close(); throw new Error('cancelled') }
       f.conn = conn

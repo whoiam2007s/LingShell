@@ -73,7 +73,7 @@ export async function docToText(path: string): Promise<{ name: string; text: str
     const es = zipEntries(buf), main = es.find((e) => e.name === 'word/document.xml')
     if (!main) throw new Error(tr('不是有效的 Word 文档（.docx）'))
     try { text = docxXmlToText(zipRead(buf, main).toString('utf8')) } catch (e) {
-      throw new Error(tr('读取 Word 文档失败：{err}', { err: e instanceof Error ? e.message : String(e) }))
+      throw new Error(tr('读取 Word 文档失败：{err}', { err: e instanceof Error ? e.message : String(e) }), { cause: e })
     }
   } else if (ext === 'doc') {
     throw new Error(tr('不支持旧版 .doc，请在 Word 里另存为 .docx'))

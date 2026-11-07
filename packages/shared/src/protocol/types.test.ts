@@ -1,16 +1,26 @@
 import { describe, it, expect } from 'vitest'
 import type { AppEvent } from './events.js'
 import type { CommandHistoryEntry, DirEntry } from './types.js'
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_SETTINGS, contextWindowOf, protocolOf, endpointBaseOf } from './types.js'
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_SETTINGS, contextWindowOf, protocolOf, protocolPathOf, endpointBaseOf } from './types.js'
 import { DEFAULT_HIGHLIGHT_RULES } from '../terminal/index.js'
 
 describe('接口协议', () => {
-  it('protocolOf：DeepSeek 缺省 / 非法值 = anthropic，可选 openai；其它提供商一律 openai', () => {
+  it('protocolOf：DeepSeek 缺省 / 非法值 = anthropic，可选 openai；其它提供商缺省 openai，都可明选 openai-responses', () => {
     expect(protocolOf('deepseek')).toBe('anthropic')
     expect(protocolOf('deepseek', 'bogus')).toBe('anthropic')
     expect(protocolOf('deepseek', 'openai')).toBe('openai')
     expect(protocolOf('qwen')).toBe('openai')
     expect(protocolOf('moonshot', 'anthropic')).toBe('openai')
+    // 第三种协议：anthropic 之外的厂商都能选，非法值照旧回落缺省
+    expect(protocolOf('openai', 'openai-responses')).toBe('openai-responses')
+    expect(protocolOf('deepseek', 'openai-responses')).toBe('openai-responses')
+    expect(protocolOf('qwen', 'bogus')).toBe('openai')
+    expect(protocolOf('anthropic', 'openai-responses')).toBe('anthropic')   // Anthropic 只有 Messages
+  })
+  it('protocolPathOf：三种协议各自的请求路径', () => {
+    expect(protocolPathOf('anthropic')).toBe('/v1/messages')
+    expect(protocolPathOf('openai')).toBe('/chat/completions')
+    expect(protocolPathOf('openai-responses')).toBe('/responses')
   })
   it('endpointBaseOf：DeepSeek 官方地址按协议修正，自定义地址与其它提供商原样（去尾斜杠）', () => {
     const ds = (baseUrl: string, protocol?: 'anthropic' | 'openai') => endpointBaseOf({ provider: 'deepseek', baseUrl, protocol })

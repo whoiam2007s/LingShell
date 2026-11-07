@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { routeOf, keyEnvOf, withRoute, friendlyError, maxTokensOf, deepseekBaseOf, usesPiAi } from './providers.js'
+import { routeOf, keyEnvOf, withRoute, friendlyError, maxTokensOf, deepseekBaseOf, usesPiAi, RETRY_POLICY } from './providers.js'
 
 describe('模型配置 → dsh 路由 / key 变量', () => {
   it('每套配置一条路由、一个 key 变量；deepseek 与 OpenAI 兼容的前缀不同；缺省配置 id = default', () => {
@@ -12,6 +12,12 @@ describe('模型配置 → dsh 路由 / key 变量', () => {
     expect(routeOf('qwen', 'a1', 'anthropic')).toBe('lingshell-p-a1')
     expect(usesPiAi('deepseek')).toBe(false)
     expect(usesPiAi('deepseek', 'openai')).toBe(true)
+    // 第三种协议：单独一条路由，同样走 pi-ai
+    expect(routeOf('openai', 'a1', 'openai-responses')).toBe('lingshell-r-a1')
+    expect(routeOf('deepseek', 'a1', 'openai-responses')).toBe('lingshell-r-a1')
+    expect(usesPiAi('openai', 'openai-responses')).toBe(true)
+    expect(usesPiAi('openai')).toBe(true)
+    expect(usesPiAi('anthropic', 'openai-responses')).toBe(false)   // Anthropic 只有 Messages
     expect(keyEnvOf('mp_x9')).toBe('LINGSHELL_MP_MP_X9_KEY')
     expect(keyEnvOf()).toBe('LINGSHELL_MP_DEFAULT_KEY')
   })
@@ -40,13 +46,61 @@ describe('withRoute', () => {
     expect(r['lingshell-p-d']).toMatchObject({
       api: 'openai-completions', baseURL: 'https://api.deepseek.com', reasoning: 'high',
       compat: { thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true, supportsStore: false },
-      models: [{ id: 'deepseek-v4-pro', reasoningEfforts: { high: 'high', max: 'max' } }],
+      models: [{ id: 'deepseek-v4-pro', reasoningEfforts: { off: null, high: 'high', max: 'max' } }],
     })
     // 其它提供商不带 DeepSeek 专属项
     const q = withRoute({}, { profileId: 'q', provider: 'qwen', model: 'qwen-max', baseUrl: '' })['lingshell-p-q']
     expect(q.compat).not.toHaveProperty('thinkingFormat')
+    // 没选过思考深度就不发这个参数（以前各厂商都不发，这里必须保持）
     expect(q).not.toHaveProperty('reasoning')
-    expect(q.models[0]).not.toHaveProperty('reasoningEfforts')
+    // 但档位要声明出来，界面才能让用户选（低/中/高）
+    expect(q.models[0]).toHaveProperty('reasoningEfforts', { low: 'low', medium: 'medium', high: 'high' })
+  })
+  it('不支持思考深度的厂商不声明档位；选了档位就按厂商派发', () => {
+    // ollama：本地端点不认识 reasoningEffort，不声明
+    const o = withRoute({}, { profileId: 'o2', provider: 'ollama', model: 'qwen3:8b', baseUrl: '' })['lingshell-p-o2']
+    expect(o.models[0]).not.toHaveProperty('reasoningEfforts')
+    // qwen 选了「高」→ 发 high
+    const hi = withRoute({}, { profileId: 'q2', provider: 'qwen', model: 'qwen-max', baseUrl: '', thinking: 'high' })['lingshell-p-q2']
+    expect(hi.reasoning).toBe('high')
+    // DeepSeek 选「低」→ 不思考（off 不发送）
+    const off = withRoute({}, { profileId: 'd2', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'low' })['lingshell-p-d2']
+    expect(off).not.toHaveProperty('reasoning')
+    // DeepSeek 选「高」→ max
+    const max = withRoute({}, { profileId: 'd3', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'high' })['lingshell-p-d3']
+    expect(max.reasoning).toBe('max')
+  })
+  it('Responses 协议：独立路由 + 本协议白名单内的 compat，不声明推理档位', () => {
+    const r = withRoute({}, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai-responses', thinking: 'high' })
+    const route = r['lingshell-r-gpt']
+    expect(route).toMatchObject({
+      api: 'openai-responses', baseURL: 'https://api.openai.com/v1',
+      compat: { supportsDeveloperRole: false, supportsMaxOutputTokens: true, supportsStrictMode: false },
+      models: [{ id: 'gpt-5', name: 'gpt-5' }],
+    })
+    // completions 那套字段不能混进 Responses 路由（pi-ai 的 compat 按协议白名单校验）
+    expect(route.compat).not.toHaveProperty('supportsStore')
+    expect(route.compat).not.toHaveProperty('maxTokensField')
+    // 第一版不发思考参数、也不声明档位（各家字段名还不一致，先不自造）
+    expect(route).not.toHaveProperty('reasoning')
+    expect(route.models[0]).not.toHaveProperty('reasoningEfforts')
+    // 同一套配置切回 Chat Completions 走另一条路由，互不覆盖
+    const back = withRoute(r, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai' })
+    expect(Object.keys(back).sort()).toEqual(['lingshell-p-gpt', 'lingshell-r-gpt'])
+    expect(back['lingshell-p-gpt'].api).toBe('openai-completions')
+  })
+  it('重试策略显式带上：5 次、指数退避 0.5s 起 / 10s 封顶、网络与服务类失败码', () => {
+    const r = withRoute({}, { profileId: 'q', provider: 'qwen', model: 'qwen-max', baseUrl: '' })['lingshell-p-q']
+    expect(r.retryPolicy).toMatchObject({
+      mode: 'normal', maxRetries: 5,
+      backoff: { initialDelayMs: 500, maxDelayMs: 10_000, jitterRatio: 0.1 },
+    })
+    expect(r.retryPolicy.retryableCodes).toEqual(['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT'])
+    // 与总表常量同源（改曲线只需改 RETRY_POLICY）
+    expect(r.retryPolicy.maxRetries).toBe(RETRY_POLICY.maxRetries)
+    // Responses 协议同样带策略
+    const g = withRoute({}, { profileId: 'g', provider: 'openai', model: 'gpt-5', baseUrl: '', protocol: 'openai-responses' })['lingshell-r-g']
+    expect(g.retryPolicy.maxRetries).toBe(5)
   })
   it('换模型保留旧模型；同模型改窗口就地更新；不改入参', () => {
     const a = withRoute({}, { profileId: 'o', provider: 'ollama', model: 'qwen3:8b', baseUrl: '' })

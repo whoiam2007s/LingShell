@@ -75,7 +75,7 @@ export function setSshAuthPrompter(p: SshAuthPrompter | undefined): void { authP
 export const isPasswordPrompt = (p: { prompt: string; echo?: boolean }) =>
   !p.echo && /pass(word)?\b|密码|口令/i.test(p.prompt) && !/passcode|otp|one[- ]?time|verif|token|code|验证|动态|new|新|again|确认|retype/i.test(p.prompt)
 
-class HostKeyUnknown extends Error { constructor(msg: string, public info: HostKeyInfo) { super(msg) } }
+class HostKeyUnknown extends Error { constructor(msg: string, public info: HostKeyInfo, options?: ErrorOptions) { super(msg, options) } }
 
 // 所有 SSH 连接（终端/测试/SFTP 传输/目录浏览/端口转发）的唯一入口。
 // 有 opts.jump：先递归连跳板 → forwardOut 到目标 host:port → 目标 Client 以 sock 走这条隧道。
@@ -93,8 +93,8 @@ async function connectTrusted(opts: SshConnectOpts, extra: SshConnectExtra | und
   catch (e) {
     if (!(e instanceof HostKeyUnknown)) throw e
     const prompt = ask ? policy?.prompt : undefined
-    if (!prompt) throw new Error(e.message + tr('。先手动连接一次以确认指纹'))
-    if (!(await askOnce(e.info, prompt))) throw new Error(e.message.replace('host_key_unknown', 'host_key_rejected') + tr('，已取消连接'))
+    if (!prompt) throw new Error(e.message + tr('。先手动连接一次以确认指纹'), { cause: e })
+    if (!(await askOnce(e.info, prompt))) throw new Error(e.message.replace('host_key_unknown', 'host_key_rejected') + tr('，已取消连接'), { cause: e })
     policy?.remember(e.info.hostPort, e.info.keyType, e.info.fingerprint)
     try { return await connectHop(opts, extra, role, ask) }
     catch (e2) { throw e2 instanceof HostKeyUnknown ? new Error(e2.message) : e2 }   // 记住后仍未知（存储失败）：不再问，直接失败
@@ -113,7 +113,7 @@ async function connectHop(opts: SshConnectOpts, extra: SshConnectExtra | undefin
         j.client.forwardOut('127.0.0.1', 0, opts.host, opts.port, (err, stream) => err ? reject(err) : resolve(stream)))
     } catch (e) {
       j.close()
-      throw new Error(tr('跳板机「{name}」无法转发到 {target}: {error}', { name: hopName(opts.jump), target: `${opts.host}:${opts.port}`, error: errText(e) }))
+      throw new Error(tr('跳板机「{name}」无法转发到 {target}: {error}', { name: hopName(opts.jump), target: `${opts.host}:${opts.port}`, error: errText(e) }), { cause: e })
     }
   } else if (opts.proxyCommand) {
     // 本地代理命令：子进程 stdin/stdout 即连接（与跳板/出站代理互斥，HostStore 保存时已校验）
@@ -122,7 +122,7 @@ async function connectHop(opts: SshConnectOpts, extra: SshConnectExtra | undefin
   } else if (opts.proxy) {
     // 出站代理：只作用于直接建 TCP 的这一跳（经跳板时目标走跳板隧道，代理看跳板自己的配置）
     try { sock = await connectViaProxy(opts.proxy, opts.host, opts.port, opts.readyTimeoutMs ?? 20000) }
-    catch (e) { throw new Error((role ? `${role}「${hopName(opts)}」: ` : '') + errText(e)) }   // i18n-ignore 跳板机 / 目标主机 是 SshAuthPromptInfo.role 的取值，前缀由 UI 按正则解析（SshConnectDialog.sshErrorText）
+    catch (e) { throw new Error((role ? `${role}「${hopName(opts)}」: ` : '') + errText(e), { cause: e }) }   // i18n-ignore 跳板机 / 目标主机 是 SshAuthPromptInfo.role 的取值，前缀由 UI 按正则解析（SshConnectDialog.sshErrorText）
   }
   const hostPort = hostPortOf(opts.host, opts.port)
   const readyTimeout = opts.readyTimeoutMs ?? 20000
@@ -195,11 +195,11 @@ async function connectHop(opts: SshConnectOpts, extra: SshConnectExtra | undefin
     const prefix = role ? `${role}「${hopName(opts)}」: ` : jump ? `目标主机「${hopName(opts)}」: ` : ''   // i18n-ignore 跳板机 / 目标主机 是 SshAuthPromptInfo.role 的取值，前缀由 UI 按正则解析（SshConnectDialog.sshErrorText）
     if (bad?.expected) {
       policy?.onMismatch?.(bad)
-      throw new Error(`${prefix}host_key_mismatch: ${tr('{host} 的主机指纹与记录不符，可能遭遇中间人攻击，已拒绝连接（已记录 {expected}，本次 {actual}）', { host: hostPort, expected: bad.expected, actual: `${bad.keyType} ${bad.fingerprint}` })}`)
+      throw new Error(`${prefix}host_key_mismatch: ${tr('{host} 的主机指纹与记录不符，可能遭遇中间人攻击，已拒绝连接（已记录 {expected}，本次 {actual}）', { host: hostPort, expected: bad.expected, actual: `${bad.keyType} ${bad.fingerprint}` })}`, { cause: e })
     }
-    if (bad) throw new HostKeyUnknown(`${prefix}host_key_unknown: ${tr('{host} 首次连接，主机指纹 {key} 未确认', { host: hostPort, key: `${bad.keyType} ${bad.fingerprint}` })}`, bad)
+    if (bad) throw new HostKeyUnknown(`${prefix}host_key_unknown: ${tr('{host} 首次连接，主机指纹 {key} 未确认', { host: hostPort, key: `${bad.keyType} ${bad.fingerprint}` })}`, bad, { cause: e })
     // agent 认证失败多半是 agent 里没加载对的钥匙：补一句提示（保留错误码前缀，UI 按 includes 匹配）
-    throw new Error(prefix + (opts.agent && msg === 'ssh_auth_failed' ? `${msg}: ${tr('ssh-agent 中没有被服务器接受的密钥（ssh-add -l 查看已加载的密钥）')}` : msg) + pcErr)
+    throw new Error(prefix + (opts.agent && msg === 'ssh_auth_failed' ? `${msg}: ${tr('ssh-agent 中没有被服务器接受的密钥（ssh-add -l 查看已加载的密钥）')}` : msg) + pcErr, { cause: e })
   }
   // 目标断开 → 顺手断跳板 / 结束代理命令，避免泄漏
   if (jump) { const j = jump; client.on('close', () => j.close()) }

@@ -1407,7 +1407,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     ],
   },
   {
-    id: 'safety-flow', title: 'Layered rules, AI review, dry-run mode and timed elevation', icon: ShieldCheck, settings: 'ai',
+    id: 'safety-flow', title: 'Layered rules, AI review, execution modes and timed elevation', icon: ShieldCheck, settings: 'ai',
     blocks: [
       { h: 'Layered rules (global → group → host → working directory)', p: 'Rules for the AI can be written at four levels; the more specific one wins:', steps: [
         'Global: "Global custom rules" in "Settings → AI & security", applied to all sessions.',
@@ -1426,6 +1426,16 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Review has a 15-second limit. On timeout or error the card shows "AI review: not reviewed" and appears as usual.',
         '"Safe" never auto-approves on its own. The card is skipped only when "Auto-approve if review passes" is on, the host isn\'t production, the session trust level is "Confirm", and the command isn\'t dangerous (the execution log notes "Passed AI review").',
         'Review results are written to the execution log (session permissions drawer → "Execution log").',
+      ] },
+      { h: 'Execution modes (four levels, per session)', p: 'Pick one with the "Execution mode" button in the chat header; it applies to the current session only. The default "Confirm each" is exactly how things worked before:', steps: [
+        'Dry run: read-only investigation still works, but write commands, file writes, uploads and external tools are all blocked, and the AI writes a plan instead (see the next block).',
+        'Confirm each (default): permissions are remembered per host, so approving once on a host is enough; deletes and dangerous commands always ask.',
+        'Confirm once: permissions are remembered by tool plus inside or outside the working directory, so approving one operation of a kind stops the asking, even on other hosts. Writes outside the working directory, deletes and dangerous commands still ask.',
+        'Trust: writes inside the working directory and read-only commands run directly; writes outside it, commands that modify things and deletes still ask. Uploads and downloads always ask, and production hosts keep asking for every change.',
+      ], tips: [
+        'Rules that hold in every mode: deletes (`rm` and friends) and dangerous commands always ask first, rules set to "deny" always deny, and read operations always run.',
+        'The "Confirm once" memory lives in memory only: it is cleared when the app restarts or when you switch modes.',
+        'The execution log notes which mode allowed a call (for example "Execution mode: Trust"), so you can tell afterwards.',
       ] },
       { h: 'Dry-run mode (plan, don\'t act)', steps: [
         'Click the flask button (Dry run) on the right of the session title bar, left of "New session". The button lights up and shows "Dry run", and a "Dry-run mode" bar appears above the input (click the button again or × on the bar to turn it off). Applies to the current session only.',

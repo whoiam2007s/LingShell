@@ -156,6 +156,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     knowledgeTitles: (k) => knowledge.titles(k), profileName: (id) => settings.resolveProfile(id).name,
     complete: (s, u, sig, src, pid) => controllerRef.current!.complete(s, u, sig, src, pid),
     preview: { get: (sid) => !!controllerRef.current?.isPreview(sid), set: (sid, on) => controllerRef.current?.setPreview(sid, on), approve: (sid, steps) => controllerRef.current?.approvePlan(sid, steps) ?? 0 },
+    execMode: { get: (sid) => controllerRef.current?.execModeOf(sid) ?? 'confirm', set: (sid, mode) => controllerRef.current?.setExecMode(sid, mode) },
     unattended: (sid) => unattended.has(sid), send, redact: (t) => redactForAi(t), log: (lv, m, d) => log(lv, 'main', 'safety', m, d),
   })
   // 无人值守会话（巡检）里 AI 调 run_on_hosts：临时连接遇到未知指纹直接失败，不在半夜弹确认框
@@ -357,6 +358,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     stored: (id) => { const p = settings.get().modelProfiles?.find((x) => x.id === id); return p && { provider: p.provider, apiKey: settings.getProfileKey(id) } },
     setSessionModel: (sid, pid) => controller.setSessionModel(sid, pid),
     sessionModel: (sid) => controller.sessionModel(sid),
+    setSessionThinking: (sid, level) => controller.setSessionThinking(sid, level),
+    sessionThinking: (sid) => controller.sessionThinking(sid),
   })
   // 设置 → Skills（见 skillsIpc.ts）：<数据目录>/skills，接到 dsh 的 ctx.skills
   registerSkills({ handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'skills'), attach: (lib) => controller.attachSkills(lib), openPath: (p) => shell.openPath(p), log: (lv, m, d) => log(lv, 'main', 'skills', m, d),

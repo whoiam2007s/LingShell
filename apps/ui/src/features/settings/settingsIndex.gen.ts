@@ -21,7 +21,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "model",
   "kind": "row",
-  "label": "模型"
+  "label": "模型",
+  "tip": "可以直接输入模型 id（列表只是建议值）。各家改名很快、火山方舟这类还要填 ep- 接入点 ID，所以永远以你填的为准；模型需支持工具调用。"
+ },
+ {
+  "tab": "model",
+  "kind": "row",
+  "label": "思考深度",
+  "tip": "控制模型思考多少：低 = 更快更省，高 = 想得更久但更慢更贵。不设则沿用厂商默认（DeepSeek 目前默认就等于「中」）。"
  },
  {
   "tab": "model",
@@ -51,7 +58,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   "tab": "model",
   "kind": "row",
   "label": "测试连接",
-  "tip": "用表单当前的地址、模型、Key 和接口协议测试（Key 留空用已存的），不会自动测试。OpenAI 兼容：先请求 /models（不耗 token），端点不提供模型列表时发一条 1 token 的对话请求。Anthropic Messages：向 /v1/messages 发一条 1 token 的请求；返回 404 / 405 或格式不对时，多半是这个地址不支持 Anthropic 协议，可一键改用 OpenAI 兼容并重试。"
+  "tip": "用表单当前的地址、模型、Key 和接口协议测试（Key 留空用已存的），不会自动测试。OpenAI 兼容：先请求 /models（不耗 token），端点不提供模型列表时发一条 1 token 的对话请求。OpenAI Responses：先同样查 /models，再向 /responses 发一条最小请求；返回 404 / 405 说明这个地址多半不支持该协议。Anthropic Messages：向 /v1/messages 发一条 1 token 的请求；返回 404 / 405 或格式不对时，多半是这个地址不支持 Anthropic 协议，可一键改用 OpenAI 兼容并重试。"
  },
  {
   "tab": "terminal",

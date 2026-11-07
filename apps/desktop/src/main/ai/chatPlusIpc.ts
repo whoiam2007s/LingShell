@@ -100,7 +100,7 @@ export function registerChatPlus(d: ChatPlusDeps): void {
     let r: { output: string; exitCode: number }
     try { r = await d.exec(t.id, command) } catch (e) {
       const m = String((e as Error)?.message ?? e)
-      throw new Error(m.includes('terminal_busy') ? tr('终端「{title}」正忙（AI 正在执行或在跑别的），稍后再试', { title: t.title }) : m.replace(/^shell_not_supported:\s*/, ''))
+      throw new Error(m.includes('terminal_busy') ? tr('终端「{title}」正忙（AI 正在执行或在跑别的），稍后再试', { title: t.title }) : m.replace(/^shell_not_supported:\s*/, ''), { cause: e })
     }
     d.audit({ sessionId: typeof sid === 'string' ? sid : '', terminalId: t.id, terminalTitle: t.title, command, decision: 'chat_shell', exitCode: r.exitCode })
     const tail = tailBytes(d.redact(r.output))

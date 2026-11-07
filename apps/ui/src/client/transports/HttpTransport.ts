@@ -25,10 +25,10 @@ export class HttpTransport implements AppClient {
   knownHosts: AppClient['knownHosts'] = { list: ni, decide: ni, acceptChanged: ni, remove: ni, importOpenSsh: ni }
   portForward: AppClient['portForward'] = { list: ni, start: ni, stop: ni, retry: ni, listSaved: ni, save: ni, setAutoStart: ni, deleteSaved: ni }
   layout: AppClient['layout'] = { get: ni, save: ni }
-  system: AppClient['system'] = { pickDirectory: ni, saveTextFile: ni, exportDiagnostics: ni, getUpdateStatus: ni, checkUpdate: ni, installUpdate: ni, notify: async () => {}, appInfo: ni, openDir: ni, relaunch: async () => { location.reload() } }
+  system: AppClient['system'] = { pickDirectory: ni, saveTextFile: ni, exportDiagnostics: ni, getUpdateStatus: ni, checkUpdate: ni, downloadUpdate: ni, installUpdate: ni, notify: async () => {}, appInfo: ni, openDir: ni, relaunch: async () => { location.reload() } }
   audit: AppClient['audit'] = { listForSession: ni, listRecent: ni, restore: ni }
   history: AppClient['history'] = { list: ni, delete: ni, clear: ni, forTerminal: ni, deleteCommand: ni }
-  fs: AppClient['fs'] = { listDir: ni, listDirByHost: ni, places: ni, remove: ni, deletePlan: ni, create: ni, rename: ni, openLocal: ni, readText: ni, diffText: ni, writeText: ni, compare: ni, chmod: ni, pack: ni, unpack: ni, search: ni, searchContent: ni, pastePlan: ni, paste: ni, stats: ni, checksum: ni, owners: ni, chown: ni, sudoAuth: ni, sudoForget: ni, editExternal: ni }
+  fs: AppClient['fs'] = { listDir: ni, listDirByHost: ni, places: ni, remove: ni, deletePlan: ni, create: ni, rename: ni, openLocal: ni, showInFolder: ni, readText: ni, diffText: ni, writeText: ni, compare: ni, chmod: ni, pack: ni, unpack: ni, search: ni, searchContent: ni, pastePlan: ni, paste: ni, stats: ni, checksum: ni, owners: ni, chown: ni, sudoAuth: ni, sudoForget: ni, editExternal: ni }
   transfer: AppClient['transfer'] = { upload: ni, download: ni, downloadMany: ni, cancel: ni, list: ni, retry: ni, clearFinished: ni, revealLocal: ni, reorder: ni, uploadConflicts: ni, uploadDirect: ni, pause: ni, discard: ni }
   templates: AppClient['templates'] = { list: ni, save: ni, delete: ni }
   runbooks: AppClient['runbooks'] = { list: ni, save: ni, delete: ni }
@@ -56,7 +56,7 @@ export class HttpTransport implements AppClient {
   hostBatch: AppClient['hostBatch'] = { preview: ni, apply: ni, last: ni, undo: ni }
   sshUrl: AppClient['sshUrl'] = { takePending: ni }
   gitBash: AppClient['gitBash'] = { status: ni, redetect: ni, pick: ni, clear: ni }
-  modelProfiles: AppClient['modelProfiles'] = { test: ni, sessionModel: ni, setSessionModel: ni }
+  modelProfiles: AppClient['modelProfiles'] = { test: ni, sessionModel: ni, setSessionModel: ni, setSessionThinking: ni, sessionThinking: ni }
   skills: AppClient['skills'] = { list: ni, read: ni, save: ni, remove: ni, setFlags: ni, pickImport: ni, inspect: ni, commitImport: ni, cancelImport: ni, openDir: ni }
   attachments: AppClient['attachments'] = { pickFiles: ni, pickDirs: ni, pickImages: ni, kinds: ni, imageFile: ni, clipboardPaths: ni, send: ni, image: ni, open: ni }
   ports: AppClient['ports'] = { list: ni, forwards: ni, forward: ni, stop: ni }
@@ -79,7 +79,7 @@ export class HttpTransport implements AppClient {
   topology: AppClient['topology'] = { get: ni }
   configExplain: AppClient['configExplain'] = { run: ni }
   preview: AppClient['preview'] = { read: ni, openExternal: ni }
-  safety: AppClient['safety'] = { rules: ni, setGroupRules: ni, setHostRules: ni, preview: ni, setPreview: ni, approvePlan: ni, sudoLeases: ni, revokeSudo: ni }
+  safety: AppClient['safety'] = { rules: ni, setGroupRules: ni, setHostRules: ni, preview: ni, setPreview: ni, execMode: ni, setExecMode: ni, approvePlan: ni, sudoLeases: ni, revokeSudo: ni }
   trend: AppClient['trend'] = { get: ni }
   deployReview: AppClient['deployReview'] = { list: ni, get: ni, create: ni, delete: ni, update: ni, importDoc: ni, pasteDoc: ni, addArtifacts: ni, removeArtifact: ni, analyze: ni, probe: ni, toRunbook: ni, exportPdf: ni }
   compliance: AppClient['compliance'] = { config: ni, setDisabled: ni, run: ni, batch: ni }

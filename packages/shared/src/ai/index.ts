@@ -2,6 +2,7 @@
 export * from './report.js'
 export * from './redact.js'
 export * from './danger.js'
+export * from './execMode.js'
 export * from './usage.js'
 export * from './chatTime.js'
 export * from './attachments.js'

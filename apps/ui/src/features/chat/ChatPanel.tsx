@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Pencil, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, Download, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight } from 'lucide-react'
+import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Pencil, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, Download, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert, Check } from 'lucide-react'
 import { useConversation, type ContextState, type ConvItem, type SessionPhase } from './useConversation.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
 import { MessageItem, MsgActionsContext, type MsgActions } from './items/MessageItem.js'
@@ -16,7 +16,7 @@ import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
 import type { TurnTimes } from '@lingshell/shared'
-import { tr, tk } from '@lingshell/shared'
+import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
@@ -73,7 +73,7 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
   onManageModels?: () => void
   onManageSkills?: () => void
 }) {
-  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, sendTo, regenerate, fail, interrupt, resetContext, dismissContextPrompt } = useConversation(activeSessionId, onFirstUserMessage)
+  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, sendTo, regenerate, fail, interrupt, resetContext, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
   const models = useSessionModel(activeSessionId, busy, onManageModels)
   const turnChanges = useTurnChanges(activeSessionId, busy)   // 回合末「本轮改了 N 个文件」
   const hostChanges = useTurnHostChanges(activeSessionId)     // 回合末「本轮主机变化」
@@ -301,6 +301,33 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
     prevSidRef.current = activeSessionId
   }, [activeSessionId])
   // 附件（文件 / 目录 / 图片）：tag 栏、粘贴 / 拖入、「+」菜单的选择框都在 useAttachments 里
+  // 会话级思考深度（只影响本会话；空 = 跟随模型配置里的默认值）
+  const [thinkLevel, setThinkLevel] = useState<ThinkingLevel | undefined>(undefined)
+  useEffect(() => {
+    setThinkLevel(undefined)
+    if (!activeSessionId) return
+    let alive = true
+    client.modelProfiles.sessionThinking(activeSessionId).then((r) => { if (alive) setThinkLevel(r.level) }, () => {})
+    return () => { alive = false }
+  }, [activeSessionId])
+  const pickThinking = (lv: ThinkingLevel) => {
+    if (!activeSessionId) return
+    setThinkLevel(lv)
+    client.modelProfiles.setSessionThinking(activeSessionId, lv).catch(() => {})
+  }
+  // 会话级执行模式（四档）
+  const [execMode, setExecMode] = useState<ExecMode>('confirm')
+  useEffect(() => {
+    if (!activeSessionId) return
+    let alive = true
+    client.safety.execMode(activeSessionId).then((m) => { if (alive) setExecMode(m) }, () => {})
+    return () => { alive = false }
+  }, [activeSessionId])
+  const pickExecMode = (m: ExecMode) => {
+    if (!activeSessionId) return
+    setExecMode(m)
+    client.safety.setExecMode(activeSessionId, m).catch(() => {})
+  }
   const att = useAttachments(!!models.current?.multimodal, activeSessionId)
   // 消息操作：编辑后重发 / 从这里分叉 → 主进程从该消息之前分叉出新会话并切过去；重新生成 → 本会话原地重跑最后一轮。
   // 回调经 ref 取最新闭包，context 值只随 busy / 会话变化，不带动所有消息重渲染
@@ -323,14 +350,24 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
   }), [busy, activeSessionId])
 
   // queue：本轮在跑时排到本轮结束后再发（Alt+Enter），默认是在下一步前插入
-  const submit = (opts?: { queue?: boolean }) => {
-    const cmd = bangCommand(input)
-    if (cmd !== null) { void runBang(cmd); return }   // `!命令`：不发给 AI，在当前终端执行
-    if (!input.trim() && !skill && !att.items.length) return
+  // 发送前要问「要不要用摘要开新会话」时，先把待发的状态存这里，用户选完再真正发出
+  const [resetAsk, setResetAsk] = useState<{ steps: number; compactions: number; summary: string } | null>(null)
+  // 真正发送（原 submit 的主体）
+  const doSend = (opts?: { queue?: boolean }) => {
     const out = att.outgoing()
     if (out === null) return   // 有图片但当前模型不支持：已提示，保留输入
     const text = withTermBlocks(input, att.blocks())   // 终端块拼成文本接在后面
     if (send(skill ? `/${skill} ${text}`.trim() : text, out, opts)) { setInput(''); draftRef.current.delete(activeSessionId); setSkill(undefined); att.clear() }
+  }
+  const submit = (opts?: { queue?: boolean }) => {
+    const cmd = bangCommand(input)
+    if (cmd !== null) { void runBang(cmd); return }   // `!命令`：不发给 AI，在当前终端执行
+    if (!input.trim() && !skill && !att.items.length) return
+    if (att.outgoing() === null) return   // 有图片但当前模型不支持：已提示，保留输入
+    // 发送前才问：主进程是在压缩完成时记下的建议，那时会话正在跑、弹了也开不了
+    const ask = takeResetSuggestion()
+    if (ask) { setResetAsk(ask); return }
+    doSend(opts)
   }
 
   // ── `!命令` 直通终端（参考 Gemini CLI / Claude Code 的 ! 模式）──────────
@@ -473,7 +510,8 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
       {/* 会话 header */}
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
         postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
-        preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined} />
+        preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
+        thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode} />
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -535,8 +573,19 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
 
       {/* 上下文超线：横幅常驻（收起弹窗后仍在），弹窗问是否重置 */}
       {context && <ContextBanner state={context} onDismiss={dismissContextPrompt} />}
-      {context?.stage === 'suggest' && (
-        <ContextResetDialog state={context} busy={busy} onReset={(s) => resetContext(s)} onCancel={dismissContextPrompt} />
+      {/* 该开新会话的提示改到「发送前」问：主进程在压缩完成时记下，用户真要发消息时才弹（见 submit / resetAsk） */}
+      {resetAsk && (
+        <ContextResetDialog busy={busy} state={{ stage: 'suggest', steps: resetAsk.steps, compactions: resetAsk.compactions, summary: resetAsk.summary }}
+          onCancel={() => { setResetAsk(null); doSend() }}
+          onReset={(summary) => {
+            const s = resetAsk
+            setResetAsk(null)
+            // 先清空历史（不带 seed，避免多跑一轮模型），再把摘要作为上下文标签，和用户这条消息一起发出去
+            void resetContext('').then(() => {
+              att.addContext('session', tr('上一次会话的摘要'), summary || s.summary)
+              doSend()
+            })
+          }} />
       )}
 
       {/* 输入区 */}
@@ -719,7 +768,7 @@ function TurnBlock({ turn, active, last, times, end }: { turn: Turn; active: boo
                 {turn.steps.map((item) => <TimelineItem key={item.itemId} item={item} active={active} />)}
               </TurnSteps>
             ) : times?.firstAt && <div className="px-5 pt-1.5 leading-none">{first}</div>}
-            {turn.final.map((item, i) => <TimelineItem key={item.itemId} item={item} regenFrom={i === turn.final.length - 1 ? regenFrom : undefined} />)}
+            {turn.final.map((item, i) => <TimelineItem key={item.itemId} item={item} regenFrom={i === turn.final.length - 1 ? regenFrom : undefined} turnUserMsgId={turn.userMsg?.msgId} />)}
             {end}
           </div>
         </div>
@@ -740,15 +789,15 @@ function UserAttachments({ items }: { items: MsgAttachment[] }) {
 }
 
 // 按 item.kind 路由到对应卡片。外包一层带 id / 类型的 div：Ctrl+↑↓ 找「我的提问」、跨会话搜索跳到命中那条都按它定位
-function TimelineItem(props: { item: ConvItem; active?: boolean; regenFrom?: string }) {
+function TimelineItem(props: { item: ConvItem; active?: boolean; regenFrom?: string; turnUserMsgId?: string }) {
   return <div data-item-id={props.item.itemId} data-item-kind={props.item.kind} {...(props.item.msgId ? { 'data-msg-id': props.item.msgId } : {})}><TimelineItemBody {...props} /></div>
 }
-function TimelineItemBody({ item, active = false, regenFrom }: { item: ConvItem; active?: boolean; regenFrom?: string }) {
+function TimelineItemBody({ item, active = false, regenFrom, turnUserMsgId }: { item: ConvItem; active?: boolean; regenFrom?: string; turnUserMsgId?: string }) {
   const streaming = item.status === 'in_progress'
   switch (item.kind) {
     case 'user_message':
     case 'agent_message':
-      return <MessageItem item={item} streaming={streaming && item.kind === 'agent_message'} regenFrom={regenFrom} />
+      return <MessageItem item={item} streaming={streaming && item.kind === 'agent_message'} regenFrom={regenFrom} turnUserMsgId={turnUserMsgId} />
     case 'agent_reasoning':
       return <ReasoningItem item={item} streaming={streaming} live={active} />
     case 'tool_call':
@@ -907,8 +956,56 @@ function useSessionModel(sessionId: string, busy: boolean, onManage?: () => void
   return { profiles: mp.profiles, defaultId: mp.defaultId, current: profileOf(mp, st.profileId), pending: st.pending, note, onPick, onManage }
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview }: {
+// 四档执行模式选择器：一个按钮 + 展开的四个选项（当前档高亮，hover 有说明）
+function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (m: ExecMode) => void; onTogglePreview?: () => void }) {
+  const [open, setOpen] = useState(false)
+  const meta: Record<ExecMode, { icon: typeof FlaskConical; label: string; tip: string }> = {
+    preview: { icon: FlaskConical, label: tr('预演'), tip: tr('只做只读排查、把要改的列成方案，不执行任何写操作（删除与危险命令也拦）') },
+    confirm: { icon: ShieldCheck, label: tr('逐条确认'), tip: tr('同一台主机批过一次就记住；删除与危险命令每次都问') },
+    auto: { icon: Zap, label: tr('确认一次'), tip: tr('同类操作批过一次就不再问，换主机也复用（写文件只记工作目录内的）；目录外的写、删除与危险命令仍问') },
+    trust: { icon: ShieldAlert, label: tr('信任'), tip: tr('工作目录内的写和只读命令直接放行；目录外的写、会改东西的命令、删除仍要确认') },
+  }
+  const cur = meta[mode]
+  const Icon = cur.icon
+  return (
+    <span className="relative shrink-0">
+      <button data-exec-mode onClick={() => setOpen((v) => !v)} title={`${tr('执行模式：{m}', { m: cur.label })}\n${cur.tip}`}
+        className={`flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] transition-colors ${mode === 'confirm' ? 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]' : 'bg-[var(--color-accent-bg)] font-medium text-[var(--color-accent)]'}`}>
+        <Icon className="h-4 w-4" />{mode !== 'confirm' && cur.label}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-8 z-50 w-[260px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl">
+          {(Object.keys(meta) as ExecMode[]).map((m) => {
+            const it = meta[m]
+            const ItIcon = it.icon
+            return (
+              <button key={m} data-mode-pick={m} onClick={() => {
+                onPick(m); setOpen(false)
+                // 老接口同步：进/出预演时把 preview 开关也跟着切，保证两处状态一致
+                if (onTogglePreview && ((m === 'preview') !== (mode === 'preview'))) onTogglePreview()
+              }}
+                className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--color-bg-hover)]">
+                <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${m === mode ? 'text-[var(--color-accent)]' : 'invisible'}`} />
+                <ItIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-text-secondary)]" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12px] text-[var(--color-text-primary)]">{it.label}</span>
+                  <span className="block text-[11px] leading-[1.5] text-[var(--color-text-muted)]">{it.tip}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode }: {
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
+  thinking?: ThinkingLevel                          // 会话级思考深度（低/中/高）
+  onPickThinking?: (lv: ThinkingLevel) => void
+  mode?: ExecMode                                   // 会话级执行模式（四档）
+  onPickMode?: (m: ExecMode) => void
   busy?: boolean   // 本轮是否在跑：点用量标签压缩时要等它结束
   models?: SessionModel
   postmortem?: PostmortemAction
@@ -950,16 +1047,9 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
         </div>
       )}
       {hasSession && models?.note && <span className={`max-w-[160px] shrink-0 truncate text-[11px] ${models.note.ok ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-danger)]'}`} title={models.note.text}>{models.note.text}</span>}
-      {hasSession && models && <ModelChip profile={models.current} pending={models.pending} profiles={models.profiles} defaultId={models.defaultId} onPick={models.onPick} onManage={models.onManage} />}
+      {hasSession && models && <ModelChip profile={models.current} pending={models.pending} profiles={models.profiles} defaultId={models.defaultId} onPick={models.onPick} onManage={models.onManage} thinking={thinking} onPickThinking={onPickThinking} />}
       {hasSession && sessionId && <UsageChip sessionId={sessionId} usage={usage} busy={busy} />}
-      {hasSession && preview && (
-        <button data-preview-toggle onClick={preview.onToggle} aria-pressed={preview.on}
-          title={tr('预演模式（只说不做）：{state}\n开启后本会话的 AI 只做只读排查、把要改的列成方案，不执行任何写操作；回复末尾可勾选步骤再执行', { state: preview.on ? tr('已开') : tr('关') })}
-          className={`flex h-7 shrink-0 items-center justify-center gap-1 rounded-md transition-colors ${preview.on ? 'bg-[var(--color-accent-bg)] px-2 text-[11px] font-medium text-[var(--color-accent)]' : 'w-7 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]'}`}>
-          {/* 烧瓶 = 试运行 / 预演（dry run 的常见图标）；开着时带「预演中」字样，状态一眼能看出 */}
-          <FlaskConical className="h-4 w-4" />{preview.on && tr('预演中')}
-        </button>
-      )}
+      {hasSession && mode && onPickMode && <ModeChip mode={mode} onPick={onPickMode} onTogglePreview={preview?.onToggle} />}
       <HdrBtn title={tr('新建会话')} onClick={onNew}><Plus className="h-4 w-4" /></HdrBtn>
       {/* 历史会话 / 资源管理器 / 授权 已移到左侧活动栏（App） */}
     </div>

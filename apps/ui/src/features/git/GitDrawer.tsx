@@ -15,6 +15,7 @@ import { GitBlame } from './GitBlame.js'
 import { GitMerge } from './GitMerge.js'
 import { GitCompare } from './GitCompare.js'
 import { GitChangelog, GitReview } from './GitAi.js'
+import { GitSendToChat } from './GitSendToChat.js'
 import { GitRebase } from './GitRebase.js'
 
 type Tab = 'changes' | 'branches' | 'history' | 'stash'
@@ -153,6 +154,7 @@ export function GitDrawer({ term, onClose, onWide }: { term?: TerminalInfo; onCl
         ]} />
         <button data-git-push title={st.detached ? tr('分离头指针不能推送') : st.upstream ? tr('推送到 {up}', { up: st.upstream }) : tr('发布分支：推送到 origin 并设为上游')} disabled={!!busy || st.detached} onClick={push} className={IB}><Upload className="h-3.5 w-3.5" /></button>
       </>}
+      {ok && st && term && <GitSendToChat term={term} status={st} onDone={setFlash} className={IB} />}
       {ok && <button title={tr('刷新')} disabled={loading} onClick={() => { refresh(); setVersion((v) => v + 1) }} className={IB}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /></button>}
       <button title={tr('关闭')} onClick={onClose} className={IB}><X className="h-3.5 w-3.5" /></button>
     </div>

@@ -877,6 +877,7 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
                 {isRemote && !winHost && !e.isDir && <MI onClick={() => { openLogViewer(scopeKey, { kind: 'file', path: e.path }); onClose() }}>{tr('实时查看（tail -f）')}</MI>}
                 {!isRemote && !e.isDir && <MI onClick={() => client.fs.openLocal(e.path)}>{tr('用系统程序打开')}</MI>}
                 {e.isDir && <MI onClick={() => goTo(e.path)} kbd={tr('双击')}>{tr('进入此目录')}</MI>}
+                {!isRemote && <MI onClick={() => client.fs.showInFolder(e.path)}>{e.isDir ? tr('在资源管理器中打开') : tr('在资源管理器中定位')}</MI>}
                 {!isRemote && <MI data-menu-chat onClick={() => attachPathsToChat([e.path])}>{tr('添加到对话')}</MI>}
                 {e.isDir && onCdHere && <MI onClick={() => onCdHere(e.path)}>{tr('在终端中打开（cd 过去）')}</MI>}
                 {pane && <MI data-menu-send onClick={() => pane.onSend([e.path])}>{pane.sendLabel}</MI>}

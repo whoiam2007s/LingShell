@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
 import { rm } from 'node:fs/promises'
-import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol } from '@lingshell/shared'
+import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
+import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -35,16 +36,16 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import type { LocalSkills } from './skills.js'
 import * as LlmRetry from '@deepseek-ai/dsh-llm-retry'
-import { createRelay, createStreamAdapter, contextTokensOf, requestUsageOf, searchableTexts, type DshEvent } from './relay.js'
+import { createRelay, createStreamAdapter, contextTokensOf, requestUsageOf, searchableTexts, isNormalEnd, turnIdOf, type DshEvent } from './relay.js'
 import {
-  terminalToolDefs, decideFor, commitGrant, neededForCall, describeCall, approvalView, targetTerminalsOf, planWrite, explainOf, EXPLAIN_GUIDANCE, rollbackDeny, hostsTouchedBy, fleetTargetsOf,
+  terminalToolDefs, decideFor, commitGrant, neededForCall, describeCall, approvalView, targetTerminalsOf, planWrite, explainOf, EXPLAIN_GUIDANCE, rollbackDeny, hostsTouchedBy, fleetTargetsOf, alwaysAskTool,
   type TerminalToolDeps, type UserOverride,
 } from './terminalTools.js'
 import { unifiedDiff } from './diff.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
 import { compactionConfig, effectiveLimit, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
-import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
+import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, RETRY_POLICY, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
 import { mcpDecision, mcpArgsView, stripExplain, MCP_GUIDANCE, type McpManager, type McpToolRef } from './mcp.js'
 import { withRedaction, placeholderError, REDACT_GUIDANCE } from './redaction.js'
 import { secretError } from './secretVault.js'
@@ -57,6 +58,8 @@ import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
 import { forkPoint, forkTitle } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
+import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
+import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
 import type { AiReviewResult, AiReviewAction, PlanStep } from '@lingshell/shared'
 
 /** AI 复核请求（弹授权卡前，见 DshControllerConfig.reviewCommand） */
@@ -141,6 +144,7 @@ interface Live {
   model: string
   profileId?: string      // 会话选的模型配置（缺省 = 默认配置）；回合进行中改了要等下一回合才生效
   applied?: string        // 当前生效的配置 id（= resolveSettings 实际用的那套）
+  thinking?: ThinkingLevel   // 会话级思考深度覆盖（缺省 = 跟随模型配置）
   route: { provider: string; model: string }   // 当前生效的 dsh 路由，agent/request 每步按它改写
   handle: { agent: any; dispose(): Promise<void> }
   relay: (ev: DshEvent) => void
@@ -366,7 +370,8 @@ export class DshController {
     const options = () => {
       const key = JSON.stringify(holder)
       if (cache?.key !== key) {
-        const opts = deepseek.resolveAdapterOptions({ baseURL: holder.baseURL } as any, undefined as any) as any
+        // retryPolicy：与 pi-ai 路由同一份（网络 / 服务 / 限流 / 超时 5 次退避重试，见 providers.RETRY_POLICY）
+        const opts = deepseek.resolveAdapterOptions({ baseURL: holder.baseURL, retryPolicy: { ...RETRY_POLICY, backoff: { ...RETRY_POLICY.backoff } } } as any, undefined as any) as any
         cache = { key, opts: { ...opts, models: deepseekModels(opts.models, holder.model, holder.multimodal) } }
       }
       return cache.opts
@@ -401,7 +406,7 @@ export class DshController {
       this.touch(sessionId, exec.name, exec.arguments)
       const mcp = this.cfg.mcp?.lookup(String(exec.name))
       // 预演模式：写类工具一律拦（原因进模型，让它改成列计划），只读照常。最先判，计划 / 规则放行都不突破
-      if (this.preview.has(sessionId) && (mcp ? previewBlocksMcp(mcp.autoApproved) : previewBlocks(String(exec.name), exec.arguments, this.cfg.isReadOnly))) {
+      if (this.execModeOf(sessionId) === 'preview' && (mcp ? previewBlocksMcp(mcp.autoApproved) : previewBlocks(String(exec.name), exec.arguments, this.cfg.isReadOnly))) {
         if (mcp) this.mcpAudit(sessionId, mcp, exec.arguments, 'deny:preview_mode')
         else {
           const tids = targetTerminalsOf(exec.name, exec.arguments)
@@ -435,6 +440,12 @@ export class DshController {
       // 已批准计划内的步骤免卡（只读信任档、命令规则「禁止」照样拒，见 planDecision）
       if (planDecision(this.cfg, this.plans, sessionId, exec.name, exec.arguments)) return next()
       const d = decideFor(this.cfg, sessionId, exec.name, exec.arguments)
+      // 四档执行模式：auto / trust 档在既有结论之上放宽（只放宽、不收紧）。
+      // confirm 与 preview 在这里恒为 false，各自走原路径 —— 默认档行为与升级前完全一致
+      if (this.relaxedByMode(sessionId, String(exec.name), exec.arguments, d)) {
+        this.overrides.set(String(exec.callId), { sessionId, rule: this.modeRuleOf(sessionId) })   // 执行记录注明是哪个档放行的
+        return next()
+      }
       if (d.kind === 'allow') {
         if (d.rule) this.overrides.set(String(exec.callId), { sessionId, rule: d.rule })   // 执行记录里注明按哪条规则放行
         return next()
@@ -487,6 +498,7 @@ export class DshController {
       if (rv?.action === 'allow') {
         if (base !== undefined) this.overrides.set(key, { sessionId: pend.sessionId, base })
         this.overrides.set(key, { ...this.overrides.get(key), sessionId: pend.sessionId, review, ...(pend.rule ? { rule: pend.rule } : {}) })
+        this.rememberToolGrant(pend.sessionId, pend.name, pend.args)   // auto 档：复核放行也算「确认过一次」
         commitGrant(withReview, pend.sessionId, pend.name, pend.args, pend.reason, pend.rule ? `${pend.rule} · ${tr('AI 复核通过')}` : tr('AI 复核通过'))
         return 'allowed-once'
       }
@@ -522,6 +534,7 @@ export class DshController {
       if (base !== undefined) this.overrides.set(key, { sessionId: pend.sessionId, base })
       if (pend.rule) this.overrides.set(key, { ...this.overrides.get(key), sessionId: pend.sessionId, rule: pend.rule })
       if (review) this.overrides.set(key, { ...this.overrides.get(key), sessionId: pend.sessionId, review })
+      this.rememberToolGrant(pend.sessionId, pend.name, edited ? { ...(pend.args as any), command: edited } : pend.args)   // auto 档：批准一次即记「工具 + 范围」
       commitGrant(withReview, pend.sessionId, pend.name, edited ? { ...(pend.args as any), command: edited } : pend.args, pend.reason, pend.rule)
       return 'allowed-once'
     }) as any)
@@ -539,9 +552,66 @@ export class DshController {
   }
 
   // ── 预演模式（只说不做）：会话级，只在内存（重启后回到正常模式）──
-  private preview = new Set<string>()
+  private preview = new Set<string>()   // 老接口：预演开关（execMode 的 preview 子集）
+  private modes = new Map<string, ExecMode>()   // 会话级四档执行模式（缺省 confirm）
   setPreview(sessionId: string, on: boolean): void { if (on) this.preview.add(sessionId); else this.preview.delete(sessionId) }
-  isPreview(sessionId: string): boolean { return this.preview.has(sessionId) }
+  isPreview(sessionId: string): boolean { return this.execModeOf(sessionId) === 'preview' }
+
+  /**
+   * 会话级执行模式（四档）。缺省 = confirm（与升级前行为一致）。
+   * preview 模式与老的 preview 布尔开关互通：设成 preview 等价于老的开预演，其它模式等价于关。
+   */
+  execModeOf(sessionId: string): ExecMode {
+    return this.modes.get(sessionId) ?? (this.preview.has(sessionId) ? 'preview' : DEFAULT_EXEC_MODE)
+  }
+
+  /** 设会话模式；同时同步老的 preview 集合，避免两条路径给出不同答案 */
+  setExecMode(sessionId: string, mode: ExecMode): void {
+    if (mode === 'preview') this.preview.add(sessionId)
+    else this.preview.delete(sessionId)
+    if (mode === DEFAULT_EXEC_MODE) this.modes.delete(sessionId)
+    else this.modes.set(sessionId, mode)
+    this.toolGrants.clear(sessionId)   // 换档即忘掉 auto 的「工具 + 范围」记忆，别把旧档的宽松带过去
+  }
+
+  // ── 四档执行模式的网关层（规则在 execGate.ts，这里只收集事实 / 落记忆）──
+  private toolGrants = new ToolGrants()   // auto 档的「工具 + 范围」授权记忆（只在内存，重启即失效）
+
+  /** 这次调用的事实：工作目录、只读判定、已记住的授权都现取 */
+  private modeFactsOf(sessionId: string, name: string, args: unknown) {
+    return modeFacts({
+      name, args,
+      isReadOnly: this.cfg.isReadOnly,
+      workDir: this.getWorkDir(sessionId),
+      granted: (key) => this.toolGrants.has(sessionId, key),
+    })
+  }
+
+  /** 目标里有生产主机（生产主机上写操作逐条确认，任何执行模式都不放宽） */
+  private onProdHost(name: string, args: unknown): boolean {
+    if (name === 'run_on_hosts') return fleetTargetsOf(this.cfg, args).some((h) => h.env === 'prod')
+    return targetTerminalsOf(name, args).some((tid) => this.cfg.hostMeta?.(tid)?.env === 'prod')
+  }
+
+  /** 模式层是否放行这次调用：只放宽，既有授权链说拒 / 必问时不放 */
+  private relaxedByMode(sessionId: string, name: string, args: unknown, d: ReturnType<typeof decideFor>): boolean {
+    const mode = this.execModeOf(sessionId)
+    if (mode !== 'auto' && mode !== 'trust') return false   // confirm / preview 走各自原路径，行为不变
+    const existing: ExistingGate = d.kind === 'ask' ? { kind: 'ask', ...(d.rule ? { rule: d.rule } : {}) } : { kind: d.kind }
+    return relaxByMode(mode, existing, this.modeFactsOf(sessionId, name, args), alwaysAskTool(name) || this.onProdHost(name, args))
+  }
+
+  /** 执行记录里注明这次是哪个执行模式放行的 */
+  private modeRuleOf(sessionId: string): string {
+    return tr('执行模式：{m}', { m: modeLabelOf(this.execModeOf(sessionId)) })
+  }
+
+  /** auto 档：用户（含 AI 复核自动放行）批准后记「工具 + 范围」，同范围下次不再问 */
+  private rememberToolGrant(sessionId: string, name: string, args: unknown): void {
+    if (this.execModeOf(sessionId) !== 'auto') return
+    const key = grantKeyOf(name, this.modeFactsOf(sessionId, name, args))
+    if (key) this.toolGrants.remember(sessionId, key)
+  }
   /** 「执行选中步骤」：关掉预演，把勾选的步骤记为已批准计划（下一轮里逐字一致的命令免逐条授权，同 propose_plan 批准） */
   approvePlan(sessionId: string, steps: PlanStep[]): number {
     this.preview.delete(sessionId)
@@ -600,6 +670,8 @@ export class DshController {
   private overrides = new Map<string, UserOverride & { sessionId: string }>()
   // 已批准的计划（本轮有效，turn/end 时清）
   private plans = new PlanBook()
+  // 自动重试预算：模型吐坏 JSON 时自动补一轮，每个会话连着最多 MAX_AUTO_RETRIES 次（见 turnRetry.ts）
+  private retryBudget = new RetryBudget()
 
   // dsh 会话 id → 我方会话 id（上下文重置后两者不再相同）
   private dshToOurs = new Map<string, string>()
@@ -684,10 +756,20 @@ export class DshController {
     handle.agent.ctx.on('session/event' as any, ((...a: any[]) => {
       const ev = a.find((x: any) => x && typeof x === 'object' && typeof x.type === 'string') as DshEvent | undefined
       if (!ev) return
+      let endedTurn: unknown
+      let retryReason: unknown
       if (ev.type === 'turn/start') { live.turning = true; live.turn = ev.data?.turn }
-      if (ev.type === 'turn/end') { live.turning = false; live.turn = undefined; live.lastUsed = Date.now(); this.plans.clear(id) }   // 计划只在本轮有效（纯内存操作，不碰 dsh）
+      if (ev.type === 'turn/end') {
+        endedTurn = (ev.data as any)?.turn ?? live.turn
+        live.turning = false; live.turn = undefined; live.lastUsed = Date.now(); this.plans.clear(id)   // 计划只在本轮有效（纯内存操作，不碰 dsh）
+        const reason = (ev.data as any)?.reason ?? {}
+        // 用户停止 / 正常结束 → 重试预算清零；错误类留给 relay 发完 turnFailed 再决定要不要自动补一轮
+        if (isNormalEnd(reason)) this.retryBudget.reset(id)
+        else retryReason = reason
+      }
       relay(ev)
       this.track(id, live, ev, true)
+      if (retryReason !== undefined) this.scheduleFormatRetry(id, live, endedTurn, retryReason)
     }) as any)
 
     // 0.2 起流式文本 / 推理增量走 agent/assistant-stream 帧（不进 session/event），翻成旧词汇交给同一个 relay
@@ -811,6 +893,7 @@ export class DshController {
   // attachments：文件 / 目录只把路径追加到消息末尾（见 shared/ai/attachments.ts 的路径块）；
   // 图片存进附件存档，作为图片内容块随消息发送——会话所用配置没开「支持图片」时拒绝（不悄悄丢图）
   async sendTurn(sessionId: string, prompt: string, attachments: TurnAttachment[] = []): Promise<void> {
+    this.retryBudget.reset(sessionId)   // 用户自己发了消息：自动重试预算清零
     this.drive(sessionId, await this.userContent(sessionId, prompt, attachments))
   }
 
@@ -819,6 +902,7 @@ export class DshController {
    * 空闲时 dsh 会直接开一轮。返回消息 id：被接纳时 user/message 事件的 id 就是它（界面据此把「等待插入」气泡落位），撤回也用它
    */
   async steer(sessionId: string, prompt: string, attachments: TurnAttachment[] = []): Promise<string> {
+    this.retryBudget.reset(sessionId)   // 用户插话：同样把自动重试预算清零
     return this.drive(sessionId, await this.userContent(sessionId, prompt, attachments), 'steer')
   }
 
@@ -857,7 +941,9 @@ export class DshController {
 
   // 把会话所选配置落到引擎并作为本会话之后请求的路由
   private async applyProfile(live: Live): Promise<void> {
-    const s = this.cfg.resolveSettings(live.profileId)
+    const base = this.cfg.resolveSettings(live.profileId)
+    // 会话级思考深度：会话里选过就用它，否则用模型配置里的默认值
+    const s = live.thinking !== undefined ? { ...base, thinking: live.thinking } : base
     live.window = await this.applySettings(s)
     live.route = { provider: routeOf(s.provider, s.profileId, s.protocol), model: s.model }
     live.provider = s.provider
@@ -882,6 +968,26 @@ export class DshController {
     if (live.turning) return { pending: true }
     await this.applyProfile(live)
     return { pending: false }
+  }
+
+  /**
+   * 会话级思考深度：只影响本会话（不动模型配置）。空闲时立即生效，
+   * 回合进行中只记下、下一回合生效（pending=true）。level 空 = 跟随模型配置。
+   */
+  async setSessionThinking(sessionId: string, level?: ThinkingLevel): Promise<{ pending: boolean }> {
+    const live = this.sessions.get(sessionId)
+    if (!live) throw new Error('session_not_found')
+    live.thinking = level
+    if (live.turning) return { pending: true }
+    await this.applyProfile(live)
+    return { pending: false }
+  }
+
+  /** 当前会话生效的思考深度（未覆盖时 undefined = 跟随配置） */
+  sessionThinking(sessionId: string): { level?: ThinkingLevel; pending: boolean } {
+    const live = this.sessions.get(sessionId)
+    if (!live) return { level: undefined, pending: false }
+    return { level: live.thinking, pending: live.turning }
   }
 
   /** 会话所选配置 + 是否还没生效（回合进行中切换的） */
@@ -925,6 +1031,35 @@ export class DshController {
     try { this.cfg.sessionStore?.touch(sessionId, new Date().toISOString()) }
     catch (e) { this.cfg.log?.('warn', 'touch session failed', { sessionId, err: String(e).slice(0, 200) }) }
     return String(msg.id)
+  }
+
+  /**
+   * 模型把工具参数吐成非法 JSON、整轮因此失败时，自动补一轮让它重出正确的参数。
+   *
+   * 为什么不在失败当下直接 followup：这是 session/event 回调内部，同步调 followup 会被 dsh 判成
+   * reenter 而丢弃（见 AGENTS.md 的 dsh 事件回调已知坑），所以交给 setTimeout 跳出当前调用栈。
+   * 只认「参数 JSON 语法」这一类错误（见 turnRetry.isRetryableFormatError），用户停止、工具失败、
+   * 鉴权 / 网络 / 限额错误都不在这里处理；连着重试超过预算就把失败原样留给用户。
+   * 无人值守巡检（定时任务）同样重试：那里没人能点「重新生成」，一次格式抖动就把整次巡检废掉，
+   * 反而更该自动补救 —— 上限仍由 RetryBudget 卡住。
+   */
+  private scheduleFormatRetry(sessionId: string, live: Live, endedTurn: unknown, reason: unknown): void {
+    const raw = String((reason as { error?: { message?: unknown } } | null)?.error?.message ?? (reason as { kind?: unknown } | null)?.kind ?? '')
+    if (!isRetryableFormatError(raw)) return
+    const attempt = this.retryBudget.take(sessionId)
+    if (attempt === undefined) {
+      this.cfg.log?.('warn', 'auto retry budget exhausted', { sessionId, err: raw.slice(0, 200) })
+      return
+    }
+    this.emit({ type: 'agent:turnRetrying', sessionId, turnId: turnIdOf(endedTurn), attempt, max: MAX_AUTO_RETRIES, error: friendlyError(raw) })
+    this.cfg.log?.('info', 'auto retry on malformed tool arguments', { sessionId, attempt, err: raw.slice(0, 200) })
+    setTimeout(() => {
+      // 会话可能已被释放 / 关掉，或用户自己又发了消息（turning）：都不再补这一轮
+      const cur = this.sessions.get(sessionId)
+      if (!cur || cur !== live || cur.turning) return
+      try { this.drive(sessionId, [{ type: 'text', text: retryPrompt(attempt, MAX_AUTO_RETRIES) }]) }
+      catch (e) { this.cfg.log?.('warn', 'auto retry failed', { sessionId, err: String(e).slice(0, 200) }) }
+    }, 0)
   }
 
 
@@ -1004,7 +1139,7 @@ export class DshController {
     const hit = this.searchCache.get(dshId)
     if (hit && rev && hit.rev === rev) return hit.texts
     const reader = await store.open(dshId, 'read')
-    let events: DshEvent[] = []
+    let events: DshEvent[]
     try { events = ((await reader.read())?.events ?? []) as DshEvent[] } finally { await reader.close() }
     const texts = searchableTexts(events)
     this.searchCache.set(dshId, { rev, texts })
@@ -1079,6 +1214,8 @@ export class DshController {
     const meta = this.cfg.sessionStore?.list().find((m) => m.id === sessionId)
     await this.closeSession(sessionId)
     this.preview.delete(sessionId)
+    this.toolGrants.clear(sessionId)
+    this.retryBudget.clear(sessionId)
     this.cfg.sessionStore?.remove(sessionId)
     // 连同磁盘上的 dsh 日志一起删（含上下文重置前的旧日志 <id>_xxx），否则删掉的会话日志永远留着占空间。
     // 删日志失败不影响删会话（记录已删、界面已看不到）

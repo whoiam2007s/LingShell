@@ -92,6 +92,9 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
   const pendingRef = useRef<Map<string, { text: string; id: string }[]>>(new Map())
   // sessionId → 当前活跃 turnId（turnStarted 记录）。结束事件 turnId 对不上（被中断的旧 turn 迟到的 end）→ 不动 busy。
   const turnIdRef = useRef<Map<string, string>>(new Map())
+  // sessionId → "该开新会话了"的待提示信息。主进程压缩完成后发一次事件；这里**不立刻弹窗**
+  // （那时会话正在跑，弹出来也开不了新会话），等下一次发送前由界面取走再问。
+  const resetPendingRef = useRef<Map<string, { steps: number; compactions: number; summary: string }>>(new Map())
   // sessionId → (turnId → 该轮时间点)，来自 agent:turnTiming（实时与历史回放都有；旧会话可能没有）
   const timesRef = useRef<Map<string, Map<string, TurnTimes>>>(new Map())
   // 用户中断过的 turnId：其迟到的 end 只用来放行排队消息，不清 busy、不出错误气泡（中断时已本地标记）
@@ -190,6 +193,29 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
           }
           else rerender()
           flushRef.current(sid)
+          break
+        }
+        case 'agent:turnRetrying': {
+          // 模型把工具参数吐成非法 JSON：引擎会自动补一轮让它重出（最多两次），
+          // 所以把那条红色错误气泡就地改成「正在自动重试」，别让用户以为要手动点重新生成
+          if (!sid) break
+          upsert(sid, {
+            itemId: `err_${e.turnId}`, kind: 'agent_message', status: 'completed',
+            text: tr('🔄 模型返回的工具参数格式不对，正在自动重试（{n}/{max}）…', { n: e.attempt, max: e.max }),
+          })
+          break
+        }
+        case 'agent:requestRetrying': {
+          // 网络 / 服务端 / 限流 / 超时：dsh 会在退避后自动重试 5 次。给一条明确提示，
+          // 否则这段时间界面看起来就是「卡住了」。回合仍是进行中，不要按失败处理。
+          if (!sid) break
+          const secs = Math.max(1, Math.round(e.delayMs / 1000))
+          upsert(sid, {
+            itemId: `retry_${e.turnId}`, kind: 'agent_message', status: 'completed',
+            text: e.max > 0
+              ? tr('📶 网络或服务暂不可用，{s} 秒后自动重试（{n}/{max}）：{err}', { s: secs, n: e.attempt, max: e.max, err: e.error })
+              : tr('📶 网络或服务暂不可用，{s} 秒后自动重试（第 {n} 次）：{err}', { s: secs, n: e.attempt, err: e.error }),
+          })
           break
         }
         case 'agent:itemStarted':
@@ -305,7 +331,7 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
           rerender()
           break
         case 'agent:resetSuggested':
-          ctxRef.current.set(e.sessionId, { stage: 'suggest', steps: e.steps, compactions: e.compactions, summary: e.summary })
+          resetPendingRef.current.set(e.sessionId, { steps: e.steps, compactions: e.compactions, summary: e.summary })
           rerender()
           break
         case 'agent:historyUnrecoverable':
@@ -464,9 +490,9 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
   }
 
   // 上下文重置：用交接总结开一个新 thread。旧对话在新 thread 里不存在，本地也一并清空。
-  const resetContext = (summary: string) => {
+  const resetContext = (summary: string): Promise<void> => {
     const sid = activeSessionId
-    if (!sid || busyRef.current.has(sid)) return   // 本轮执行中不重置：会杀掉进行中的任务并丢掉排队 / 追问
+    if (!sid || busyRef.current.has(sid)) return Promise.resolve()   // 本轮执行中不重置：会杀掉进行中的任务并丢掉排队 / 追问
     ctxRef.current.delete(sid)
     usageRef.current.delete(sid)
     queueRef.current.delete(sid)
@@ -475,7 +501,7 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
     // 只有真会发出 seed 才置 busy——否则 seed 为空时没有 turn 来把 busy 清掉，输入框永久锁死
     if (summary.trim()) { busyRef.current.add(sid); addUserMessage(sid, summary) }
     rerender()
-    client.agent.resetContext(sid, summary).catch((err) => {
+    return client.agent.resetContext(sid, summary).catch((err) => {
       busyRef.current.delete(sid)
       dropPending(sid, summary)
       rerender()
@@ -505,6 +531,14 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
   const fail = (sid: string, text: string) => upsert(sid, { itemId: `forkerr_${Date.now()}`, kind: 'agent_message', status: 'failed', text: `⚠️ ${text}` })
 
   // 用户选「继续当前会话」/ 关掉提示：收起即可（会话从未暂停）
+  /** 发送前取一次"该开新会话"的提示（取走即清，避免反复打扰） */
+  const takeResetSuggestion = () => {
+    const sid = activeSessionId
+    const v = sid ? resetPendingRef.current.get(sid) : undefined
+    if (sid && v) resetPendingRef.current.delete(sid)
+    return v
+  }
+
   const dismissContextPrompt = () => {
     ctxRef.current.delete(activeSessionId)
     rerender()
@@ -598,5 +632,6 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
     clearSession,
     resetContext,
     dismissContextPrompt,
+    takeResetSuggestion,
   }
 }

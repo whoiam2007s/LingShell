@@ -45,7 +45,14 @@ export interface SessionInfo {
 
 // 支持的 provider。deepseek 走官方适配器（每套模型配置一个实例）；其余都是 OpenAI 兼容端点，
 // 走 dsh-llm-pi-ai 的 openai-completions 协议（路由换算见 dsh-controller/providers.ts）。
-export type ProviderId = 'deepseek' | 'qwen' | 'moonshot' | 'ollama' | 'openai-compatible'
+export type ProviderId =
+  | 'deepseek' | 'qwen' | 'moonshot' | 'ollama' | 'openai-compatible'
+  // 聚合网关：一个 key 覆盖一大片厂商
+  | 'openrouter' | 'siliconflow'
+  // 国内直连
+  | 'glm' | 'minimax' | 'volc' | 'hunyuan' | 'qianfan' | 'spark'
+  // 国际直连
+  | 'openai' | 'anthropic' | 'gemini' | 'xai' | 'mistral'
 
 export interface ModelOption {
   id: string        // 传给引擎的模型 id
@@ -68,6 +75,7 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: 'deepseek',
     label: 'DeepSeek',
+    freeModel: true,
     defaultBaseUrl: 'https://api.deepseek.com',
     needsApiKey: true,
     defaultContextWindow: 1_000_000,
@@ -80,6 +88,7 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: 'qwen',
     label: tk('通义千问（DashScope）'),
+    freeModel: true,
     defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     needsApiKey: true,
     defaultContextWindow: 131_072,
@@ -92,6 +101,7 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: 'moonshot',
     label: tk('Kimi（Moonshot）'),
+    freeModel: true,
     defaultBaseUrl: 'https://api.moonshot.cn/v1',
     needsApiKey: true,
     defaultContextWindow: 131_072,
@@ -118,6 +128,131 @@ export const PROVIDERS: ProviderMeta[] = [
     freeModel: true,
     defaultContextWindow: 131_072,
     models: [{ id: 'gpt-4o', label: 'gpt-4o' }],
+  },
+  // ── 聚合网关（一个 key 用多家模型，性价比最高）──
+  {
+    id: 'openrouter',
+    label: tk('OpenRouter（聚合网关）'),
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'deepseek/deepseek-chat', label: 'deepseek/deepseek-chat' }],
+  },
+  {
+    id: 'siliconflow',
+    label: tk('硅基流动（SiliconFlow）'),
+    defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'deepseek-ai/DeepSeek-V3', label: 'deepseek-ai/DeepSeek-V3' }],
+  },
+
+  // ── 国内直连 ──
+  // 下列模型 id 只是**建议值**（各家改名很快），因为 freeModel: true，用户可以自己填
+  {
+    id: 'glm',
+    label: tk('智谱 GLM'),
+    defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'glm-4.6', label: 'GLM-4.6' }],
+  },
+  {
+    id: 'minimax',
+    label: tk('MiniMax'),
+    defaultBaseUrl: 'https://api.minimax.chat/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'MiniMax-M2', label: 'MiniMax M2' }],
+  },
+  {
+    id: 'volc',
+    label: tk('火山方舟（豆包）'),
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    // 火山常用「推理接入点 ID」（ep-xxxx）当模型名，所以必须自由填
+    // 模型名可自由填：火山常用 ep-xxxx 推理接入点 ID
+    models: [{ id: 'doubao-seed-1.6', label: 'doubao-seed-1.6' }],
+  },
+  {
+    id: 'hunyuan',
+    label: tk('腾讯混元'),
+    defaultBaseUrl: 'https://api.hunyuan.cloud.tencent.com/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'hunyuan-turbos-latest', label: 'hunyuan-turbos-latest' }],
+  },
+  {
+    id: 'qianfan',
+    label: tk('百度文心（千帆）'),
+    defaultBaseUrl: 'https://qianfan.baidubce.com/v2',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'ernie-4.5-turbo-128k', label: 'ernie-4.5-turbo-128k' }],
+  },
+  {
+    id: 'spark',
+    label: tk('讯飞星火'),
+    defaultBaseUrl: 'https://spark-api-open.xf-yun.com/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: '4.0Ultra', label: '4.0Ultra' }],
+  },
+
+  // ── 国际直连 ──
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'gpt-4o', label: 'gpt-4o' }],
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic Claude',
+    defaultBaseUrl: 'https://api.anthropic.com',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 200_000,
+    models: [{ id: 'claude-sonnet-4', label: 'claude-sonnet-4' }],
+  },
+  {
+    id: 'gemini',
+    label: 'Google Gemini',
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 1_000_000,
+    models: [{ id: 'gemini-2.5-pro', label: 'gemini-2.5-pro' }],
+  },
+  {
+    id: 'xai',
+    label: 'xAI Grok',
+    defaultBaseUrl: 'https://api.x.ai/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'grok-4', label: 'grok-4' }],
+  },
+  {
+    id: 'mistral',
+    label: 'Mistral',
+    defaultBaseUrl: 'https://api.mistral.ai/v1',
+    needsApiKey: true,
+    freeModel: true,
+    defaultContextWindow: 131_072,
+    models: [{ id: 'mistral-large-latest', label: 'mistral-large-latest' }],
   },
 ]
 
@@ -282,6 +417,57 @@ export interface ModelProfile {
   protocol?: ModelProtocol
   // 支持图片（多模态）：开了才能在对话里附图片。缺省按模型名猜（multimodalDefault）；读取时总有值
   multimodal?: boolean
+  // 思考深度：低/中/高（缺省 = 不设，沿用厂商默认）。具体发什么值见 thinkingWireOf
+  thinking?: ThinkingLevel
+}
+
+/**
+ * 思考深度：只暴露三档，各厂商内部词汇不同（DeepSeek 只有 high/max、OpenAI 只到 high），
+ * 由下面的表把三档翻译成各家认识的值。pi-ai 的完整档位是
+ * off/minimal/low/medium/high/xhigh/max，这里不全部暴露 —— 多数用户分不清 minimal 和 low。
+ */
+export type ThinkingLevel = 'low' | 'medium' | 'high'
+export const THINKING_LEVELS: ThinkingLevel[] = ['low', 'medium', 'high']
+
+/**
+ * 各厂商三档对应的实际派发值（pi-ai 的 reasoningEffort 词汇）。
+ * undefined = 该厂商不支持思考深度（界面上置灰，不发参数）。
+ */
+export const THINKING_WIRE: Record<string, Record<ThinkingLevel, string> | undefined> = {
+  // DeepSeek 只有 high / max；低档 = 不思考（不发参数由调用方处理，这里给 'off'）
+  deepseek: { low: 'off', medium: 'high', high: 'max' },
+  openai: { low: 'low', medium: 'medium', high: 'high' },
+  xai: { low: 'low', medium: 'medium', high: 'high' },
+  glm: { low: 'low', medium: 'medium', high: 'high' },
+  minimax: { low: 'low', medium: 'medium', high: 'high' },
+  volc: { low: 'low', medium: 'medium', high: 'high' },
+  hunyuan: { low: 'low', medium: 'medium', high: 'high' },
+  qianfan: { low: 'low', medium: 'medium', high: 'high' },
+  spark: { low: 'low', medium: 'medium', high: 'high' },
+  qwen: { low: 'low', medium: 'medium', high: 'high' },
+  moonshot: { low: 'low', medium: 'medium', high: 'high' },
+  gemini: { low: 'low', medium: 'medium', high: 'high' },
+  mistral: { low: 'low', medium: 'medium', high: 'high' },
+  // 聚合网关：模型名带厂商前缀，能力跟着上游走，这里按通用三档放行
+  openrouter: { low: 'low', medium: 'medium', high: 'high' },
+  siliconflow: { low: 'low', medium: 'medium', high: 'high' },
+  // Anthropic 走的是 thinking token 预算而不是 effort 名字，暂不支持（置灰）
+  // ollama / openai-compatible：本地与自定义端点，不认识 reasoningEffort，置灰
+}
+
+/** 该厂商是否支持思考深度 */
+export const thinkingSupported = (provider: string): boolean => !!THINKING_WIRE[provider]
+
+/** 三档 → 实际派发值；不支持返回 undefined */
+export function thinkingWireOf(provider: string, level?: ThinkingLevel): string | undefined {
+  if (!level) return undefined
+  return THINKING_WIRE[provider]?.[level]
+}
+
+/** 档位往下标；没设时按「中」显示（与各厂商默认一致） */
+export const thinkingIndexOf = (level?: ThinkingLevel): number => {
+  const i = level ? THINKING_LEVELS.indexOf(level) : -1
+  return i < 0 ? 1 : i
 }
 export const MODEL_PROFILE_ID_RE = /^[a-z0-9_]{1,40}$/
 // 测试连接的结果：ok=false 时 error 是给人看的原因；warning = 连上了但有需要注意的地方（如模型列表里没有该模型）
@@ -735,11 +921,20 @@ export interface SkillImportPreview {
 export interface SkillInput { name: string; description: string; body: string }
 
 // ── 模型接口协议 ────────────────────────────────────────
-// anthropic = Anthropic Messages（{base}/v1/messages，x-api-key）；openai = OpenAI Chat Completions（{base}/chat/completions，Bearer）
-export type ModelProtocol = 'anthropic' | 'openai'
-// 只有 DeepSeek 可选：缺省 / 非法值 = anthropic（保持 dsh 0.2 升级后的行为）；其它提供商一律 openai
-export const protocolOf = (provider: string, protocol?: unknown): ModelProtocol =>
-  provider === 'deepseek' && protocol !== 'openai' ? 'anthropic' : 'openai'
+// anthropic = Anthropic Messages（{base}/v1/messages，x-api-key）；
+// openai = OpenAI Chat Completions（{base}/chat/completions，Bearer）；
+// openai-responses = OpenAI Responses（{base}/responses，Bearer；只有 OpenAI 官方 / Azure / Codex 这类端点支持）
+export type ModelProtocol = 'anthropic' | 'openai' | 'openai-responses'
+// Anthropic 只有 Messages 协议，没有 OpenAI 入口；其它提供商明选「openai / openai-responses」就照办，
+// 没选 / 非法值回落缺省：DeepSeek = anthropic（保持 dsh 0.2 升级后的行为），其余 = openai
+export const protocolOf = (provider: string, protocol?: unknown): ModelProtocol => {
+  if (provider === 'anthropic') return 'anthropic'
+  if (protocol === 'openai' || protocol === 'openai-responses') return protocol
+  return provider === 'deepseek' ? 'anthropic' : 'openai'
+}
+/** 各协议实际请求的路径（界面上显示「实际请求 …」用；根地址见 endpointBaseOf） */
+export const protocolPathOf = (protocol: ModelProtocol): string =>
+  protocol === 'anthropic' ? '/v1/messages' : protocol === 'openai-responses' ? '/responses' : '/chat/completions'
 export const DEEPSEEK_ANTHROPIC_BASE = 'https://api.deepseek.com/anthropic'
 export const DEEPSEEK_OPENAI_BASE = 'https://api.deepseek.com'
 /**

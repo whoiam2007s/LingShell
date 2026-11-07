@@ -34,6 +34,8 @@ export interface SafetyDeps {
   complete(system: string, user: string, signal: AbortSignal, source: string, profileId?: string): Promise<string>
   profileName(profileId?: string): string
   preview: { get(sid: string): boolean; set(sid: string, on: boolean): void; approve(sid: string, steps: PlanStep[]): number }
+  // 四档执行模式（会话级）
+  execMode?: { get(sid: string): 'preview' | 'confirm' | 'auto' | 'trust'; set(sid: string, mode: 'preview' | 'confirm' | 'auto' | 'trust'): void }
   unattended?(sid: string): boolean
   send(ev: SafetyChangedEvent): void
   redact?(text: string): string                  // 发给复核模型前脱敏（命令 / diff / 说明 / 上下文）
@@ -83,6 +85,14 @@ export function registerSafety(d: SafetyDeps) {
   d.handle('safety:setGroupRules', (_e, g, t) => setRule('groups', g, t))
   d.handle('safety:setHostRules', (_e, id, t) => setRule('hosts', id, t))
   d.handle('safety:preview', (_e, sid) => typeof sid === 'string' && d.preview.get(sid))
+  // 四档执行模式（会话级）：只存状态，判定在授权网关里（decideByMode）
+  d.handle('safety:execMode', (_e, sid) => (typeof sid === 'string' ? (d.execMode?.get(sid) ?? 'confirm') : 'confirm'))
+  d.handle('safety:setExecMode', (_e, sid, mode) => {
+    if (typeof sid !== 'string' || !d.execMode) return
+    const ok = mode === 'preview' || mode === 'auto' || mode === 'trust' ? mode : 'confirm'
+    d.execMode.set(sid, ok)
+    changed(sid, 'preview')
+  })
   d.handle('safety:setPreview', (_e, sid, on) => {
     if (typeof sid !== 'string' || !sid) return
     d.preview.set(sid, on === true)
