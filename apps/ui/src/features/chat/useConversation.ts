@@ -195,6 +195,16 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
           flushRef.current(sid)
           break
         }
+        case 'agent:turnRetrying': {
+          // 模型把工具参数吐成非法 JSON：引擎会自动补一轮让它重出（最多两次），
+          // 所以把那条红色错误气泡就地改成「正在自动重试」，别让用户以为要手动点重新生成
+          if (!sid) break
+          upsert(sid, {
+            itemId: `err_${e.turnId}`, kind: 'agent_message', status: 'completed',
+            text: tr('🔄 模型返回的工具参数格式不对，正在自动重试（{n}/{max}）…', { n: e.attempt, max: e.max }),
+          })
+          break
+        }
         case 'agent:itemStarted':
           // itemStarted 无 text 字段。user_message 跳过（其文本在 itemUpdated 才来）；
           // 其余 kind 建占位项，text 由后续 delta/updated 填充。

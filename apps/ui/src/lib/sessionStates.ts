@@ -35,6 +35,10 @@ export function noteSessionEvent(ev: { type?: string; sessionId?: string; [k: st
     case 'agent:turnCompleted':
       set(undefined)
       break
+    // 格式错误后引擎会自动补一轮：状态回到「进行中」，不要因为这次失败亮红点
+    case 'agent:turnRetrying':
+      set('running')
+      break
     case 'agent:turnFailed':
       set('failed')
       break

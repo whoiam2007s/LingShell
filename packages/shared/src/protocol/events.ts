@@ -53,6 +53,9 @@ export type TurnStartedEvent = { type: 'agent:turnStarted'; sessionId: string; t
 export type TurnCompletedEvent = { type: 'agent:turnCompleted'; sessionId: string; turnId: string }
 // stopped = 用户主动停止（不算出错，不发「AI 出错」通知）
 export type TurnFailedEvent = { type: 'agent:turnFailed'; sessionId: string; turnId: string; error: string; stopped?: boolean }
+// 模型输出的工具参数不是合法 JSON（流里断了 / 拼坏了）：本轮虽然失败，但引擎会自动补一轮让它重出，
+// 界面据此把红条换成「正在自动重试（n/max）」，别让用户以为要手动点重新生成
+export type TurnRetryingEvent = { type: 'agent:turnRetrying'; sessionId: string; turnId: string; attempt: number; max: number; error: string }
 
 // item 生命周期：started（出现）→ delta（流式追加文本）→ updated/completed/failed
 export type ItemStartedEvent = {
@@ -111,7 +114,7 @@ export type HistoryUnrecoverableEvent = {
 export type TurnTimingEvent = { type: 'agent:turnTiming'; sessionId: string; turnId: string; startedAt?: number; firstAt?: number; endedAt?: number }
 
 export type AgentEvent =
-  | TurnStartedEvent | TurnCompletedEvent | TurnFailedEvent
+  | TurnStartedEvent | TurnCompletedEvent | TurnFailedEvent | TurnRetryingEvent
   | ItemStartedEvent | ItemDeltaEvent | ItemUpdatedEvent
   | ContextCompactingEvent | ContextCompactedEvent | ResetSuggestedEvent | ContextUsageEvent
   | HistoryUnrecoverableEvent

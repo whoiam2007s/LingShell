@@ -13,11 +13,12 @@
 import type { AgentEvent, ItemKind, MsgAttachment } from '@lingshell/shared'
 import { splitPathsBlock, splitContextBlocks, baseName, tr, tk } from '@lingshell/shared'
 import { friendlyError } from './providers.js'
+import { RETRY_SENTINEL } from './turnRetry.js'
 
 export interface DshEvent { type: string; seq: number; time: number; data?: any }
 
 // dsh 的 turn/step 是会话内自增整数，不是全局 id；拼成我方的字符串 turnId。
-const turnIdOf = (turn: unknown) => `turn_${turn}`
+export const turnIdOf = (turn: unknown) => `turn_${turn}`
 // 助手内容块没有自己的 id，用 turn:step:blockIndex 做稳定 itemId（同一块的 delta 会归到一起）。
 const blockIdOf = (turn: unknown, step: unknown, index: unknown) => `blk_${turn}_${step}_${index}`
 /** 思考块在时间侧车里的键（流式块 index = assistant/message 的 content 下标） */
@@ -258,6 +259,8 @@ export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, o
         // 跳过系统注入的 runtime-context 快照（source.kind==='plugin'），那不是用户说的话
         if (d.source?.kind !== 'user') break
         const { text, attachments } = userMessageView(d.content)
+        // 模型吐坏 JSON 后自动补发的那条重试提示：模型看得到，但不该在对话里显示成用户说的话
+        if (text.trimStart().startsWith(RETRY_SENTINEL)) break
         emit({
           type: 'agent:itemUpdated', sessionId, turnId: turnIdOf(turn),
           itemId: String(d.id ?? `user_${ev.seq}`),

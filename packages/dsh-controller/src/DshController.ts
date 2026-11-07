@@ -36,7 +36,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import type { LocalSkills } from './skills.js'
 import * as LlmRetry from '@deepseek-ai/dsh-llm-retry'
-import { createRelay, createStreamAdapter, contextTokensOf, requestUsageOf, searchableTexts, type DshEvent } from './relay.js'
+import { createRelay, createStreamAdapter, contextTokensOf, requestUsageOf, searchableTexts, isNormalEnd, turnIdOf, type DshEvent } from './relay.js'
 import {
   terminalToolDefs, decideFor, commitGrant, neededForCall, describeCall, approvalView, targetTerminalsOf, planWrite, explainOf, EXPLAIN_GUIDANCE, rollbackDeny, hostsTouchedBy, fleetTargetsOf, alwaysAskTool,
   type TerminalToolDeps, type UserOverride,
@@ -45,7 +45,7 @@ import { unifiedDiff } from './diff.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
 import { compactionConfig, effectiveLimit, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
-import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
+import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
 import { mcpDecision, mcpArgsView, stripExplain, MCP_GUIDANCE, type McpManager, type McpToolRef } from './mcp.js'
 import { withRedaction, placeholderError, REDACT_GUIDANCE } from './redaction.js'
 import { secretError } from './secretVault.js'
@@ -59,6 +59,7 @@ import { deepseekModels } from './providers.js'
 import { forkPoint, forkTitle } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
 import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
+import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
 import type { AiReviewResult, AiReviewAction, PlanStep } from '@lingshell/shared'
 
 /** AI 复核请求（弹授权卡前，见 DshControllerConfig.reviewCommand） */
@@ -668,6 +669,8 @@ export class DshController {
   private overrides = new Map<string, UserOverride & { sessionId: string }>()
   // 已批准的计划（本轮有效，turn/end 时清）
   private plans = new PlanBook()
+  // 自动重试预算：模型吐坏 JSON 时自动补一轮，每个会话连着最多 MAX_AUTO_RETRIES 次（见 turnRetry.ts）
+  private retryBudget = new RetryBudget()
 
   // dsh 会话 id → 我方会话 id（上下文重置后两者不再相同）
   private dshToOurs = new Map<string, string>()
@@ -752,10 +755,20 @@ export class DshController {
     handle.agent.ctx.on('session/event' as any, ((...a: any[]) => {
       const ev = a.find((x: any) => x && typeof x === 'object' && typeof x.type === 'string') as DshEvent | undefined
       if (!ev) return
+      let endedTurn: unknown
+      let retryReason: unknown
       if (ev.type === 'turn/start') { live.turning = true; live.turn = ev.data?.turn }
-      if (ev.type === 'turn/end') { live.turning = false; live.turn = undefined; live.lastUsed = Date.now(); this.plans.clear(id) }   // 计划只在本轮有效（纯内存操作，不碰 dsh）
+      if (ev.type === 'turn/end') {
+        endedTurn = (ev.data as any)?.turn ?? live.turn
+        live.turning = false; live.turn = undefined; live.lastUsed = Date.now(); this.plans.clear(id)   // 计划只在本轮有效（纯内存操作，不碰 dsh）
+        const reason = (ev.data as any)?.reason ?? {}
+        // 用户停止 / 正常结束 → 重试预算清零；错误类留给 relay 发完 turnFailed 再决定要不要自动补一轮
+        if (isNormalEnd(reason)) this.retryBudget.reset(id)
+        else retryReason = reason
+      }
       relay(ev)
       this.track(id, live, ev, true)
+      if (retryReason !== undefined) this.scheduleFormatRetry(id, live, endedTurn, retryReason)
     }) as any)
 
     // 0.2 起流式文本 / 推理增量走 agent/assistant-stream 帧（不进 session/event），翻成旧词汇交给同一个 relay
@@ -879,6 +892,7 @@ export class DshController {
   // attachments：文件 / 目录只把路径追加到消息末尾（见 shared/ai/attachments.ts 的路径块）；
   // 图片存进附件存档，作为图片内容块随消息发送——会话所用配置没开「支持图片」时拒绝（不悄悄丢图）
   async sendTurn(sessionId: string, prompt: string, attachments: TurnAttachment[] = []): Promise<void> {
+    this.retryBudget.reset(sessionId)   // 用户自己发了消息：自动重试预算清零
     this.drive(sessionId, await this.userContent(sessionId, prompt, attachments))
   }
 
@@ -887,6 +901,7 @@ export class DshController {
    * 空闲时 dsh 会直接开一轮。返回消息 id：被接纳时 user/message 事件的 id 就是它（界面据此把「等待插入」气泡落位），撤回也用它
    */
   async steer(sessionId: string, prompt: string, attachments: TurnAttachment[] = []): Promise<string> {
+    this.retryBudget.reset(sessionId)   // 用户插话：同样把自动重试预算清零
     return this.drive(sessionId, await this.userContent(sessionId, prompt, attachments), 'steer')
   }
 
@@ -1015,6 +1030,34 @@ export class DshController {
     try { this.cfg.sessionStore?.touch(sessionId, new Date().toISOString()) }
     catch (e) { this.cfg.log?.('warn', 'touch session failed', { sessionId, err: String(e).slice(0, 200) }) }
     return String(msg.id)
+  }
+
+  /**
+   * 模型把工具参数吐成非法 JSON、整轮因此失败时，自动补一轮让它重出正确的参数。
+   *
+   * 为什么不在失败当下直接 followup：这是 session/event 回调内部，同步调 followup 会被 dsh 判成
+   * reenter 而丢弃（见 AGENTS.md 的 dsh 事件回调已知坑），所以交给 setTimeout 跳出当前调用栈。
+   * 只认「参数 JSON 语法」这一类错误（见 turnRetry.isRetryableFormatError），用户停止、工具失败、
+   * 鉴权 / 网络 / 限额错误都不在这里处理；连着重试超过预算就把失败原样留给用户。
+   */
+  private scheduleFormatRetry(sessionId: string, live: Live, endedTurn: unknown, reason: unknown): void {
+    const raw = String((reason as { error?: { message?: unknown } } | null)?.error?.message ?? (reason as { kind?: unknown } | null)?.kind ?? '')
+    if (!isRetryableFormatError(raw)) return
+    const attempt = this.retryBudget.take(sessionId)
+    if (attempt === undefined) {
+      this.cfg.log?.('warn', 'auto retry budget exhausted', { sessionId, err: raw.slice(0, 200) })
+      return
+    }
+    if (this.cfg.isUnattended?.(sessionId)) return   // 无人值守巡检：不为格式问题反复烧钱，失败就记下
+    this.emit({ type: 'agent:turnRetrying', sessionId, turnId: turnIdOf(endedTurn), attempt, max: MAX_AUTO_RETRIES, error: friendlyError(raw) })
+    this.cfg.log?.('info', 'auto retry on malformed tool arguments', { sessionId, attempt, err: raw.slice(0, 200) })
+    setTimeout(() => {
+      // 会话可能已被释放 / 关掉，或用户自己又发了消息（turning）：都不再补这一轮
+      const cur = this.sessions.get(sessionId)
+      if (!cur || cur !== live || cur.turning) return
+      try { this.drive(sessionId, [{ type: 'text', text: retryPrompt(attempt, MAX_AUTO_RETRIES) }]) }
+      catch (e) { this.cfg.log?.('warn', 'auto retry failed', { sessionId, err: String(e).slice(0, 200) }) }
+    }, 0)
   }
 
 
@@ -1170,6 +1213,7 @@ export class DshController {
     await this.closeSession(sessionId)
     this.preview.delete(sessionId)
     this.toolGrants.clear(sessionId)
+    this.retryBudget.clear(sessionId)
     this.cfg.sessionStore?.remove(sessionId)
     // 连同磁盘上的 dsh 日志一起删（含上下文重置前的旧日志 <id>_xxx），否则删掉的会话日志永远留着占空间。
     // 删日志失败不影响删会话（记录已删、界面已看不到）
