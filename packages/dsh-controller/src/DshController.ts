@@ -1039,6 +1039,8 @@ export class DshController {
    * reenter 而丢弃（见 AGENTS.md 的 dsh 事件回调已知坑），所以交给 setTimeout 跳出当前调用栈。
    * 只认「参数 JSON 语法」这一类错误（见 turnRetry.isRetryableFormatError），用户停止、工具失败、
    * 鉴权 / 网络 / 限额错误都不在这里处理；连着重试超过预算就把失败原样留给用户。
+   * 无人值守巡检（定时任务）同样重试：那里没人能点「重新生成」，一次格式抖动就把整次巡检废掉，
+   * 反而更该自动补救 —— 上限仍由 RetryBudget 卡住。
    */
   private scheduleFormatRetry(sessionId: string, live: Live, endedTurn: unknown, reason: unknown): void {
     const raw = String((reason as { error?: { message?: unknown } } | null)?.error?.message ?? (reason as { kind?: unknown } | null)?.kind ?? '')
@@ -1048,7 +1050,6 @@ export class DshController {
       this.cfg.log?.('warn', 'auto retry budget exhausted', { sessionId, err: raw.slice(0, 200) })
       return
     }
-    if (this.cfg.isUnattended?.(sessionId)) return   // 无人值守巡检：不为格式问题反复烧钱，失败就记下
     this.emit({ type: 'agent:turnRetrying', sessionId, turnId: turnIdOf(endedTurn), attempt, max: MAX_AUTO_RETRIES, error: friendlyError(raw) })
     this.cfg.log?.('info', 'auto retry on malformed tool arguments', { sessionId, attempt, err: raw.slice(0, 200) })
     setTimeout(() => {
