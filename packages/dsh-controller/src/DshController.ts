@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
 import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
@@ -25,6 +25,7 @@ import ApprovalService from '@deepseek-ai/dsh-user-approval'
 // 0.2.1 起不再 default 导出类，模块命名空间本身就是插件（name/Config/apply）
 import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { StaticWorkingDirectory } from './workingDirectory.js'
+import { imageToolDef } from './imageTool.js'
 import * as deepseek from '@deepseek-ai/dsh-llm-deepseek'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { contextWindowOf, providerMeta, thinkingWireOf, tr } from '@lingshell/shared'
@@ -251,6 +252,22 @@ export class DshController {
       const vault = this.cfg.secretVault
       const mask = vault ? (s: string) => vault.mask(s) : undefined   // 密钥保险箱明文回写（不受脱敏开关影响）
       for (const def of terminalToolDefs(deps)) ctx.tools.register(defineTool(def as any))
+      // 看图工具（read_image）：把 1–8 张图片交给当前会话的多模态模型识别。
+      // 「支不支持图片」在执行期按会话当前配置再判一次 —— 回合中切了模型也不会误用。
+      ctx.tools.register(defineTool(withRedaction(imageToolDef({
+        sessionIdOf: (exec) => deps.sessionIdOf?.(exec as never) ?? '',
+        supportsImages: (sid) => !!this.cfg.resolveSettings(this.sessions.get(sid)?.profileId).multimodal,
+        readLocalFile: async (p) => new Uint8Array(await readFile(p)),
+        readImageId: async (id) => {
+          const url = await readStoredImage(this.attachmentRoot, id)
+          const m = url ? /^data:([^;]+);base64,(.*)$/s.exec(url) : null
+          return m ? { bytes: new Uint8Array(Buffer.from(m[2], 'base64')), mediaType: m[1] } : undefined
+        },
+        ...(deps.downloadFile ? { downloadFile: deps.downloadFile } : {}),
+        chatWithImages: (sid, q, imgs) => this.chatWithImages(sid, q, imgs),
+        cwdOf: (tid) => (tid ? this.cfg.terminalCwd?.(tid) : undefined),
+        audit: (e) => this.cfg.audit?.(e),
+      }) as any, secrets, undefined, mask) as any))
       ctx.tools.register(defineTool(withRedaction(planToolDef(deps, this.plans), secrets, undefined, mask) as any))
       ;(ctx as any).systemPrompt.section({ name: 'lingshell:plan', order: 150, text: PLAN_GUIDANCE })
       ;(ctx as any).systemPrompt.section({ name: 'lingshell:explain', order: 151, text: EXPLAIN_GUIDANCE })
@@ -1171,6 +1188,53 @@ export class DshController {
         this.cfg.recordUsage?.({ sessionId: '', source, provider: s.provider, model: s.model, input: u.inputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, output: u.outputTokens ?? 0 })
       }
       else if (c.type === 'finish' && (c.reason?.kind === 'error' || c.reason?.kind === 'aborted')) throw new Error(c.reason.failure?.message || c.reason.kind)
+    }
+    return text
+  }
+
+  // ── 图片识别子请求（read_image 工具用）──────────────────
+  // 与 complete() 同一套 hand-built 调用，但用**会话当前的路由与模型**（会话里切过模型也算），
+  // 并且消息里带图片块。图片先进附件库，适配器发请求时按引用读字节（与用户消息里的图片块同一套）。
+  // 不进会话历史、不占一轮；用量照常计入统计（source=image-read，会话 id 记本会话）。
+  private async chatWithImages(
+    sessionId: string,
+    question: string,
+    images: { name: string; bytes: Uint8Array; mediaType: string }[],
+  ): Promise<string> {
+    const ctx = await this.boot()
+    const live = this.sessions.get(sessionId)
+    if (!live) throw new Error(tr('会话还没启动，先发一条消息再试'))
+    const route = (live as any).route as { provider: string; model: string } | undefined
+    if (!route) throw new Error(tr('会话还没有可用的模型路由，先发一条消息再试'))
+    if (!this.cfg.resolveSettings(live.profileId).multimodal) {
+      throw new Error(tr('当前模型不支持图片，无法识别：可在模型设置里开启「支持图片」或切换到多模态模型'))
+    }
+    const refs: unknown[] = await (ctx as any).attachments.saveImages(
+      images.map((i) => ({ data: i.bytes, mediaType: i.mediaType, name: i.name })),
+    )
+    const msg = createUserMessage({
+      content: [{ type: 'text', text: question }, ...refs.map((attachment) => ({ type: 'image', attachment }))] as any,
+      source: { kind: 'user' },
+    })
+    let text = ''
+    const stream = (ctx as any).llm.stream({
+      provider: route.provider, model: route.model, messages: [msg],
+    }) as AsyncIterable<{
+      type: string; text?: string
+      usage?: { inputTokens?: number; cacheReadTokens?: number; outputTokens?: number }
+      reason?: { kind: string; failure?: { message: string } }
+    }>
+    for await (const c of stream) {
+      if (c.type === 'text-delta') text += c.text ?? ''
+      else if (c.type === 'usage' && typeof c.usage?.inputTokens === 'number') {
+        const u = c.usage
+        this.cfg.recordUsage?.({
+          sessionId, source: 'image-read', provider: live.provider, model: live.model,
+          input: u.inputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, output: u.outputTokens ?? 0,
+        })
+      } else if (c.type === 'finish' && (c.reason?.kind === 'error' || c.reason?.kind === 'aborted')) {
+        throw new Error(c.reason.failure?.message || c.reason.kind)
+      }
     }
     return text
   }
