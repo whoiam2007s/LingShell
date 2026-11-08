@@ -6,8 +6,8 @@ import {
 } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
-import { askAi } from '../../../lib/askAi.js'
-import { portBatchQuote, portEntryQuote } from './portsQuote.js'
+import { askAiChip } from '../../../lib/askAi.js'
+import { portBatchChip, portEntryChip } from './portsQuote.js'
 
 const errText = (e: unknown) => String((e as { message?: string })?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 const IB = 'flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-40'
@@ -71,19 +71,27 @@ export function PortsDrawer({ term, onClose }: { term?: TerminalInfo; onClose: (
   // 「问 AI」：单个端口问「该不该对外」，整表问「哪些暴露了、怎么收紧」
   const hostLabel = () => (local ? tr('where|本机') : tr('「{title}」上', { title: term?.title ?? '' }))
   const askPort = (r: ListenPort) => {
-    void askAi(portEntryQuote({
-      host: hostLabel(),
-      entry: { proto: r.proto, addr: r.addr, port: r.port, ...(r.process ? { process: r.process } : {}), ...(r.pid ? { pid: r.pid } : {}) },
-      ...(list?.tool ? { tool: list.tool } : {}),
-    }))
+    void askAiChip({
+      ctx: 'ports',
+      ...portEntryChip({
+        host: hostLabel(),
+        entry: { proto: r.proto, addr: r.addr, port: r.port, ...(r.process ? { process: r.process } : {}), ...(r.pid ? { pid: r.pid } : {}) },
+        ...(list?.tool ? { tool: list.tool } : {}),
+      }),
+      question: tr('这个端口该不该对外？有哪些风险，怎么收紧'),
+    })
     onClose()
   }
   const askBatch = () => {
-    void askAi(portBatchQuote({
-      host: hostLabel(),
-      entries: shown.map((r) => ({ proto: r.proto, addr: r.addr, port: r.port, ...(r.process ? { process: r.process } : {}), ...(r.pid ? { pid: r.pid } : {}) })),
-      ...(list?.tool ? { tool: list.tool } : {}),
-    }))
+    void askAiChip({
+      ctx: 'ports',
+      ...portBatchChip({
+        host: hostLabel(),
+        entries: shown.map((r) => ({ proto: r.proto, addr: r.addr, port: r.port, ...(r.process ? { process: r.process } : {}), ...(r.pid ? { pid: r.pid } : {}) })),
+        ...(list?.tool ? { tool: list.tool } : {}),
+      }),
+      question: tr('哪些端口对外暴露、风险排序，怎么收紧'),
+    })
     onClose()
   }
 

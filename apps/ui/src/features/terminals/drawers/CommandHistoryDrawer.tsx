@@ -3,8 +3,8 @@ import { X, Trash2, Filter, Sparkles } from 'lucide-react'
 import { tr, type CommandHistoryEntry } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
-import { askAi } from '../../../lib/askAi.js'
-import { historyBatchQuote, historyEntryQuote } from './historyQuote.js'
+import { askAiChip } from '../../../lib/askAi.js'
+import { historyBatchChip, historyEntryChip } from './historyQuote.js'
 
 // hostKey：当前活动终端所属主机（'local' | hostId | 'host:port'）。hostLabel：可读主机名（清空提示用）。activeTerminalId：用于"只显示当前终端"过滤 + 双击填入目标。
 export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onClose }: {
@@ -48,8 +48,14 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
   }
   const del = (entry: CommandHistoryEntry) => { deleteFresh(entry).catch(() => {}).finally(reload) }
   // 「问 AI」：单条问「这条干什么 / 失败怎么查」，批量问「这段操作在干什么、有没有危险步骤」
-  const askEntry = (e: CommandHistoryEntry) => { void askAi(historyEntryQuote({ host: hostLabel, entry: e })); onClose() }
-  const askBatch = () => { void askAi(historyBatchQuote({ host: hostLabel, entries: shown })); onClose() }
+  const askEntry = (e: CommandHistoryEntry) => {
+    void askAiChip({ ctx: 'history', ...historyEntryChip({ host: hostLabel, entry: e }), question: tr('这条命令是做什么的？如果失败了该怎么查') })
+    onClose()
+  }
+  const askBatch = () => {
+    void askAiChip({ ctx: 'history', ...historyBatchChip({ host: hostLabel, entries: shown }), question: tr('归纳这段操作在干什么，哪些是危险或不可逆的') })
+    onClose()
+  }
   // 清空：只显示当前终端时只清当前终端记录（逐条现找下标再删），否则清整台主机。
   const clearHistory = async () => {
     if (onlyCurrent) {
