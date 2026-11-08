@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { forkPoint, forkTitle, digestSeed } from './fork.js'
+import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs } from './fork.js'
 import { splitContextBlocks } from '@lingshell/shared'
 import type { DshEvent } from './relay.js'
 import { withPathsBlock } from '@lingshell/shared'
@@ -91,5 +91,25 @@ describe('digestSeed（摘要 + 最近几轮重组成种子）', () => {
     expect(split.ctxs).toHaveLength(1)
     expect(split.ctxs[0].ctx).toBe('session')
     expect(split.ctxs[0].text).toBe('这里是一段很长的摘要')
+  })
+
+  // 这条是回归：线上报过 `invalid seed event at index 8: sourceEventSeqs must reference earlier
+  // events: 10117 >= current seq 8` —— buildForkSeed 自己补的收尾事件会带**源会话原始 seq**，
+  // 以前只校验 renumbered，漏掉了它们，会话直接起不来。
+  it('最终种子里的引用一律指向更早事件（build 补的事件也不例外），否则宁可退回 digest', () => {
+    const r = digestSeed(mk(), { turns: 1, buildSeed: build })
+    if (r) expect(seedHasEarlierRefs(r.seed)).toBe(true)
+    // 模拟 buildForkSeed 追加了一个带原始 seq 的收尾事件：必须被判为不自洽
+    const dirty = [{ seq: 0, type: 'user/message' }, { seq: 1, type: 'tool/result', sourceEventSeqs: [10117] }]
+    expect(seedHasEarlierRefs(dirty as unknown[])).toBe(false)
+  })
+
+  it('seedHasEarlierRefs：合法引用（指向前面）通过，指向自己或后面不通过', () => {
+    expect(seedHasEarlierRefs([
+      { seq: 0, type: 'user/message' },
+      { seq: 1, type: 'tool/result', sourceEventSeqs: [0] },
+      { seq: 2, type: 'surface/replace', surfaceOp: { op: 'replace', startSeq: 0, endSeq: 1 } },
+    ] as unknown[])).toBe(true)
+    expect(seedHasEarlierRefs([{ seq: 0, type: 'tool/result', sourceEventSeqs: [0] }] as unknown[])).toBe(false)
   })
 })

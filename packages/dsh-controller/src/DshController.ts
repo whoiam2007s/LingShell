@@ -57,7 +57,7 @@ import { withPathsBlock, withContextBlocks, type TurnAttachment, type ContextAtt
 import { askUserToolDef, ASK_GUIDANCE } from './askUser.js'
 import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
-import { forkPoint, forkTitle, digestSeed } from './fork.js'
+import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
 import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
 import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
@@ -1498,7 +1498,11 @@ export class DshController {
       ...(seeded || !digest.trim() ? {} : { contextDigest: digest }),
     })
     // 带种子 = 新会话里已经有真实历史（回放给界面）；建不起来就退一步用 digest，绝不让接续失败
-    if (ds) {
+    // 交给 dsh 之前先本地验一次引用自洽：历史里有过压缩替换 / buildForkSeed 补的收尾事件可能带着
+    // 源会话的原始 seq，dsh 会直接抛「sourceEventSeqs must reference earlier events: X >= current seq Y」
+    if (ds && !seedHasEarlierRefs(ds.seed)) {
+      this.cfg.log?.('warn', 'continue seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
+    } else if (ds) {
       try {
         const info = await this.spawn(id, mkMeta(id, true), false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
         this.cfg.sessionStore?.upsert({ ...mkMeta(id, true), title: info.title })
@@ -1539,6 +1543,11 @@ export class DshController {
     const fork: ForkSeed | undefined = mode === 'regenerate' && p.boundary !== undefined
       ? { seed: buildForkSeed(events as any, p.boundary as any), inherited: p.boundary + 1, parent: live.dshId }
       : undefined
+    // 重新生成是「原地逐字重放」，没有 digest 兜底可言：种子不自洽就直接给中文原因（别把 dsh 的英文校验抛给用户）
+    if (fork && !seedHasEarlierRefs(fork.seed)) {
+      this.cfg.log?.('warn', 'regenerate seed rejected by local check', { sessionId, events: fork.seed.length })
+      throw bail(tr('这段历史里有过压缩替换，没法原地重新生成；用「从这里分叉」或直接在输入框里重发这条消息'))
+    }
     const now = new Date().toISOString()
     if (mode === 'fork') {
       const id = `sess_${randomUUID().slice(0, 8)}`
@@ -1558,7 +1567,9 @@ export class DshController {
         ...(ds || !digest.trim() ? {} : { contextDigest: digest }),
       }
       // 种子建不起来（dsh 校验没过等）就退一步：换个新 id 用 digest 建，绝不让分叉直接失败
-      if (ds) {
+      if (ds && !seedHasEarlierRefs(ds.seed)) {
+        this.cfg.log?.('warn', 'fork seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
+      } else if (ds) {
         try {
           const info = await this.spawn(id, meta, false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
           this.cfg.sessionStore?.upsert({ ...meta, title: info.title })

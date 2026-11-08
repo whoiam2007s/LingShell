@@ -551,6 +551,7 @@ export const chat: Record<string, string> = {
   '图片太大：{name} 约 {mb}MB，单张上限 {limit}MB': 'Image too large: {name} is about {mb}MB; the limit is {limit}MB per image',
   '图片总量太大：合计约 {mb}MB，上限 {limit}MB': 'Images too large in total: about {mb}MB; the limit is {limit}MB',
   '当前模型不支持图片，无法识别：可在模型设置里开启「支持图片」或切换到多模态模型': 'The current model does not take images, so it cannot read them: enable "Supports images" in model settings or switch to a multimodal model',
+  '这段历史里有过压缩替换，没法原地重新生成；用「从这里分叉」或直接在输入框里重发这条消息': 'This history contains a compaction replacement, so it cannot be regenerated in place — use "Fork from here" or resend the message in the input box',
   '图片存档不存在或已损坏：{id}': 'Image archive is missing or corrupted: {id}',
   '无法读取图片：{path}（{msg}）': 'Cannot read image: {path} ({msg})',
   '识别 {n} 张图片': 'Read {n} image(s)',

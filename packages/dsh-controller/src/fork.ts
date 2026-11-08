@@ -141,5 +141,62 @@ export function digestSeed(
       renumbered[at] = { ...renumbered[at], data: { ...data, content } }
     }
   }
-  return { seed: build(renumbered, renumbered.length - 1), inherited: renumbered.length }
+  // ── 最后一道闸：对**最终种子**再验一遍（含 buildForkSeed 自己补的事件）───────────
+  // buildForkSeed 会在末尾追加 `session/end-seed` 和「未结束轮次」的收尾事件；其中收尾的
+  // 工具结果由 dsh 的 ToolCallRecovery 生成，携带的 sourceEventSeqs 可能仍是**源会话里的原始
+  // seq**（例如 10117），而我们只校验过 renumbered。这种种子交给 dsh 会直接报
+  // 「sourceEventSeqs must reference earlier events: 10117 >= current seq 8」，会话起不来。
+  // 所以这里逐个映射成新下标；映射不到就整段放弃，由调用方退回「只带 digest」。
+  const seed = build(renumbered, renumbered.length - 1) as SeedEvent[]
+  const mapRef = (n: number, at: number): number | undefined => {
+    if (n < at && n < renumbered.length) return n          // 已经是重编后的下标
+    const j = indexOfSeq.get(n)                            // 源会话的原始 seq → 新下标
+    return j !== undefined && j < at ? j : undefined
+  }
+  for (let i = 0; i < seed.length; i++) {
+    const e = seed[i]
+    if (Array.isArray(e.sourceEventSeqs)) {
+      const fixed: number[] = []
+      for (const n of e.sourceEventSeqs) {
+        const j = mapRef(n, i)
+        if (j === undefined) return undefined
+        fixed.push(j)
+      }
+      e.sourceEventSeqs = fixed
+    }
+    const op = e.surfaceOp as { startSeq?: unknown; endSeq?: unknown } | undefined
+    if (op && typeof op === 'object') {
+      const a = typeof op.startSeq === 'number' ? mapRef(op.startSeq, i) : undefined
+      const b = typeof op.endSeq === 'number' ? mapRef(op.endSeq, i) : undefined
+      if (a === undefined || b === undefined) return undefined
+      e.surfaceOp = { op: 'replace' as const, startSeq: a, endSeq: b }
+    }
+  }
+  return { seed, inherited: renumbered.length }
+}
+
+/**
+ * 种子是否自洽：每个事件里的 seq 引用（sourceEventSeqs / surfaceOp 范围）都必须指向**更早**的事件。
+ * dsh 在 spawn 时会强校验这条；这里提前判一次，判不过就走 digest，别让会话起不来。
+ */
+export function seedHasEarlierRefs(seed: readonly unknown[]): boolean {
+  for (let i = 0; i < seed.length; i++) {
+    const e = seed[i] as RefCarrier
+    for (const n of refsOfSeed(e)) if (!(typeof n === 'number' && n < i)) return false
+  }
+  return true
+}
+
+/** 带 seq 引用的事件（结构类型：fork.ts 里的 SeedEvent 是函数内局部类型，导出不了） */
+interface RefCarrier { sourceEventSeqs?: unknown; surfaceOp?: unknown }
+
+/** 与 digestSeed 内部同一套「哪些字段算引用」的规则 */
+function refsOfSeed(e: RefCarrier): unknown[] {
+  const out: unknown[] = []
+  if (Array.isArray(e.sourceEventSeqs)) out.push(...e.sourceEventSeqs)
+  const op = e.surfaceOp as { startSeq?: unknown; endSeq?: unknown } | undefined
+  if (op && typeof op === 'object') {
+    out.push(op.startSeq, op.endSeq)
+  }
+  return out.filter((x) => x !== undefined)
 }
