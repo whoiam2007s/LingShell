@@ -28,7 +28,7 @@ import { StaticWorkingDirectory } from './workingDirectory.js'
 import { imageToolDef } from './imageTool.js'
 import * as deepseek from '@deepseek-ai/dsh-llm-deepseek'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
-import { contextWindowOf, providerMeta, thinkingWireOf, tr } from '@lingshell/shared'
+import { contextWindowOf, providerMeta, IMAGE_MAX_PER_MESSAGE, IMAGE_MAX_TOTAL_BYTES, base64Bytes, thinkingWireOf, tr } from '@lingshell/shared'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
@@ -1006,6 +1006,12 @@ export class DshController {
     if (live && !live.turning) await this.applyProfile(live)
     const images = attachments.filter((a) => a.kind === 'image')
     if (images.length && !this.cfg.resolveSettings(live?.profileId).multimodal) throw new Error(tr('当前模型不支持图片，可在模型设置里开启「支持图片」或切换模型'))
+    // 防御：界面上限（8 张 / 合计 20MB）被绕过时（旧版本、脚本直调 IPC）也要挡住，别让超大一坨图进请求
+    if (images.length > IMAGE_MAX_PER_MESSAGE)
+      throw new Error(tr('每条消息最多 {n} 张图片', { n: IMAGE_MAX_PER_MESSAGE }))
+    const imageBytes = images.reduce((n, i) => n + base64Bytes(i.data), 0)
+    if (imageBytes > IMAGE_MAX_TOTAL_BYTES)
+      throw new Error(tr('图片总量超过 {mb}MB，请删掉几张再发', { mb: Math.round(IMAGE_MAX_TOTAL_BYTES / 1024 / 1024) }))
     const paths = attachments.flatMap((a) => (a.kind === 'file' || a.kind === 'dir' ? [{ kind: a.kind, path: a.path }] : []))
     // 用户贴进来的终端输出里若带密钥保险箱的明文，进模型前同样换回占位符（@ 引用 / 终端块同样）
     const mask = (s: string) => this.cfg.secretVault?.mask(s) ?? s

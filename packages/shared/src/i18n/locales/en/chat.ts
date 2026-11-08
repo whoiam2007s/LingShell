@@ -556,4 +556,6 @@ export const chat: Record<string, string> = {
   '识别 {n} 张图片': 'Read {n} image(s)',
   '模型没有返回内容': 'The model returned nothing',
   '会话还没有可用的模型路由，先发一条消息再试': 'This session has no model route yet — send a message first and try again',
+  '图片总量超过 {mb}MB，已保留前 {n} 张': 'Images exceed {mb}MB in total; kept the first {n}',
+  '图片总量超过 {mb}MB，请删掉几张再发': 'Images exceed {mb}MB in total — remove a few and try again',
 }
