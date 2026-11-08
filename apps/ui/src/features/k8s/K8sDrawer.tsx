@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, ArrowRightLeft, Boxes, HeartPulse, Loader2, LogIn, MessageSquareQuote, RotateCcw, ScrollText, Sparkles, Square, SquareTerminal } from 'lucide-react'
 import {
-  K8S_KIND_OF, K8S_RESOURCES, fmtK8sAge, k8sDescribePrompt, k8sHealthPrompt, k8sHealthTitle, k8sProdContext, k8sRestartLabel, k8sSupported, podLevel, portsSupported, redactSecrets, workloadLevel, tr,
+  K8S_KIND_OF, K8S_RESOURCES, fmtK8sAge, k8sDescribePrompt, k8sHealthPrompt, k8sProdContext, k8sRestartLabel, k8sSupported, podLevel, portsSupported, workloadLevel, tr,
   type K8sForward, type K8sHealth, type K8sKind, type K8sList, type K8sPod, type K8sProbe, type K8sResource, type K8sRestartKind, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
@@ -11,7 +11,7 @@ import { Select } from '../../components/ui/Select.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
 import { NumberInput } from '../../components/ui/NumberInput.js'
 import { HelpTip } from '../../components/ui/form.js'
-import { sendToChat, sendToNewChat } from '../../lib/sendToChat.js'
+import { askAi as askAiToComposer } from '../../lib/askAi.js'
 import { openLogViewer } from '../logs/index.js'
 import { BTN, DrawerHeader, MUTED, PRIMARY, errText } from '../../components/ui/drawer.js'
 import { noteKubectl } from '../../lib/kubectlSeen.js'
@@ -140,14 +140,14 @@ export function K8sDrawer({ term, onClose }: { term?: TerminalInfo; onClose: () 
   useEffect(() => { setActErr(''); setFwdAsk(undefined); setContainer(''); setPrevious(false); if (!sel) setDetail(undefined) }, [sel?.res, sel?.name, sel?.namespace])
   useEffect(() => { if (sel) loadDetail(detail?.mode === 'logs' && sel.res === 'pods' ? 'logs' : detail?.mode === 'yaml' ? 'yaml' : 'describe') }, [sel?.res, sel?.name, sel?.namespace, container, previous])
 
-  const redact = async (text: string) => ((await client.settings.get().catch(() => undefined))?.system?.aiRedact === false ? text : redactSecrets(text))
+  // 「交给 AI」统一成进输入框（模板只是初稿，用户可改完再发）；脱敏由 askAi 按设置统一处理
   const askAi = async () => {
     if (!sel || !selKind) return
     const text = detail?.mode === 'describe' && detail.text ? detail.text : await client.k8s.text(tid, c, sel.namespace, selKind, sel.name, 'describe').catch((e) => tr('（读取 describe 失败：{err}）', { err: errText(e) }))
-    sendToChat(await redact(k8sDescribePrompt(term?.title ?? '', c, selKind, sel.namespace, sel.name, text)))
+    void askAiToComposer(k8sDescribePrompt(term?.title ?? '', c, selKind, sel.namespace, sel.name, text))
     onClose()
   }
-  const askHealth = async () => { if (health) { sendToNewChat(await redact(k8sHealthPrompt(term?.title ?? '', c, health)), k8sHealthTitle(c)); onClose() } }
+  const askHealth = async () => { if (health) { void askAiToComposer(k8sHealthPrompt(term?.title ?? '', c, health)); onClose() } }
   const openTerm = (what: 'exec' | 'logs' | 'portForward', p: { kind?: 'pod' | 'service'; name: string; namespace: string; container?: string; port?: number }) =>
     client.k8s.openTerminal(tid, c, p.namespace, what, p).then(() => onClose()).catch((e) => setActErr(errText(e)))
   // 多容器 Pod：exec / 跟随日志都必须带 -c（kubectl 不会替你选），默认第一个容器
