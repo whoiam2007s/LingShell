@@ -1,7 +1,7 @@
 // 多模型配置（设置 → 模型设置）：测试连接 + 会话级切换模型。配置的增删改走 settings:save（见 SettingsStore），
 // Key 明文只进不出：测试连接时表单没填 Key 就用主进程里已存的，渲染层拿不到。
-import type { ModelProfile, ModelProtocol, ModelTestResult } from '@lingshell/shared'
-import { endpointBaseOf, protocolOf, providerMeta, tr, tk } from '@lingshell/shared'
+import type { ModelProfile, ModelProtocol, ModelTestResult, ThinkingLevel } from '@lingshell/shared'
+import { THINKING_LEVELS, endpointBaseOf, protocolOf, providerMeta, tr, tk } from '@lingshell/shared'
 
 export interface ModelProfilesIpcDeps {
   handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void
@@ -9,9 +9,9 @@ export interface ModelProfilesIpcDeps {
   stored(id: string): { provider: string; apiKey: string } | undefined
   setSessionModel(sessionId: string, profileId?: string): Promise<{ pending: boolean }>
   sessionModel(sessionId: string): { profileId?: string; pending: boolean }
-  // 会话级思考深度（低/中/高）；空 = 跟随模型配置
-  setSessionThinking(sessionId: string, level?: 'low' | 'medium' | 'high'): Promise<{ pending: boolean }>
-  sessionThinking(sessionId: string): { level?: 'low' | 'medium' | 'high'; pending: boolean }
+  // 会话级思考深度（关/低/中/高）；空 = 跟随模型配置
+  setSessionThinking(sessionId: string, level?: ThinkingLevel): Promise<{ pending: boolean }>
+  sessionThinking(sessionId: string): { level?: ThinkingLevel; pending: boolean }
   fetch?: typeof fetch
 }
 
@@ -109,10 +109,11 @@ export function registerModelProfiles(d: ModelProfilesIpcDeps): void {
   })
   d.handle('agent:setModel', (_e, sessionId, profileId) => d.setSessionModel(str(sessionId, tk('arg|会话')), typeof profileId === 'string' && profileId ? profileId : undefined))
   d.handle('agent:getModel', (_e, sessionId) => d.sessionModel(str(sessionId, tk('arg|会话'))))
-  // 会话级思考深度：只影响本会话（低/中/高），空 = 跟随模型配置
+  // 会话级思考深度：只影响本会话（关/低/中/高），空 = 跟随模型配置。
+  // 校验走 THINKING_LEVELS：以前这里写死了 low/medium/high，新增「关」会被这里悄悄吞成 undefined
   d.handle('agent:setSessionThinking', (_e, sessionId, level) => d.setSessionThinking(
     str(sessionId, tk('arg|会话')),
-    level === 'low' || level === 'medium' || level === 'high' ? level : undefined,
+    typeof level === 'string' && (THINKING_LEVELS as string[]).includes(level) ? (level as ThinkingLevel) : undefined,
   ))
   d.handle('agent:sessionThinking', (_e, sessionId) => d.sessionThinking(str(sessionId, tk('arg|会话'))))
 }
