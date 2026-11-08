@@ -46,7 +46,8 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${{ github.ref_name }}".TrimStart('v')
-          $text = Get-Content CHANGELOG.md -Raw
+          # 显式按 UTF-8 读写：默认编码在不同 pwsh/runner 上不一致，中文会变成乱码存进 Release
+          $text = [System.IO.File]::ReadAllText((Resolve-Path CHANGELOG.md), [System.Text.Encoding]::UTF8)
           $m = [regex]::Match($text, "(?ms)^##\s*\[" + [regex]::Escape($ver) + "\].*?(?=^##\s|\z)")
           $body = if ($m.Success) { $m.Value.Trim() } else { "版本 $ver" }
           $exe = Get-ChildItem release/*.exe | Select-Object -First 1
@@ -55,7 +56,7 @@ jobs:
             $body += "`n`n### 安装包校验`n`n``$($exe.Name)```n`nSHA256: ``$hash```n"
           }
           $body += "`n> 安装包当前未签名，Windows 首次运行会提示 SmartScreen。"
-          $body | Out-File -FilePath release-notes.md -Encoding utf8
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'release-notes.md'), $body, (New-Object System.Text.UTF8Encoding($false)))
 
       - name: 上传到 Release
         uses: softprops/action-gh-release@v3
