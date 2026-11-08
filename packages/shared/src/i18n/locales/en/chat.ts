@@ -558,4 +558,5 @@ export const chat: Record<string, string> = {
   '会话还没有可用的模型路由，先发一条消息再试': 'This session has no model route yet — send a message first and try again',
   '图片总量超过 {mb}MB，已保留前 {n} 张': 'Images exceed {mb}MB in total; kept the first {n}',
   '图片总量超过 {mb}MB，请删掉几张再发': 'Images exceed {mb}MB in total — remove a few and try again',
+  '图片超过 {mb}MB 或无法解码，将只发送路径：{name}': 'Image is over {mb}MB or cannot be decoded; only its path will be sent: {name}',
 }

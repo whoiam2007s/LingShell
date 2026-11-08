@@ -5,7 +5,8 @@ export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/
 export const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif']
 export const IMAGE_MAX_SOURCE_BYTES = 10 * 1024 * 1024   // 单张原图上限
 export const IMAGE_MAX_PER_MESSAGE = 8                    // 每条消息最多几张
-export const IMAGE_MAX_TOTAL_BYTES = 20 * 1024 * 1024     // 每条消息的图片合计上限（压缩后的字节量）
+export const IMAGE_MAX_TOTAL_BYTES = 12 * 1024 * 1024     // 每条消息的图片合计上限（压缩后的字节量）
+export const IMAGE_MAX_SENT_BYTES = 1.5 * 1024 * 1024    // 单张压缩后的目标上限（界面按台阶降级压到这个值以下）
 
 /** base64 解出来的字节数（不真的解码，省一次复制） */
 export const base64Bytes = (data: string): number => Math.floor((data.length * 3) / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0)

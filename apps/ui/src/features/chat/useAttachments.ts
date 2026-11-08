@@ -2,7 +2,7 @@
 // 本机图片文件（png / jpg / gif / webp / bmp / svg）一律显示为图片 tag：模型支持图片时作为图片发送，不支持时只发路径。
 // 粘贴 / 拖入的位图（截图等，没有路径）只能作为图片发送：模型不支持时只给提示。
 import { useEffect, useRef, useState } from 'react'
-import { IMAGE_MAX_PER_MESSAGE, IMAGE_MAX_TOTAL_BYTES, base64Bytes, fitImageBudget, redactSecrets, tr, type ContextKind } from '@lingshell/shared'
+import { IMAGE_MAX_PER_MESSAGE, IMAGE_MAX_SOURCE_BYTES, IMAGE_MAX_TOTAL_BYTES, base64Bytes, fitImageBudget, redactSecrets, tr, type ContextKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { normalizeImage, imageFileAtt, pathAtt, contextAtt, toTurn, toView, toChip, imageCount, errMsg, NO_IMAGE_HINT, termBlockAtt, TERM_BLOCK_MIME, type DraftAtt, type TermBlock } from './attachments.js'
 import { onAttachTermBlock, parseBlockDrag } from '../../lib/termBlock.js'
@@ -71,7 +71,12 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
       const out: DraftAtt[] = []
       for (const [i, p] of paths.entries()) {
         const k = ks[i]
-        if (k === 'image') out.push(await imageFileAtt(p).catch(() => pathAtt('file', p)))
+        if (k === 'image') {
+          const att = await imageFileAtt(p).catch(() => pathAtt('file', p))
+          // 原图超过 10MB 或解码失败时只留了路径：明确告诉用户「这张没压缩，只发路径」
+          if (att.kind === 'image' && !att.data) setHint(tr('图片超过 {mb}MB 或无法解码，将只发送路径：{name}', { mb: Math.round(IMAGE_MAX_SOURCE_BYTES / 1024 / 1024), name: att.name }))
+          out.push(att)
+        }
         else if (k) out.push(pathAtt(k, p))
       }
       if (sidRef.current !== sid) return   // 读取期间切了会话
