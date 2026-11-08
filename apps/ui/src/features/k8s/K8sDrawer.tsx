@@ -11,7 +11,7 @@ import { Select } from '../../components/ui/Select.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
 import { NumberInput } from '../../components/ui/NumberInput.js'
 import { HelpTip } from '../../components/ui/form.js'
-import { askAi as askAiToComposer } from '../../lib/askAi.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { openLogViewer } from '../logs/index.js'
 import { BTN, DrawerHeader, MUTED, PRIMARY, errText } from '../../components/ui/drawer.js'
 import { noteKubectl } from '../../lib/kubectlSeen.js'
@@ -144,10 +144,18 @@ export function K8sDrawer({ term, onClose }: { term?: TerminalInfo; onClose: () 
   const askAi = async () => {
     if (!sel || !selKind) return
     const text = detail?.mode === 'describe' && detail.text ? detail.text : await client.k8s.text(tid, c, sel.namespace, selKind, sel.name, 'describe').catch((e) => tr('（读取 describe 失败：{err}）', { err: errText(e) }))
-    void askAiToComposer(k8sDescribePrompt(term?.title ?? '', c, selKind, sel.namespace, sel.name, text))
+    void askAiChip({
+      ctx: 'k8s', name: `${selKind}/${sel.name}`,
+      text: k8sDescribePrompt(term?.title ?? '', c, selKind, sel.namespace, sel.name, text),
+      question: tr('这段 describe 说明了什么？有什么风险、下一步怎么查'),
+    })
     onClose()
   }
-  const askHealth = async () => { if (health) { void askAiToComposer(k8sHealthPrompt(term?.title ?? '', c, health)); onClose() } }
+  const askHealth = async () => {
+    if (!health) return
+    void askAiChip({ ctx: 'k8s', name: tr('集群体检'), text: k8sHealthPrompt(term?.title ?? '', c, health), question: tr('这些异常里先处理哪个？怎么修') })
+    onClose()
+  }
   const openTerm = (what: 'exec' | 'logs' | 'portForward', p: { kind?: 'pod' | 'service'; name: string; namespace: string; container?: string; port?: number }) =>
     client.k8s.openTerminal(tid, c, p.namespace, what, p).then(() => onClose()).catch((e) => setActErr(errText(e)))
   // 多容器 Pod：exec / 跟随日志都必须带 -c（kubectl 不会替你选），默认第一个容器

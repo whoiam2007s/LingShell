@@ -466,7 +466,8 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDig
   const autoSend = useRef(false)
   useEffect(() => onChatContext((p) => {
     for (const c of p.chips) att.addContext(c.ctx, c.name, c.text)
-    if (p.text !== undefined) setInput(p.text)
+    // 预填的问题是「初稿」：用户已经打了字就别覆盖（面板点 ✨ 时不该冲掉正在写的内容）
+    if (p.text !== undefined) setInput((prev) => (prev.trim() ? prev : p.text!))
     if (p.send) autoSend.current = true
     else requestAnimationFrame(() => taRef.current?.focus())
   }), [])

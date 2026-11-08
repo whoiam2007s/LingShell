@@ -1,6 +1,6 @@
-// 监听端口 → 对话：把端口面板已有的字段拼成引用文本。
+// 监听端口 → 上下文 chip：chip 上只显示「监听地址:端口」，随消息发给 AI 的是完整事实。
 // 这里先做一件纯函数能做的事：**按监听地址判断是不是对外暴露**（0.0.0.0 / :: / *），
-// 别让模型再去数数 —— 它只负责判断风险和给收紧办法。
+// 别让模型再去数数 —— 它只负责判断风险、给收紧办法。
 import { tr } from '@lingshell/shared'
 
 /** 一次最多带多少条端口（再多就成日志了） */
@@ -14,6 +14,9 @@ export interface PortQuoteEntry {
   pid?: number
 }
 
+/** chip 的名字 + 随消息发出去的全文 */
+export interface ChipQuote { name: string; text: string }
+
 /** 通配监听地址 = 所有网卡都在听，也就是对外暴露 */
 export const isWildcard = (addr: string): boolean => ['0.0.0.0', '::', '[::]', '*'].includes(addr.trim())
 
@@ -24,54 +27,56 @@ const addrKind = (addr: string): string =>
   isWildcard(addr) ? tr('所有网卡（对外）') : isLoopback(addr) ? tr('仅本机回环') : tr('指定地址 {addr}', { addr })
 
 const procOf = (e: PortQuoteEntry): string =>
-  e.process ? (e.pid ? tr('{name}（PID {pid}）', { name: e.process, pid: e.pid }) : e.process) : tr('看不到进程（需要更高权限）')
+  e.process
+    ? e.pid ? `${e.process}${tr('（PID {pid}）', { pid: e.pid })}` : e.process
+    : tr('进程看不到（需要更高权限，或不是当前用户的进程）')
 
-export interface PortEntryQuoteInput {
+export interface PortEntryChipInput {
   host: string
   entry: PortQuoteEntry
   /** 面板用的探测工具：ss / netstat / Windows netstat */
   tool?: string
 }
 
-/** 单个端口：该不该对外、谁在听、要不要收紧 */
-export function portEntryQuote(i: PortEntryQuoteInput): string {
+/** 单个端口：chip 名 = 地址:端口 */
+export function portEntryChip(i: PortEntryChipInput): ChipQuote {
   const e = i.entry
-  return [
-    tr('帮我看看这个监听端口有没有风险。'),
-    '',
-    tr('（下面是我从「监听端口」面板复制的信息，不是命令输出）'),
-    tr('主机：{host}', { host: i.host }),
-    tr('协议：{proto}', { proto: e.proto }),
-    tr('监听：{addr}:{port}（{kind}）', { addr: e.addr, port: e.port, kind: addrKind(e.addr) }),
-    tr('进程：{proc}', { proc: procOf(e) }),
-    ...(i.tool ? [tr('探测工具：{tool}', { tool: i.tool })] : []),
-    '',
-    tr('请判断：1) 这个监听地址是否意味着对外可访问，风险有多大；2) 这个端口的常见用途，以及是不是该限制到内网或只监听回环；3) 给具体做法（防火墙规则或改配置），命令要能直接跑。'),
-  ].join('\n')
+  return {
+    name: `${e.addr}:${e.port}`,
+    text: [
+      tr('【监听端口】'),
+      tr('主机：{host}', { host: i.host }),
+      tr('协议：{proto}', { proto: e.proto }),
+      tr('监听地址：{addr}:{port}（{kind}）', { addr: e.addr, port: e.port, kind: addrKind(e.addr) }),
+      tr('进程：{proc}', { proc: procOf(e) }),
+      ...(i.tool ? [tr('探测工具：{tool}', { tool: i.tool })] : []),
+      tr('说明：这是端口面板里的信息，不是命令输出。'),
+    ].join('\n'),
+  }
 }
 
-export interface PortBatchQuoteInput {
+export interface PortBatchChipInput {
   host: string
   entries: PortQuoteEntry[]
   tool?: string
 }
 
-/** 一批端口：找对外暴露的、可疑的，给收紧建议 */
-export function portBatchQuote(i: PortBatchQuoteInput): string {
+/** 一批端口：chip 名 = 「N 个端口」，全文按端口号排序，并统计对外暴露的条数 */
+export function portBatchChip(i: PortBatchChipInput): ChipQuote {
   const sorted = [...i.entries].sort((a, b) => a.port - b.port)
   const list = sorted.slice(0, MAX_BATCH)
   const exposed = list.filter((e) => isWildcard(e.addr)).length
+  const more = sorted.length > MAX_BATCH ? tr('（另有 {n} 条未带）', { n: sorted.length - MAX_BATCH }) : ''
   const lines = [
-    tr('帮我看下【{host}】上这些监听端口，哪些不该对外。', { host: i.host }),
-    '',
-    tr('（从「监听端口」面板复制的 {n} 条记录；其中 {k} 条监听所有网卡 = 对外暴露）', { n: list.length, k: exposed }),
+    tr('【监听端口】'),
+    tr('主机：{host}', { host: i.host }),
+    tr('共 {n} 条{more}，其中 {k} 条监听所有网卡 = 对外暴露：', { n: list.length, more, k: exposed }),
     ...(i.tool ? [tr('探测工具：{tool}', { tool: i.tool })] : []),
     '',
   ]
   list.forEach((e) => {
     lines.push(`- ${e.proto} ${e.addr}:${e.port} · ${procOf(e)}${isWildcard(e.addr) ? tr(' · 【对外】') : ''}`)
   })
-  if (sorted.length > MAX_BATCH) lines.push(tr('（后面还有 {n} 条没带上）', { n: sorted.length - MAX_BATCH }))
-  lines.push('', tr('请回答：1) 哪些端口对外暴露、风险排序；2) 其中哪些像是意外暴露（开发调试、数据库、管理端口）；3) 收紧办法（防火墙规则 / 改监听地址），命令要能直接跑。'))
-  return lines.join('\n')
+  lines.push('', tr('说明：这是端口面板里的信息，不是命令输出。'))
+  return { name: tr('{n} 个端口', { n: list.length }), text: lines.join('\n') }
 }
