@@ -639,5 +639,6 @@ export const chat: Record<string, string> = {
   'K8s': 'K8s',
   '体检': 'Health check',
   '主机体检报告': 'Host health report',
+  '把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理': 'Attach the whole health report (redacted) as context and ask the AI what to do',
   '解读这份体检报告：按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行': 'Interpret this health report: list the problems by severity with recommended actions; explain the purpose before running any command on the host',
 }
