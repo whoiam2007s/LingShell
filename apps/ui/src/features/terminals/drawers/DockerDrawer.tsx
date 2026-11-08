@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, ArrowLeft, Container, Layers, LogIn, Play, RefreshCw, RotateCcw, ScrollText, Square, SquareTerminal, X } from 'lucide-react'
+import { Activity, ArrowLeft, Container, Layers, LogIn, Play, RefreshCw, RotateCcw, ScrollText, Sparkles, Square, SquareTerminal, X } from 'lucide-react'
 import {
-  COMPOSE_ACTION_LABEL, DOCKER_ACTION_LABEL, DOCKER_LOCAL_PROBLEM_TEXT, DOCKER_PROBLEM_TEXT, dockerLocalSupported, dockerSupported, statFor, tr,
+  COMPOSE_ACTION_LABEL, DOCKER_ACTION_LABEL, DOCKER_LOCAL_PROBLEM_TEXT, DOCKER_PROBLEM_TEXT, dockerLocalSupported, dockerSupported, redactSecrets, statFor, tr,
   type ComposeAction, type ComposeProject, type DockerAction, type DockerContainer, type DockerListResult, type DockerMode, type DockerStat, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
 import { cn } from '../../../lib/cn.js'
+import { quoteToChat } from '../../../lib/quoteToChat.js'
+import { dockerQuote } from './dockerQuote.js'
 
 const errText = (e: unknown) => String((e as { message?: string })?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 const IB = 'flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-40'
@@ -80,6 +82,32 @@ export function DockerDrawer({ term, onClose }: { term?: TerminalInfo; onClose: 
   }
 
   const prod = term?.env === 'prod'
+  // 「问 AI」：把面板上已经显示的事实拼成引用文本塞进输入框（与其它面板同一条管线，默认按设置脱敏）
+  const hostLabel = () => (local ? tr('where|本机') : tr('「{title}」上', { title: term?.title ?? '' }))
+  const askAi = async (text: string) => {
+    const s = await client.settings.get().catch(() => undefined)
+    quoteToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    onClose()
+  }
+  const askContainer = (c: DockerContainer) => {
+    const st = stats ? statFor(stats, c) : undefined
+    void askAi(dockerQuote({
+      where: hostLabel(),
+      name: c.name,
+      image: c.image,
+      status: c.status,
+      ...(c.state ? { state: c.state } : {}),
+      ...(c.ports ? { ports: c.ports } : {}),
+      ...(c.created ? { created: c.created } : {}),
+      ...(st ? { stat: { cpu: st.cpu, mem: st.mem } } : {}),
+      // 当前正看着这个容器的日志就一起带上（尾部 6000 字）
+      ...(logs?.kind === 'c' && logs.id === c.id && logs.text ? { logs: logs.text } : {}),
+    }))
+  }
+  const askLogs = () => {
+    if (!logs) return
+    void askAi(dockerQuote({ where: hostLabel(), name: logs.name, ...(logs.text ? { logs: logs.text } : {}) }))
+  }
   const header = (
     <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-3">
       {logs
@@ -94,6 +122,7 @@ export function DockerDrawer({ term, onClose }: { term?: TerminalInfo; onClose: 
         <button title={tr('刷新')} disabled={loading} onClick={refresh} className={IB}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /></button>
       </>}
       {logs && <>
+        <button title={tr('问 AI：这段日志说明什么')} onClick={askLogs} className={IB}><Sparkles className="h-3.5 w-3.5" /></button>
         <button title={tr('刷新日志（最后 200 行）')} onClick={() => loadLogs(logs)} className={IB}><RefreshCw className="h-3.5 w-3.5" /></button>
         <button title={logs.kind === 'c' ? tr('在终端里跟踪（docker logs -f）') : tr('在终端里跟踪（docker compose logs -f）')} onClick={() => openTerm(logs.kind === 'c' ? 'follow' : 'composeLogs', logs.id)} className={IB}><SquareTerminal className="h-3.5 w-3.5" /></button>
       </>}
@@ -122,6 +151,7 @@ export function DockerDrawer({ term, onClose }: { term?: TerminalInfo; onClose: 
             <div className="flex items-center gap-1.5">
               <span title={p.status} className={`h-2 w-2 shrink-0 rounded-full ${up ? 'bg-[var(--color-success)]' : 'bg-[var(--color-text-muted)]'}`} />
               <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--color-text-primary)]">{p.name}</span>
+              <button title={tr('问 AI：这个 Compose 项目为什么异常')} onClick={() => void askAi(dockerQuote({ where: hostLabel(), name: p.name, status: p.status }))} className={IB}><Sparkles className="h-3 w-3" /></button>
               <button title={tr('日志（最后 200 行）')} onClick={() => loadLogs({ kind: 'p', id: p.name, name: p.name })} className={IB}><ScrollText className="h-3 w-3" /></button>
               {actBtn(tr(COMPOSE_ACTION_LABEL.up), Play, () => setConfirm({ p, action: 'up' }))}
               {up && actBtn(tr(COMPOSE_ACTION_LABEL.down), Square, () => setConfirm({ p, action: 'down' }))}
@@ -156,6 +186,7 @@ export function DockerDrawer({ term, onClose }: { term?: TerminalInfo; onClose: 
             <div className="flex items-center gap-1.5">
               <span title={c.state} className={`h-2 w-2 shrink-0 rounded-full ${DOT[c.state] ?? 'bg-[var(--color-text-muted)]'}`} />
               <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--color-text-primary)]" title={`${c.name}\n${c.id}`}>{c.name}</span>
+              <button title={tr('问 AI：这个容器为什么异常')} onClick={() => askContainer(c)} className={IB}><Sparkles className="h-3 w-3" /></button>
               <button title={tr('日志（最后 200 行）')} onClick={() => loadLogs({ kind: 'c', id: c.id, name: c.name })} className={IB}><ScrollText className="h-3 w-3" /></button>
               {running && <button title={tr('进入容器（新终端标签）')} onClick={() => openTerm('exec', c.id)} className={IB}><LogIn className="h-3 w-3" /></button>}
               {running ? actBtn(tr(DOCKER_ACTION_LABEL.stop), Square, () => setConfirm({ c, action: 'stop' })) : actBtn(tr(DOCKER_ACTION_LABEL.start), Play, () => setConfirm({ c, action: 'start' }))}
