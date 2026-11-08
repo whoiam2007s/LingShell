@@ -117,14 +117,22 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
     if (!hostKey) return
     client.trend.get([hostKey]).then((r) => setTrend(r[hostKey])).catch(() => setTrend(undefined))
   }, [hostKey, hist?.items.length])
-  // 整份体检报告 = 一个 chip（入口在「发现的问题」标题后面）；问题放输入框，由用户自己按发送
+  // 整份体检报告 = 一个「体检」chip；两个入口共用同一个 chip（去重只留一个），
+  // 但预填的问题不一样 —— 顶部是「解读整份报告」，问题标题旁是「排查这些具体问题」。
+  const chipOf = () => ({
+    ctx: 'check' as const,
+    name: tr('主机体检报告'),
+    text: profileReportText(cur!, issues, diff),
+  })
   const explain = () => {
     if (!cur) return
+    void askAiChip({ ...chipOf(), question: tr('解读这份体检报告：按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行') })
+  }
+  const triage = () => {
+    if (!cur) return
     void askAiChip({
-      ctx: 'check',
-      name: tr('主机体检报告'),
-      text: profileReportText(cur, issues, diff),
-      question: tr('解读这份体检报告：按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行'),
+      ...chipOf(),
+      question: tr('这份体检发现的问题（共 {n} 个）分别怎么排查：按严重程度给原因、验证方法和修复命令', { n: issues.length }),
     })
   }
 
@@ -203,7 +211,7 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
 
           {p.type === 'check' && (
             <Card title={tr('发现的问题（{n}）', { n: issues.length })} extra={issues.length > 0 && (
-              <button data-hostcheck-ai disabled={!p} onClick={explain} title={tr('把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理')}
+              <button data-hostcheck-ai disabled={!cur} onClick={triage} title={tr('把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理')}
                 className="flex items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"><Sparkles className="h-3 w-3" />{tr('用 AI 排查')}</button>
             )}>
               <div data-hostcheck-issues>
