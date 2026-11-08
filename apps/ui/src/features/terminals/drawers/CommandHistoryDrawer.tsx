@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { X, Trash2, Filter } from 'lucide-react'
+import { X, Trash2, Filter, Sparkles } from 'lucide-react'
 import { tr, type CommandHistoryEntry } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
+import { askAi } from '../../../lib/askAi.js'
+import { historyBatchQuote, historyEntryQuote } from './historyQuote.js'
 
 // hostKey：当前活动终端所属主机（'local' | hostId | 'host:port'）。hostLabel：可读主机名（清空提示用）。activeTerminalId：用于"只显示当前终端"过滤 + 双击填入目标。
 export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onClose }: {
@@ -45,6 +47,9 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
     if (idx >= 0) await client.history.delete(hostKey, idx)
   }
   const del = (entry: CommandHistoryEntry) => { deleteFresh(entry).catch(() => {}).finally(reload) }
+  // 「问 AI」：单条问「这条干什么 / 失败怎么查」，批量问「这段操作在干什么、有没有危险步骤」
+  const askEntry = (e: CommandHistoryEntry) => { void askAi(historyEntryQuote({ host: hostLabel, entry: e })); onClose() }
+  const askBatch = () => { void askAi(historyBatchQuote({ host: hostLabel, entries: shown })); onClose() }
   // 清空：只显示当前终端时只清当前终端记录（逐条现找下标再删），否则清整台主机。
   const clearHistory = async () => {
     if (onlyCurrent) {
@@ -67,8 +72,12 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
             {label}
           </button>
         ))}
+        {shown.length > 0 && (
+          <button title={tr('问 AI：归纳这段操作（最多 10 条）')} onClick={askBatch}
+            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]"><Sparkles className="h-3.5 w-3.5" /></button>
+        )}
         <button title={tr('只显示当前终端')} onClick={() => setOnlyCurrent((v) => !v)}
-          className={`ml-auto flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 text-[11px] ${onlyCurrent ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
+          className={`${shown.length > 0 ? '' : 'ml-auto'} flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 text-[11px] ${onlyCurrent ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
           <Filter className="h-3 w-3" />{tr('当前')}
         </button>
         <button title={tr('清空该主机历史')} onClick={() => setConfirmClear(true)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -82,6 +91,8 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
             <span className="min-w-0 flex-1 truncate font-mono text-[var(--color-text-primary)]">{e.command}</span>
             <span className="shrink-0 rounded bg-[var(--color-bg-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">{e.terminalTitle}</span>
             {/* hidden→group-hover:flex：平时完全不占位，hover 整行才显示删除按钮 */}
+            {/* hidden→group-hover:flex：平时完全不占位，hover 整行才显示「问 AI」与删除 */}
+            <button onClick={() => askEntry(e)} title={tr('问 AI：这条命令干什么、失败怎么查')} className="hidden shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] group-hover:flex"><Sparkles className="h-3 w-3" /></button>
             <button onClick={() => del(e)} className="hidden shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-danger)] group-hover:flex"><Trash2 className="h-3 w-3" /></button>
           </div>
         ))}
