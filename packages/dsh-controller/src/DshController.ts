@@ -255,7 +255,7 @@ export class DshController {
       // 看图工具（read_image）：把 1–8 张图片交给当前会话的多模态模型识别。
       // 「支不支持图片」在执行期按会话当前配置再判一次 —— 回合中切了模型也不会误用。
       ctx.tools.register(defineTool(withRedaction(imageToolDef({
-        sessionIdOf: (exec) => deps.sessionIdOf?.(exec as never) ?? '',
+        sessionIdOf: (agentId) => deps.sessionIdOf?.(agentId) ?? '',
         supportsImages: (sid) => !!this.cfg.resolveSettings(this.sessions.get(sid)?.profileId).multimodal,
         readLocalFile: async (p) => new Uint8Array(await readFile(p)),
         readImageId: async (id) => {

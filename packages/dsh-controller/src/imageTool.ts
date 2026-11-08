@@ -18,8 +18,8 @@ const textOut = { schema: { type: 'string' as const }, render: (_a: unknown, v: 
 export const DEFAULT_QUESTION = '描述这些图片里有什么。如果是报错或界面截图，把报错原文、关键字段和按钮照抄出来；如果是架构图或流程图，说明模块与流向。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 export interface ImageToolDeps {
-  /** 从工具执行上下文里取会话 id */
-  sessionIdOf(exec: unknown): string
+  /** 取会话 id：入参是 dsh 的 **agent id**（同 askUser / plan 的约定），由控制器映射成我方会话 id */
+  sessionIdOf(agentId: string): string
   /** 当前会话所用模型是否支持图片（模型配置里开了「支持图片」） */
   supportsImages(sessionId: string): boolean
   /** 读本机文件字节（本地路径） */
@@ -52,7 +52,9 @@ export function imageToolDef(deps: ImageToolDeps) {
     },
     output: textOut,
     async execute(args: { paths: unknown; question?: string; terminal_id?: string }, exec: unknown) {
-      const sid = deps.sessionIdOf(exec)
+      // 与 askUser / plan 同一约定：sessionIdOf 吃的是 **agent id 字符串**，不是 exec 对象。
+      // 传错会让映射查不到、chatWithImages 拿着 dsh 内部 id 找不到会话，报「会话还没启动」。
+      const sid = deps.sessionIdOf(String((exec as { agent?: { id?: unknown } } | undefined)?.agent?.id ?? ''))
       if (!deps.supportsImages(sid)) {
         throw new Error(tr('当前模型不支持图片，无法识别：可在模型设置里开启「支持图片」或切换到多模态模型'))
       }
@@ -80,7 +82,7 @@ export function imageToolDef(deps: ImageToolDeps) {
             bytes = await deps.readLocalFile(dl.localPath)
           } else bytes = await deps.readLocalFile(ref.path)
         } catch (e) {
-          throw new Error(tr('无法读取图片：{path}（{msg}）', { path: ref.path, msg: String((e as Error)?.message ?? e).slice(0, 160) }))
+          throw new Error(tr('无法读取图片：{path}（{msg}）', { path: ref.path, msg: String((e as Error)?.message ?? e).slice(0, 160) }), { cause: e })
         }
         images.push({ name: nameOfPath(ref.path), bytes, mediaType: sniffMime(bytes, mime) })
       }
