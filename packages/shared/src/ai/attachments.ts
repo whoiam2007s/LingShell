@@ -5,6 +5,24 @@ export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/
 export const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif']
 export const IMAGE_MAX_SOURCE_BYTES = 10 * 1024 * 1024   // 单张原图上限
 export const IMAGE_MAX_PER_MESSAGE = 8                    // 每条消息最多几张
+export const IMAGE_MAX_TOTAL_BYTES = 20 * 1024 * 1024     // 每条消息的图片合计上限（压缩后的字节量）
+
+/** base64 解出来的字节数（不真的解码，省一次复制） */
+export const base64Bytes = (data: string): number => Math.floor((data.length * 3) / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0)
+
+/**
+ * 一张图算不算「放不下」：从第一张开始累加，返回**放得下**的张数。
+ * 用最小惊讶的顺序：先加的优先保留，超出的尾部丢掉（并让调用方给出提示）。
+ */
+export function fitImageBudget(base64Sizes: number[], maxTotal = IMAGE_MAX_TOTAL_BYTES): number {
+  let total = 0
+  for (let i = 0; i < base64Sizes.length; i++) {
+    const n = base64Sizes[i]
+    if (total + n > maxTotal) return i
+    total += n
+  }
+  return base64Sizes.length
+}
 
 /** 发送方向：文件 / 目录只带路径；图片带（已在渲染层缩放压缩过的）base64 */
 export type TurnAttachment =
