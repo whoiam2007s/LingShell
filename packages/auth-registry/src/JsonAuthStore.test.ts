@@ -21,6 +21,6 @@ describe('JsonAuthStore', () => {
   it('load on missing file returns empty state', () => {
     dir = mkdtempSync(join(tmpdir(), 'authstore-'))
     const s = new JsonAuthStore(join(dir, 'nope.json'))
-    expect(s.load()).toEqual({ records: [], trust: {} })
+    expect(s.load()).toEqual({ records: [], execMode: {}, trust: {} })
   })
 })

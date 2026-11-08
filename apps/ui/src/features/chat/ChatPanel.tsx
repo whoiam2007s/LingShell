@@ -1,7 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Pencil, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, Download, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert, Check } from 'lucide-react'
-import { useConversation, type ContextState, type ConvItem, type SessionPhase } from './useConversation.js'
+import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Pencil, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, Download, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert } from 'lucide-react'
+import { useConversation, type ContextState, type ConvItem, type SessionPhase, type OutgoingAttachments } from './useConversation.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
 import { MessageItem, MsgActionsContext, type MsgActions } from './items/MessageItem.js'
 import { ToolSessionContext } from '../auth/index.js'
@@ -26,6 +26,7 @@ import { TemplatePicker } from './TemplatePicker.js'
 import { RunbookPicker } from '../runbooks/index.js'
 import { InputActionsMenu } from './InputActionsMenu.js'
 import { ModelChip, type ModelMenuProps } from './ModelMenu.js'
+import { compactErrorText } from './compactError.js'
 import { useModelProfiles, profileOf } from '../../lib/modelProfiles.js'
 import { logger } from '../../lib/logger.js'
 import { AttachmentChips } from './AttachmentChips.js'
@@ -48,18 +49,19 @@ import { bangCommand, shellBlockText, terminalRefText, hostRefText, sessionRefTe
 import { getActiveTerminal } from '../../lib/activeTerminal.js'
 import { isAction } from '../../lib/keybindings.js'
 import { PasteConfirmDialog } from '../../components/PasteConfirm.js'
-import { errMsg } from './attachments.js'
+import { contextAtt, errMsg, toTurn, toView, type DraftAtt } from './attachments.js'
 import { usePreview, PreviewBanner, PreviewPlanCard, previewPlanOfTurn } from './PreviewMode.js'
 
 const log = logger.scope('chat')
 
 // 受控对话面板：会话生命周期（创建/重连/选择/phase）由 App 管，这里只按 activeSessionId 渲染对话流。
-export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onOpenSession }: {
+export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession }: {
   onBack?: () => void          // 错误态「返回上一个会话」（没有可回的会话时不传）
   onOpenSession?: (id: string) => Promise<void>   // 切到某会话（分叉出的新会话：刷新列表并打开）
   activeSessionId: string
   sessionPhase: SessionPhase
   sessionTitle?: string
+  seedDigest?: string          // 分叉 / 接续带过来的上下文（上一会话摘要 + 最近几轮），显示成只读历史块
   workDir?: string
   onPickWorkDir?: () => void
   onRename?: (title: string) => void
@@ -72,8 +74,9 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
   onManageRunbooks?: () => void
   onManageModels?: () => void
   onManageSkills?: () => void
+  onContinueSession?: (title: string) => Promise<{ id: string; digest: string } | undefined>   // 接续：用摘要开新会话（旧会话原样保留）
 }) {
-  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, sendTo, regenerate, fail, interrupt, resetContext, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
+  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, sendTo, regenerate, fail, interrupt, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
   const models = useSessionModel(activeSessionId, busy, onManageModels)
   const turnChanges = useTurnChanges(activeSessionId, busy)   // 回合末「本轮改了 N 个文件」
   const hostChanges = useTurnHostChanges(activeSessionId)     // 回合末「本轮主机变化」
@@ -119,10 +122,23 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
     items, sessionId: activeSessionId, startIdx, openSession: onOpenSession, scrollEl: () => scrollRef.current,
     showFrom: (n) => setVisible((v) => Math.max(v, n)), unpin: () => { pinnedRef.current = false; setAtBottom(false) },
   })
+  // 「加载更早」按「提问」算而不是按条目数：一次至少多露出 EARLIER_TURNS 次提问。
+  // 否则碰上大段模型输出 / 工具卡片，点一下只是把窗口往前挪几十条模型消息，页面上看着没变化。
+  const EARLIER_TURNS = 2
   const loadMore = () => {
     const el = scrollRef.current
     keepHeightRef.current = el?.scrollHeight ?? 0
-    setVisible((v) => v + PAGE)
+    setVisible((v) => {
+      const from = windowStart(items, v)
+      let idx = from - 1
+      let need = EARLIER_TURNS
+      while (idx >= 0 && need > 0) {
+        if (items[idx].kind === 'user_message') need--
+        idx--
+      }
+      const start = Math.max(0, idx + 1)          // 含最后数到的那次提问
+      return Math.max(v + 1, items.length - start)   // 至少往前挪一条，免得原地踏步
+    })
   }
   // 追加历史后把视口钉在原来那条消息上，否则内容长高会把用户"顶"走
   useLayoutEffect(() => {
@@ -310,7 +326,7 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
     client.modelProfiles.sessionThinking(activeSessionId).then((r) => { if (alive) setThinkLevel(r.level) }, () => {})
     return () => { alive = false }
   }, [activeSessionId])
-  const pickThinking = (lv: ThinkingLevel) => {
+  const pickThinking = (lv?: ThinkingLevel) => {
     if (!activeSessionId) return
     setThinkLevel(lv)
     client.modelProfiles.setSessionThinking(activeSessionId, lv).catch(() => {})
@@ -329,15 +345,25 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
     client.safety.setExecMode(activeSessionId, m).catch(() => {})
   }
   const att = useAttachments(!!models.current?.multimodal, activeSessionId)
-  // 消息操作：编辑后重发 / 从这里分叉 → 主进程从该消息之前分叉出新会话并切过去；重新生成 → 本会话原地重跑最后一轮。
+  // 消息操作：编辑后重发 / 从这里分叉 → 主进程从切点分叉出新会话并切过去；重新生成 → 本会话原地重跑最后一轮。
+  // includeTurn：从 AI 回复分叉时带上这一轮（否则刚刚那一轮会被整个切掉）。
+  // 分叉不再搬整段历史：新会话带「摘要 + 最近几轮」的 digest，附在该会话第一条消息上。
   // 回调经 ref 取最新闭包，context 值只随 busy / 会话变化，不带动所有消息重渲染
-  const forkRef = useRef<(msgId: string, edited?: string) => void>(() => {})
-  forkRef.current = (msgId, edited) => {
+  const forkRef = useRef<(msgId: string, edited?: string, includeTurn?: boolean) => void>(() => {})
+  forkRef.current = (msgId, edited, includeTurn) => {
     const sid = activeSessionId
-    client.agent.forkSession(sid, msgId, 'fork').then(async (r) => {
+    client.agent.forkSession(sid, msgId, 'fork', { includeTurn }).then(async (r) => {
       await onOpenSession?.(r.session.id)
-      if (edited !== undefined) sendTo(r.session.id, edited)
-      else { draftRef.current.set(r.session.id, r.text); setInput(r.text); requestAnimationFrame(() => { const ta = taRef.current; if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length) } }) }
+      const dg = (r.digest ?? '').trim()
+      if (edited !== undefined) {
+        // 编辑重发：立刻在新会话里用改后的内容发出去，digest 作为上下文附件一起发
+        if (!dg) { sendTo(r.session.id, edited); return }
+        const a = contextAtt('session', tr('分叉前的上下文'), dg) as Exclude<DraftAtt, { kind: 'termBlock' }>
+        sendTo(r.session.id, edited, { send: [toTurn(a, true)], view: [toView(a)] })
+        return
+      }
+      if (dg) pendingDigest.current.set(r.session.id, dg)   // 用户接着输入时再附上
+      draftRef.current.set(r.session.id, r.text); setInput(r.text); requestAnimationFrame(() => { const ta = taRef.current; if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length) } })
     }, (e) => fail(sid, tr('分叉失败：{msg}', { msg: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') })))
   }
   const regenRef = useRef(regenerate)
@@ -352,8 +378,25 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
   // queue：本轮在跑时排到本轮结束后再发（Alt+Enter），默认是在下一步前插入
   // 发送前要问「要不要用摘要开新会话」时，先把待发的状态存这里，用户选完再真正发出
   const [resetAsk, setResetAsk] = useState<{ steps: number; compactions: number; summary: string } | null>(null)
+  // 接续：新会话建好、界面切过去（canChat）之后，再把「摘要上下文 + 用户这条消息」发出去。
+  // 旧会话全程不动，它的历史原样留在会话列表里。
+  const pendingContinue = useRef<{ sid: string; text: string; atts?: OutgoingAttachments; skill?: string } | null>(null)
+  // 分叉出来的会话：把「分叉前的上下文」（摘要 + 最近几轮）挂到该会话的第一条消息上
+  const pendingDigest = useRef(new Map<string, string>())
+  useEffect(() => {
+    if (!canChat) return
+    const p = pendingContinue.current
+    if (!p || p.sid !== activeSessionId) return
+    pendingContinue.current = null
+    const ok = sendRef.current(p.skill ? `/${p.skill} ${p.text}`.trim() : p.text, p.atts)
+    // 没发出去（会话刚就绪又出错等）：退回输入框，别把用户这条消息丢了
+    if (!ok) { setInput(p.text); if (p.skill) setSkill(p.skill) }
+  }, [canChat, activeSessionId])
   // 真正发送（原 submit 的主体）
   const doSend = (opts?: { queue?: boolean }) => {
+    // 分叉出来的会话：第一条消息带上「分叉前的上下文」（addContext 走 ref 镜像，紧接着 outgoing() 能读到）
+    const dg = pendingDigest.current.get(activeSessionId)
+    if (dg) { att.addContext('session', tr('分叉前的上下文'), dg); pendingDigest.current.delete(activeSessionId) }
     const out = att.outgoing()
     if (out === null) return   // 有图片但当前模型不支持：已提示，保留输入
     const text = withTermBlocks(input, att.blocks())   // 终端块拼成文本接在后面
@@ -521,14 +564,15 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, workDir
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto py-2">
        {/* 空会话时撑满高度，欢迎页才能上下居中 */}
        <div ref={contentRef} className={items.length === 0 ? 'h-full' : undefined}>
-        {items.length === 0 && sessionPhase.phase === 'ready' && (
+        {seedDigest && items.length === 0 && <SeedHistoryCard digest={seedDigest} />}
+        {items.length === 0 && sessionPhase.phase === 'ready' && !seedDigest && (
           <EmptyState onPick={(text) => setInput(text)} />
         )}
         {hasMore && (
           <div className="flex justify-center py-2">
             <button onClick={loadMore}
               className="flex items-center gap-1 rounded-md border border-[var(--color-border-subtle)] px-2.5 py-1 text-[11px] text-[var(--color-text-muted)] transition-colors hover:border-[color:color-mix(in_srgb,var(--color-accent)_50%,transparent)] hover:text-[var(--color-text-secondary)]">
-              <ChevronUp className="h-3 w-3" />{tr('加载更早的消息（还有 {n} 条）', { n: startIdx })}
+              <ChevronUp className="h-3 w-3" />{tr('加载更早的消息（还有 {n} 次提问）', { n: items.slice(0, startIdx).filter((x) => x.kind === 'user_message').length })}
             </button>
           </div>
         )}
@@ -575,15 +619,28 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
       {context && <ContextBanner state={context} onDismiss={dismissContextPrompt} />}
       {/* 该开新会话的提示改到「发送前」问：主进程在压缩完成时记下，用户真要发消息时才弹（见 submit / resetAsk） */}
       {resetAsk && (
-        <ContextResetDialog busy={busy} state={{ stage: 'suggest', steps: resetAsk.steps, compactions: resetAsk.compactions, summary: resetAsk.summary }}
+        <ContextResetDialog busy={busy} steps={resetAsk.steps} compactions={resetAsk.compactions}
           onCancel={() => { setResetAsk(null); doSend() }}
-          onReset={(summary) => {
-            const s = resetAsk
+          onReset={() => {
             setResetAsk(null)
-            // 先清空历史（不带 seed，避免多跑一轮模型），再把摘要作为上下文标签，和用户这条消息一起发出去
-            void resetContext('').then(() => {
-              att.addContext('session', tr('上一次会话的摘要'), summary || s.summary)
-              doSend()
+            // 旧对话原样留在会话列表里；新会话**不播种子**，带过去的只有
+            // 「最近一次压缩摘要 + 最近几轮对话」（主进程算好的 digest），
+            // 这里把它作为第一条消息的上下文附件，和用户这条消息一起发出去。
+            const from = titleOf(sessionTitle)
+            const out = att.outgoing()
+            if (out === null) return   // 有图片但当前模型不支持：已提示，保留输入
+            const text = withTermBlocks(input, att.blocks())
+            const skillN = skill
+            void onContinueSession?.(tr('{title}（接续）', { title: from })).then((r) => {
+              if (!r) return   // 建失败：旧会话和历史都没动，这条消息还在输入框里
+              const a = contextAtt('session', tr('上一会话摘要'), r.digest) as Exclude<DraftAtt, { kind: 'termBlock' }>
+              pendingContinue.current = {
+                sid: r.id, text, skill: skillN,
+                atts: r.digest.trim()
+                  ? { send: [...(out?.send ?? []), toTurn(a, true)], view: [...(out?.view ?? []), toView(a)] }
+                  : out,
+              }
+              setInput(''); draftRef.current.delete(activeSessionId); setSkill(undefined); att.clear()
             })
           }} />
       )}
@@ -691,7 +748,7 @@ function ContextBanner({ state, onDismiss }: { state: ContextState; onDismiss: (
       ) : (
         <>
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--color-warn)]" />
-          <span className="min-w-0 flex-1 truncate" title={state.error}>{tr('自动压缩失败（会话照常继续，下一步会再试）：{error}', { error: state.error ?? '' })}</span>
+          <span className="min-w-0 flex-1 truncate" title={compactErrorText(state.error)}>{tr('上下文压缩失败（会话照常继续）：{error}', { error: compactErrorText(state.error) })}</span>
           <button onClick={onDismiss} title={tr('关闭')} className="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"><X className="h-3.5 w-3.5" /></button>
         </>
       )}
@@ -699,39 +756,30 @@ function ContextBanner({ state, onDismiss }: { state: ContextState; onDismiss: (
   )
 }
 
-// 建议开新会话：会话已跑了很多步且压缩过——检查点越叠越多，细节会逐步丢失。用最近一次压缩摘要当交接总结（可改）
-function ContextResetDialog({ state, busy, onReset, onCancel }: {
-  state: Extract<ContextState, { stage: 'suggest' }>
+// 建议开新会话：会话已跑了很多步且压缩过——检查点越叠越多，细节会逐步丢失。
+// 新会话由主进程带着「最近一次压缩的摘要 + 最近保留的原文」建出来（同「从这里分叉」的种子机制），
+// 旧对话原样留在历史记录里，用户这条消息直接在新会话里发出。
+function ContextResetDialog({ steps, compactions, busy, onReset, onCancel }: {
+  steps: number
+  compactions: number
   busy: boolean
-  onReset: (summary: string) => void
+  onReset: () => void
   onCancel: () => void
 }) {
-  const [draft, setDraft] = useState(state.summary)
   return createPortal((
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 backdrop-blur-sm animate-fade-in">
-      <div className="flex max-h-[75vh] w-[560px] flex-col rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex w-[520px] flex-col rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-2 flex items-center gap-2 text-[14px] font-semibold text-[var(--color-text-primary)]">
           <AlertTriangle className="h-4 w-4 text-[var(--color-warn)]" />
-          {tr('会话已执行 {steps} 步、自动压缩 {n} 次，要开个新会话吗？', { steps: state.steps, n: state.compactions })}
+          {tr('会话已执行 {steps} 步、自动压缩 {n} 次，要开个新会话吗？', { steps, n: compactions })}
         </div>
-        <p className="mb-2.5 text-[12.5px] leading-relaxed text-[var(--color-text-secondary)]">
-          {tr('当前任务没有中断，可以继续。但压缩次数多了，较早的细节会逐步丢失。开新会话会清空对话历史（工作目录、终端、授权都保留）， 下面这份最近一次压缩生成的摘要会作为新会话的第一条消息发出，可先改。')}
+        <p className="mb-3 text-[12.5px] leading-relaxed text-[var(--color-text-secondary)]">
+          {tr('当前任务没有中断，可以继续。但压缩次数多了，较早的细节会逐步丢失。开新会话接着做：当前对话会原样保留在历史记录里（随时能点回去看），新会话会带上最近一次压缩的摘要和最近保留的对话，你这条消息直接在新会话里发出。')}
         </p>
-        {!state.summary && (
-          <p className="mb-2.5 rounded-md bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--color-warn)]">
-            {tr('没有拿到压缩摘要。可以自己写几句要点，或留空直接开新会话（从零开始）。')}
-          </p>
-        )}
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={tr('例：目标是排查 nginx 502；已确认 upstream 端口 8080 未监听；下一步看应用日志 /var/log/app.log')} 
-          className="min-h-[200px] flex-1 resize-none rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-base)] p-2.5 text-[12.5px] leading-relaxed text-[var(--color-text-primary)] outline-none focus:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]"
-        />
-        <div className="mt-3.5 flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
           {busy && <span className="mr-auto text-[11.5px] text-[var(--color-warn)]">{tr('本会话还在执行，结束后才能开新会话')}</span>}
           <button onClick={onCancel} className="rounded-md border border-[var(--color-border-default)] px-4 py-1.5 text-[12.5px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)]">{tr('继续当前会话')}</button>
-          <button disabled={busy} onClick={() => onReset(draft)} className="rounded-md bg-[var(--color-accent)] px-4 py-1.5 text-[12.5px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:pointer-events-none disabled:opacity-40">{draft.trim() ? tr('用摘要开新会话') : tr('开新会话（不带摘要）')}</button>
+          <button disabled={busy} onClick={onReset} className="rounded-md bg-[var(--color-accent)] px-4 py-1.5 text-[12.5px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:pointer-events-none disabled:opacity-40">{tr('开新会话接着做')}</button>
         </div>
       </div>
     </div>
@@ -828,6 +876,26 @@ const SUGGESTIONS = [
   { icon: Server, title: tk('操作远程主机'), prompt: tk('连上我的 SSH 主机，检查磁盘使用情况和运行中的服务') },
 ]
 
+// 分叉 / 接续带过来的上下文：新会话一打开就能看到「上一会话摘要 + 最近几轮原文」，
+// 不用重新输入，也不会看着像空会话。它是只读文本：不触发模型，用户发下一条消息时
+// 作为上下文附件一起发出去（见 doSend 里的 pendingDigest）。
+function SeedHistoryCard({ digest }: { digest: string }) {
+  const [open, setOpen] = useState(false)   // 默认收起：只占一行 chip，点开才看摘要原文
+  return (
+    <div data-seed-history className="mx-3 mb-2 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-bg-raised)]">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
+        <Info className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+        <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{tr('上一会话摘要 + 最近几轮对话（分叉时带过来的上下文）')}</span>
+        <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{open ? tr('收起') : tr('展开')}</span>
+        <ChevronUp className={`h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? '' : 'rotate-180'}`} />
+      </button>
+      {open && (
+        <div className="max-h-56 overflow-auto whitespace-pre-wrap border-t border-[var(--color-border-subtle)] px-3 py-2 text-[12px] leading-relaxed text-[var(--color-text-secondary)]">{digest}</div>
+      )}
+    </div>
+  )
+}
+
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center px-6">
@@ -866,19 +934,23 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
   const [note, setNote] = useState<{ ok: boolean; text: string }>()
   const doCompact = () => {
     if (compacting) return
+    // 本轮还在跑：控制器会排队等它结束，但界面只剩一个转圈、看不到任何解释 —— 直接让人等完再点
+    if (busy) { setNote({ ok: false, text: tr('本轮还在跑，等结束再点一次压缩') }); return }
     setCompacting(true)
-    // 正在跑回合时，控制器会等本轮结束再压；先给个提示，避免看起来卡住
-    if (busy) setNote({ ok: true, text: tr('等本轮结束后压缩…') })
+    setNote({ ok: true, text: tr('正在压缩上下文…') })
     client.agent.compact(sessionId).then(
-      (did) => setNote({ ok: true, text: did ? tr('已压缩上下文') : tr('没有可压缩的历史') }),
-      (e) => setNote({ ok: false, text: e instanceof Error ? e.message : String(e) }),
+      (did) => {
+        setNote({ ok: true, text: did ? tr('已压缩上下文（较早的对话已换成摘要，最近一轮原文保留）') : tr('没有可压缩的历史') })
+        setPriceTick((n) => n + 1)   // 刷新用量显示，能看出压了多少
+      },
+      (e) => setNote({ ok: false, text: compactErrorText(e instanceof Error ? e.message : String(e)) }),
     ).finally(() => setCompacting(false))
   }
   useEffect(() => {
-    if (!note) return
+    if (!note || compacting) return   // 压缩进行中的提示常驻，不要 5 秒后消失
     const t = setTimeout(() => setNote(undefined), 5000)
     return () => clearTimeout(t)
-  }, [note])
+  }, [note, compacting])
   const tick = usage?.inputTokens ?? 0
   useEffect(() => {
     const on = () => setPriceTick((n) => n + 1)
@@ -959,19 +1031,29 @@ function useSessionModel(sessionId: string, busy: boolean, onManage?: () => void
 // 四档执行模式选择器：一个按钮 + 展开的四个选项（当前档高亮，hover 有说明）
 function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (m: ExecMode) => void; onTogglePreview?: () => void }) {
   const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  // 点空白处 / 按 Esc 收起
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown); document.addEventListener('keydown', onKey, true)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey, true) }
+  }, [open])
   const meta: Record<ExecMode, { icon: typeof FlaskConical; label: string; tip: string }> = {
     preview: { icon: FlaskConical, label: tr('预演'), tip: tr('只做只读排查、把要改的列成方案，不执行任何写操作（删除与危险命令也拦）') },
-    confirm: { icon: ShieldCheck, label: tr('逐条确认'), tip: tr('同一台主机批过一次就记住；删除与危险命令每次都问') },
+    confirm: { icon: ShieldCheck, label: tr('逐条确认'), tip: tr('每条写操作都要确认；只读命令批过一次就记住。删除与危险命令同样逐条问') },
     auto: { icon: Zap, label: tr('确认一次'), tip: tr('同类操作批过一次就不再问，换主机也复用（写文件只记工作目录内的）；目录外的写、删除与危险命令仍问') },
     trust: { icon: ShieldAlert, label: tr('信任'), tip: tr('工作目录内的写和只读命令直接放行；目录外的写、会改东西的命令、删除仍要确认') },
   }
   const cur = meta[mode]
   const Icon = cur.icon
   return (
-    <span className="relative shrink-0">
+    <span ref={ref} className="relative shrink-0">
       <button data-exec-mode onClick={() => setOpen((v) => !v)} title={`${tr('执行模式：{m}', { m: cur.label })}\n${cur.tip}`}
+        aria-label={tr('执行模式：{m}', { m: cur.label })} aria-expanded={open}
         className={`flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] transition-colors ${mode === 'confirm' ? 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]' : 'bg-[var(--color-accent-bg)] font-medium text-[var(--color-accent)]'}`}>
-        <Icon className="h-4 w-4" />{mode !== 'confirm' && cur.label}
+        <Icon className="h-4 w-4" />
       </button>
       {open && (
         <div className="absolute right-0 top-8 z-50 w-[260px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl">
@@ -985,10 +1067,9 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
                 if (onTogglePreview && ((m === 'preview') !== (mode === 'preview'))) onTogglePreview()
               }}
                 className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--color-bg-hover)]">
-                <Check className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${m === mode ? 'text-[var(--color-accent)]' : 'invisible'}`} />
-                <ItIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-text-secondary)]" />
+                <ItIcon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${m === mode ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-secondary)]'}`} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12px] text-[var(--color-text-primary)]">{it.label}</span>
+                  <span className={`block text-[12px] ${m === mode ? 'font-medium text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>{it.label}</span>
                   <span className="block text-[11px] leading-[1.5] text-[var(--color-text-muted)]">{it.tip}</span>
                 </span>
               </button>
@@ -1003,7 +1084,7 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
 function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode }: {
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
   thinking?: ThinkingLevel                          // 会话级思考深度（低/中/高）
-  onPickThinking?: (lv: ThinkingLevel) => void
+  onPickThinking?: (lv: ThinkingLevel | undefined) => void   // undefined = 恢复为跟随模型配置
   mode?: ExecMode                                   // 会话级执行模式（四档）
   onPickMode?: (m: ExecMode) => void
   busy?: boolean   // 本轮是否在跑：点用量标签压缩时要等它结束

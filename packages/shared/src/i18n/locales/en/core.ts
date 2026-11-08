@@ -85,6 +85,7 @@ export const core: Record<string, string> = {
   '当前模型不支持图片，可在模型设置里开启「支持图片」或切换模型': 'The current model doesn\'t support images. Turn on "Supports images" in model settings or switch models',
   'api_key_not_configured: 该模型配置还没填 API Key': 'api_key_not_configured: this model profile has no API key yet',
   'turn_in_progress: 本轮还在进行，等它结束（或先停止）再操作': 'turn_in_progress: the current turn is still running; wait for it to finish (or stop it) first',
+  'turn_in_progress: 本轮还在进行，等它结束（或先停止）再开新会话': 'turn_in_progress: the current turn is still running; wait for it to finish (or stop it) before starting a new session',
   // dsh-controller/fork.ts
   'message_not_found: 找不到这条消息（可能已被压缩或会话已变化）': 'message_not_found: can\'t find this message (it may have been compacted, or the session changed)',
   '（分叉）': ' (fork)',

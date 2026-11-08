@@ -23,7 +23,7 @@ export function HistoryDrawer({ sessions, activeId, onSelect, onRename, onDelete
   initialQuery?: string   // 命令面板「搜索历史会话内容」带进来的词
 }) {
   const now = useNow(60_000)   // 相对时间每分钟刷新
-  const runState = useRunStates()   // 会话运行状态：进行中 / 待确认 / 失败
+  const runState = useRunStates()   // 会话运行状态：进行中 / 待确认 / 失败（dot = 最后一轮的结果，看没看过都不清）
   const [editing, setEditing] = useState('')
   const [draft, setDraft] = useState('')
   const commit = (id: string, fallback: string) => { onRename(id, draft.trim() || fallback); setEditing('') }
@@ -104,7 +104,8 @@ export function HistoryDrawer({ sessions, activeId, onSelect, onRename, onDelete
                 className={`group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${isActive ? 'bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}>
                 <span className="relative flex shrink-0">
                   <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                  {/* 状态点：进行中(蓝，呼吸) / 待确认(橙) / 失败(红)；正常结束不画 */}
+                  {/* 状态点：进行中(蓝，呼吸) / 待确认(橙) / 失败(红)；正常结束不画。
+                      dot 表示这个会话**最后一轮**的结果：失败就一直红着，点开看过也不清 */}
                   {(() => {
                     const st = runState(s.id)
                     if (!st) return null

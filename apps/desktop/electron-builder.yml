@@ -51,6 +51,9 @@ extraResources:
 win:
   target:
     - nsis
+  # 任务栏 / 资源管理器 / 安装包都用这张图标：build/icon.ico 由 build/gen-ico.cjs 生成
+  # （多尺寸传统 BMP 帧）。显式写出来，不依赖 electron-builder 的隐式默认路径。
+  icon: build/icon.ico
   artifactName: ${productName}-${version}-win-${arch}.${ext}
 
 mac:

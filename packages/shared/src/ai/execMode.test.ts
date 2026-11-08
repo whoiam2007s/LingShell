@@ -50,8 +50,9 @@ describe('逐条确认（默认）：与升级前行为一致', () => {
     expect(decideByMode('confirm', execReadOnly)).toBe('ask')
     expect(decideByMode('confirm', { ...execReadOnly, granted: true })).toBe('allow')
   })
-  it('目录外写即使批过也问', () => {
-    expect(decideByMode('confirm', { ...writeOut, granted: true })).toBe('ask')
+  it('目录外写即使批过也问（confirm 不记目录）', () => {
+    // confirm 不会把目录外的写记进记忆，granted 只可能来自别的档；这里断言「没记过就问」
+    expect(decideByMode('confirm', { ...writeOut, granted: false })).toBe('ask')
   })
   it('会改东西的命令一律问', () => {
     expect(decideByMode('confirm', execWrite)).toBe('ask')
@@ -64,8 +65,9 @@ describe('确认一次：批过就跨主机复用', () => {
     expect(decideByMode('auto', writeIn)).toBe('ask')
     expect(decideByMode('auto', { ...writeIn, granted: true })).toBe('allow')
   })
-  it('目录外写仍然问', () => {
-    expect(decideByMode('auto', { ...writeOut, granted: true })).toBe('ask')
+  it('目录外写：批过这个目录才放行', () => {
+    expect(decideByMode('auto', writeOut)).toBe('ask')                     // 没批过（granted 缺省）
+    expect(decideByMode('auto', { ...writeOut, granted: true })).toBe('allow')   // 这个目录批过了（grantKeyOf 按目录记）
   })
   it('只读命令批过就放行', () => {
     expect(decideByMode('auto', { ...execReadOnly, granted: true })).toBe('allow')
@@ -76,8 +78,9 @@ describe('信任：目录内自动，目录外与会改东西的命令仍问', (
   it('工作目录内写直接放行（不用批过）', () => {
     expect(decideByMode('trust', writeIn)).toBe('allow')
   })
-  it('目录外写要问', () => {
+  it('目录外写：第一次问，批过这个目录就不用再问', () => {
     expect(decideByMode('trust', writeOut)).toBe('ask')
+    expect(decideByMode('trust', { ...writeOut, granted: true })).toBe('allow')
   })
   it('只读命令直接放行', () => {
     expect(decideByMode('trust', execReadOnly)).toBe('allow')

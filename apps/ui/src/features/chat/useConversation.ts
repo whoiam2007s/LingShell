@@ -504,6 +504,8 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
     return client.agent.resetContext(sid, summary).catch((err) => {
       busyRef.current.delete(sid)
       dropPending(sid, summary)
+      // 本地对话已经清空：主进程没换成功时旧 thread 还在，重连接让它把历史重放回来，别让历史凭空消失
+      client.agent.reconnectSession(sid).catch(() => {})
       rerender()
       log.error('resetContext failed', { err: String(err?.message ?? err) })
       upsert(sid, { itemId: `reseterr_${Date.now()}`, kind: 'agent_message', status: 'failed', text: `⚠️ ${tr('重置失败：{msg}', { msg: String(err?.message ?? err) })}` })

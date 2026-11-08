@@ -14,9 +14,9 @@ LingShell is an open-source AI terminal and operations workbench: an AI chat on 
 ![LingShell main window: chat and terminals](guide/assets/hero.png)
 
 - **Local-first**: configuration, hosts, sessions, audit data, and credentials stay on your machine. Bring your own model API key.
-- **Model-agnostic**: DeepSeek, Qwen, Kimi, Ollama, OpenAI-compatible endpoints, and Anthropic Messages.
+- **Model-agnostic**: 18 providers (DeepSeek, Qwen, Kimi, GLM, Gemini, Ollama…), with model ids you can type in; three API protocols (Anthropic Messages / OpenAI-compatible / OpenAI Responses) are available for every provider, and a mismatch can be switched and retested in one click.
 - **Built for real operations**: multi-host, file transfer, Git, databases, Docker, Kubernetes, scheduled inspection, certificates, compliance, deployment review, logs, and troubleshooting.
-- **Controllable by design**: app lock, secret vault, per-host authorization, command rules, AI review, dry-run mode, time-limited sudo elevation, and local audit.
+- **Controllable by design**: app lock, secret vault, four execution modes (confirm each / confirm once / trust / dry run), command rules, per-host authorization, AI review, time-limited sudo elevation, and local audit.
 
 > Early preview (0.1.x). APIs, configuration formats, and features may change. Try it in a test environment first.
 
@@ -25,7 +25,8 @@ LingShell is an open-source AI terminal and operations workbench: an AI chat on 
 ### AI and terminals
 
 - Local terminals (Git Bash / PowerShell / cmd / WSL on Windows; native shells on macOS / Linux) and SSH terminals.
-- AI chat, tool calls, approval cards, execution plans, rollback plans, audit trail, per-turn file changes and undo.
+- AI chat, tool calls, approval cards, four execution modes, execution plans, rollback plans, audit trail, per-turn file changes and undo.
+- Fork from any message (the new session starts with the compaction summary plus the last 2 turns as real history), continue in a new session from a summary, thinking depth in four levels (off / low / medium / high, per profile and per session; each level sends the value verified against that vendor's docs, unverified levels stay greyed out).
 - Split panes, broadcast input, pinned/colored/renamed tabs, tmux session persistence, command success/failure marks, history, completion, quick commands, composer, keyword highlighting and alerts.
 - Attachments/images, Skills, MCP, knowledge base, cross-host questions, host dashboard.
 
@@ -74,7 +75,7 @@ Download the installer for your platform from [Releases](https://github.com/whoi
 ## Security model
 
 - **Local-first**: application data lives in `~/.lingshell`; browser data and OS-keychain material stay in your user profile. Nothing is uploaded to a LingShell server.
-- **No silent execution**: commands require per-host authorization by default; writes on production hosts require confirmation; dangerous commands always require confirmation.
+- **No silent execution**: sessions use one of four execution modes, defaulting to "Confirm each" (every write asks). "Confirm once" remembers by tool + scope, "Trust" allows writes inside the working directory (each outside directory is asked once), and "Dry run" only investigates. Writes on production hosts and dangerous commands always ask, whatever the mode.
 - **No plaintext secrets**: API keys, host passwords/private keys, and vault values are encrypted with the OS keychain; outbound AI data can be redacted.
 - **Auditable**: execution records, approvals, rollbacks, and file changes are traceable; session reports can be exported.
 - **No telemetry by default**: no usage data is collected. Third-party services you configure (model providers, webhooks, MCP) are your choice.

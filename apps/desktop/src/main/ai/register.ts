@@ -5,12 +5,12 @@ import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import type { ApprovalRequest, PlanRequest, DshController } from '@lingshell/dsh-controller'
 import { TemplateStore } from '@lingshell/config'
-import { type AppEvent, type ApprovalAnswer, type TrustLevel, type UsageRange, type UsagePrices, type TemplateInput, type McpServerInput,
+import { type AppEvent, type ApprovalAnswer, type UsageRange, type UsagePrices, type TemplateInput, type McpServerInput,
   tr, decodeText, encodeText, type NlCommandRequest, buildNlCommandPrompt, sanitizeNlCommand, summarizeUsage, sessionUsage,
   applyRuleVerdict, evaluateCommandRules, dangerCheck } from '@lingshell/shared'
 import { randomUUID } from 'node:crypto'
 import { log, type MainContext } from '../core/index.js'
-import { type FileAccess, localAccess, sftpAccess, writeWithBackup, MAX_FILE_BYTES, EXT_EDIT_MAX_BYTES } from '../files/index.js'
+import { type FileAccess, localAccess, sftpAccess, writeEnsureDir, writeWithBackup, MAX_FILE_BYTES, EXT_EDIT_MAX_BYTES } from '../files/index.js'
 import { unattendedDecide, neededForExec, isReadOnlyCommand, hostRunner, runOnHosts, type registerHostCheck } from '../ops/index.js'
 import { recordingPath, createSideExec } from '../terminal/index.js'
 import { createTurnNotifier } from './turnNotify.js'
@@ -217,6 +217,9 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     secretVault: vault,
     mcp,
     trustOf: (sid) => auth.getTrust(sid),
+    // 四档执行模式是唯一信任控制入口：控制器的读写都落在注册表（持久化到 auth.json）
+    execModeOf: (sid) => auth.getExecMode(sid),
+    setExecMode: (sid, mode) => auth.setExecMode(sid, mode),
     isUnattended: (sid) => unattended.has(sid),
     recordUsage,
     uploadFile: async (localPath, terminalId, targetDir) => {
@@ -235,7 +238,10 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     writeFile: async (terminalId, p, content) => {
       const fa = await fileAccessOf(terminalId)
       const data = Buffer.from(encodeText(content, fa.encoding))
-      return { ...await writeWithBackup(fa, await fa.resolve(p), data), hash: sha256(data) }   // hash：按回合撤销时判断是否已被后续改动覆盖
+      const target = await fa.resolve(p)
+      // 父目录不存在就自动建（本地 mkdir -p / SSH 逐级 mkdir）：以前直接写会 ENOENT，
+      // AI 只好再跑一条 mkdir，用户被迫多点一次授权卡
+      return { ...await writeEnsureDir(fa, target, data), hash: sha256(data) }   // hash：按回合撤销时判断是否已被后续改动覆盖
     },
     // 落到 ~/Downloads/lingshell/：不混进会话工作目录（常是代码仓库），位置固定好找；重名加时间前缀不覆盖
     downloadFile: async (terminalId, remotePath) => {
@@ -251,7 +257,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     // 一套模型配置（缺省 / 已删 = 默认配置），明文 key 只在主进程内
     resolveSettings: (profileId) => {
       const p = settings.resolveProfile(profileId)
-      return { profileId: p.id, provider: p.provider, model: p.model, baseUrl: p.baseUrl, apiKey: p.apiKey, contextWindow: p.contextWindow, protocol: p.protocol, multimodal: p.multimodal }
+      return { profileId: p.id, provider: p.provider, model: p.model, baseUrl: p.baseUrl, apiKey: p.apiKey, contextWindow: p.contextWindow, thinking: p.thinking, protocol: p.protocol, multimodal: p.multimodal }
     },
     listTerminals: () => terminals.list().map((t) => ({ id: t.id, title: t.title, type: t.type, os: t.os })),
     beforeChange: (sid, tids, cmd) => hostCheck().beforeChange(sid, tids, cmd),   // 变更保险（见 hostCheck.ts）
@@ -307,6 +313,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('agent:renameSession', (_e, id: string, title: string) => controller.renameSession(id, title))
   ipcMain.handle('agent:setWorkDir', (_e, sessionId: string, workDir: string) => controller.setWorkDir(sessionId, workDir))
   ipcMain.handle('agent:resetContext', (_e, sessionId: string, seed?: string) => controller.resetContext(sessionId, seed))
+  // 接续：用摘要开新会话（源会话保留在列表里，工作目录 / 模型配置照搬）
+  ipcMain.handle('agent:continueSession', (_e, srcId: string, opts?: { title?: string }) => controller.continueSession(srcId, opts))
   // 手动压缩上下文：聊天头部用量百分比点击 → dsh CompactionEngine.compactNow
   ipcMain.handle('agent:compact', (_e, sessionId: string) => controller.compactNow(sessionId))
   ipcMain.handle('agent:search', (_e, query: string) => controller.searchSessions(query))
@@ -330,8 +338,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('auth:listForSession', (_e, sid: string) => auth.listForSession(sid).map((r) => ({ hostKey: r.terminalId, level: r.level })))
   ipcMain.handle('auth:grant', (_e, sid: string, hostKey: string, level: 'read' | 'write') => auth.grant(sid, hostKey, level))
   ipcMain.handle('auth:revoke', (_e, sid: string, hostKey: string) => auth.revoke(sid, hostKey))
-  ipcMain.handle('auth:getTrust', (_e, sid: string) => auth.getTrust(sid))
-  ipcMain.handle('auth:setTrust', (_e, sid: string, lvl: string) => auth.setTrust(sid, lvl as TrustLevel))
+  // 旧的三档「会话信任档」IPC 已下线：信任档由四档执行模式派生（safety:execMode / safety:setExecMode）
   ipcMain.handle('audit:listForSession', (_e, sid: string) => auditStore.listForSession(sid))
   ipcMain.handle('audit:listRecent', () => auditStore.listRecent())
   // 用量统计：聚合在主进程做，渲染层只拿汇总
@@ -386,7 +393,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     },
     pick: async (k) => (await dialog.showOpenDialog(win, k === 'dirs' ? { title: tr('选择目录'), properties: ['openDirectory', 'multiSelections'] } : k === 'images' ? { title: tr('选择图片'), properties: ['openFile', 'multiSelections'], filters: [IMAGE_FILTER] } : { title: tr('选择文件'), properties: ['openFile', 'multiSelections'] })).filePaths })
   // 对话：编辑重发 / 从这里分叉 / 重新生成（见 chatForkIpc.ts）
-  registerChatFork({ handle: (ch, fn) => ipcMain.handle(ch, fn), fork: (sid, mid, mode) => controller.forkSession(sid, mid, mode) })
+  registerChatFork({ handle: (ch, fn) => ipcMain.handle(ch, fn), fork: (sid, mid, mode, opts) => controller.forkSession(sid, mid, mode, opts) })
 
   // 左侧对话增强（见 chatPlusIpc.ts）：提问卡回答、@ 历史会话摘要、跨会话检索、输入框 `!命令`
   registerChatPlus({ handle: (ch, fn) => ipcMain.handle(ch, fn), ask: askBroker, digest: (sid) => controller.sessionDigest(sid), docs: () => controller.searchDocsAll(),

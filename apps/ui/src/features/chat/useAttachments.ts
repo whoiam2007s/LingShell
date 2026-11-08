@@ -15,22 +15,31 @@ const pathForFile = (f: File) => (window as unknown as { electronAPI?: { pathFor
 export function useAttachments(multimodal: boolean, sessionId: string) {
   const [items, setItems] = useState<DraftAtt[]>([])
   const [hint, setHint] = useState('')
+  // 最新草稿的同步镜像：add / addContext 之后「马上」读（outgoing / blocks）时，state 还是上一帧的值，
+  // 「用摘要开新会话」这种加完上下文立刻发送的流程会读到空列表，摘要就发不出去 —— 一律以 ref 为准
+  const itemsRef = useRef<DraftAtt[]>([])
+  const setItemsBoth = (next: DraftAtt[] | ((cur: DraftAtt[]) => DraftAtt[])) => {
+    const v = typeof next === 'function' ? (next as (cur: DraftAtt[]) => DraftAtt[])(itemsRef.current) : next
+    itemsRef.current = v
+    setItems(v)
+  }
   // 异步读取（主进程判断文件类型 / 图片光栅化）期间切了会话：结果不能落到新会话的草稿里
   const sidRef = useRef(sessionId); sidRef.current = sessionId
   useEffect(() => { if (!hint) return; const t = setTimeout(() => setHint(''), 5000); return () => clearTimeout(t) }, [hint])
   // 切会话：草稿附件不带过去
-  useEffect(() => { setItems([]); setHint('') }, [sessionId])
+  useEffect(() => { setItemsBoth([]); setHint('') }, [sessionId])
 
-  const add = (next: DraftAtt[]) => setItems((cur) => {
+  const add = (next: DraftAtt[]) => {
+    const cur = itemsRef.current
     // 同一路径只留一个
     const seen = new Set(cur.map((a) => a.path))
     const merged = [...cur, ...next.filter((a) => { if (!a.path) return true; if (seen.has(a.path)) return false; seen.add(a.path); return true })]
     const imgs = merged.filter((a) => a.kind === 'image' && (multimodal || !a.path))   // 只发路径的图片文件不占张数
-    if (imgs.length <= IMAGE_MAX_PER_MESSAGE) return merged
+    if (imgs.length <= IMAGE_MAX_PER_MESSAGE) { setItemsBoth(merged); return }
     setHint(tr('每条消息最多 {n} 张图片', { n: IMAGE_MAX_PER_MESSAGE }))
     const drop = new Set<DraftAtt>(imgs.slice(IMAGE_MAX_PER_MESSAGE))
-    return merged.filter((a) => !drop.has(a))
-  })
+    setItemsBoth(merged.filter((a) => !drop.has(a)))
+  }
   const addBitmaps = async (srcs: { blob: Blob; name: string }[]) => {
     if (!srcs.length) return
     if (!multimodal) { setHint(tr(NO_IMAGE_HINT)); return }
@@ -114,15 +123,15 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
   // 发送用：有没路径的图片（截图）但模型不支持 → 提示并返回 null（不发）；没有附件返回 undefined
   // 终端块不在其中（见 blocks()，由调用方拼进消息文本）
   const outgoing = (): OutgoingAttachments | undefined | null => {
-    const files = items.filter((a): a is Exclude<DraftAtt, { kind: 'termBlock' }> => a.kind !== 'termBlock')
+    const files = itemsRef.current.filter((a): a is Exclude<DraftAtt, { kind: 'termBlock' }> => a.kind !== 'termBlock')
     if (!files.length) return undefined
     if (!multimodal && files.some((a) => a.kind === 'image' && !a.path)) { setHint(tr('{hint}（粘贴的图片请先移除）', { hint: tr(NO_IMAGE_HINT) })); return null }
     if (imageCount(files, multimodal) > IMAGE_MAX_PER_MESSAGE) { setHint(tr('每条消息最多 {n} 张图片', { n: IMAGE_MAX_PER_MESSAGE })); return null }
     return { send: files.map((a) => toTurn(a, multimodal)), view: files.map(toView) }
   }
-  const blocks = (): TermBlock[] => items.flatMap((a) => (a.kind === 'termBlock' ? [a.block] : []))
+  const blocks = (): TermBlock[] => itemsRef.current.flatMap((a) => (a.kind === 'termBlock' ? [a.block] : []))
   // 红点菜单「附加到对话」
-  useEffect(() => onAttachTermBlock((b) => setItems((cur) => [...cur, termBlockAtt(b)])), [])
+  useEffect(() => onAttachTermBlock((b) => setItemsBoth((cur) => [...cur, termBlockAtt(b)])), [])
   // 订阅「资源管理器 → 添加到对话」：必须经 ref 取最新的 addPaths。
   // 以前直接把 addPaths 闭包进订阅、依赖只写 [multimodal]，订阅里一直是**首次渲染**的那个函数：
   // 那时会话还在异步恢复（sessionId 为空），addPaths 末尾“会话变了就别落地”的守卫会直接 return，
@@ -134,7 +143,7 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
   // 上下文标签（@ 引用 / 终端块）：同一个终端 / 主机 / 会话只留一个（终端块每次执行都是新的，不去重）
   // 同一个来源（ctx + name）再发一次：更新内容而不是叠加 —— git / 容器这类上下文每次都是"当前状态"，
   // 用户可能反复点；shell（终端块）每次都是新的执行，仍然叠加。
-  const addContext = (ctx: ContextKind, name: string, text: string) => setItems((cur) => {
+  const addContext = (ctx: ContextKind, name: string, text: string) => setItemsBoth((cur) => {
     if (ctx === 'shell') return [...cur, contextAtt(ctx, name, text)]
     const i = cur.findIndex((a) => a.kind === 'context' && a.ctx === ctx && a.name === name)
     if (i < 0) return [...cur, contextAtt(ctx, name, text)]
@@ -146,8 +155,8 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
   return {
     addContext,
     items: items.map((a) => ({ ...toChip(a), key: a.key })), hint, setHint, blocks,
-    remove: (i: number) => setItems((cur) => cur.filter((_, j) => j !== i)),
-    clear: () => setItems([]),
+    remove: (i: number) => setItemsBoth((cur) => cur.filter((_, j) => j !== i)),
+    clear: () => setItemsBoth([]),
     pickFiles, pickDirs, pickImages, onPaste, dropProps, outgoing,
   }
 }

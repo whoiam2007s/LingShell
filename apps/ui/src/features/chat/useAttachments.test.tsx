@@ -63,4 +63,16 @@ describe('「添加到对话」订阅', () => {
     await act(async () => { attachPathsToChat(['/tmp/c.txt']) })
     await waitFor(() => expect(result.current.items).toHaveLength(1))
   })
+
+  // 回归：「用摘要开新会话」是先 addContext('session', 摘要) 再立刻 doSend()，
+  // 两者用的是同一帧的闭包。outgoing() 若读 state，拿到的是加摘要之前的空列表 ——
+  // 界面历史已被清空、摘要又没随消息发出，看起来就是「历史全丢了」。
+  it('加完上下文立刻读 outgoing：拿到刚加的那条（同一帧闭包）', () => {
+    const { result } = renderHook(() => useAttachments(false, 's1'))
+    const frame = result.current            // 相当于 doSend 捕获的那份闭包
+    act(() => { frame.addContext('session', '上一次会话的摘要', '摘要正文') })
+    const out = frame.outgoing()
+    expect(out?.send).toHaveLength(1)
+    expect(result.current.items).toHaveLength(1)
+  })
 })

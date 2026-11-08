@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gitBashPath, withPathsBlock, splitPathsBlock, multimodalDefault, isImageName, mediaTypeOfName, sniffImage, imageTypeOf, isImageFileName, svgRasterSize, withContextBlocks, splitContextBlocks, type ContextAttachment } from './attachments.js'
+import { gitBashPath, withPathsBlock, splitPathsBlock, multimodalDefault, isImageName, mediaTypeOfName, sniffImage, imageTypeOf, isImageFileName, svgRasterSize, withContextBlocks, splitContextBlocks, CONTEXT_KINDS, type ContextAttachment } from './attachments.js'
 
 describe('gitBashPath', () => {
   it('盘符路径换成 /c/... 写法', () => {
@@ -65,6 +65,14 @@ describe('上下文块', () => {
   it('没有上下文块原样返回；普通文本里提到 <context> 不误判', () => {
     expect(withContextBlocks(' 原话 ', [])).toBe(' 原话 ')
     expect(splitContextBlocks('讲讲 <context type="x"> 标签')).toEqual({ text: '讲讲 <context type="x"> 标签', ctxs: [] })
+  })
+  // 回归：类型白名单以前是手写的 terminal|host|session|shell，新增 git 时漏了它，
+  // 结果 git 上下文整段显示在消息气泡里（发送内容里剥不下来）
+  it('每种上下文类型都能剥掉（含 git），不会漏在气泡里', () => {
+    for (const kind of CONTEXT_KINDS) {
+      const one: ContextAttachment[] = [{ kind: 'context', ctx: kind, name: 'demo@master', text: '仓库：/x' }]
+      expect(splitContextBlocks(withContextBlocks('看看', one))).toEqual({ text: '看看', ctxs: one })
+    }
   })
 })
 

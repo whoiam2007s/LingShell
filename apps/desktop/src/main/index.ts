@@ -15,6 +15,20 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 const isMac = process.platform === 'darwin'
 
+/**
+ * 窗口图标（任务栏 / Alt+Tab）：打包后取 resources/icon.ico（由 extraResources 带进来），
+ * 开发时取 build/icon.ico。以前两个窗口都没传 icon，任务栏会回落到 Electron 默认的原子图标。
+ * macOS 用应用包里的 .icns（不认 .ico），这里返回 undefined 交给系统。
+ */
+function appIcon(): string | undefined {
+  if (isMac) return undefined
+  const candidates = [
+    join(process.resourcesPath, 'icon.ico'),                 // 打包后
+    join(here, '../../build/icon.ico'),                      // dev: out/main → apps/desktop/build
+  ]
+  return candidates.find((p) => existsSync(p))
+}
+
 let splash: BrowserWindow | null = null
 let mainWin: BrowserWindow | null = null
 // 启动页至少显示这么久（含应用初始化）；渲染层画出第一帧后才关（app:boot-ready）
@@ -31,6 +45,7 @@ function createSplash() {
     frame: false, transparent: true, resizable: false, movable: true, center: true,
     alwaysOnTop: true, skipTaskbar: true, show: false, title: tr('灵壳 LingShell'),
     backgroundColor: '#00000000',
+    ...(appIcon() ? { icon: appIcon() } : {}),
   })
   // splash.html 开发时在源码 resources/，打包后在 resources/
   const candidates = [
@@ -52,6 +67,7 @@ function createMainWindow() {
     frame: false,
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     backgroundColor: windowBg(),
+    ...(appIcon() ? { icon: appIcon() } : {}),   // 任务栏图标：不传就回落到 Electron 默认图标
     webPreferences: { preload: join(here, '../preload/index.cjs'), contextIsolation: true, nodeIntegration: false }
   })
   mainWin = win
@@ -122,8 +138,11 @@ function registerWindowControls(win: BrowserWindow) {
 }
 
 // 单实例：多开会共写 ~/.lingshell/config 下的 JSON、互相覆盖 api.json（先退的那个还会把它删掉）
-// Windows 系统通知认 AppUserModelId，须与 electron-builder.yml 的 appId 一致
-if (process.platform === 'win32') app.setAppUserModelId('com.lingshell.app')
+// Windows 系统通知认 AppUserModelId，须与 electron-builder.yml 的 appId 一致。
+// 只在打包版设置：dev 模式（electron.exe）如果也用同一个 AUMID，就会和安装版抢同一个任务栏 / 开始菜单身份 ——
+// 实际踩过的坑：曾留下一条指向 node_modules/electron.exe 的 Electron.lnk，Windows 把 com.lingshell.app
+// 关联到它，任务栏显示成「Electron + 原子图标」，改 exe 图标怎么改都没用。
+if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('com.lingshell.app')
 // 浏览器数据目录（localStorage，以及加密已存密码 / API Key 用的钥匙）固定为 %APPDATA%\LingShell，开发版和安装版同一个：
 // 两边共用 ~/.lingshell/config 里的密文，钥匙不同就互相解不开。别再改它、也别搬它：safeStorage 的密文和目录路径绑定，目录一换（哪怕整个改名过去）已存的密码全都解不开
 // 命令行显式给了 --user-data-dir（隔离测试）时尊重它

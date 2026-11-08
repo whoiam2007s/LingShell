@@ -6,10 +6,11 @@ describe('模型配置 → dsh 路由 / key 变量', () => {
     expect(routeOf('deepseek', 'a1')).toBe('lingshell-ds-a1')
     expect(routeOf('moonshot', 'a1')).toBe('lingshell-p-a1')
     expect(routeOf('qwen')).toBe('lingshell-p-default')
-    // DeepSeek 选 OpenAI 兼容 → 走 pi-ai 路由；其它提供商填 anthropic 也无效
+    // DeepSeek 选 OpenAI 兼容 → 走 pi-ai 路由；其它提供商选 Anthropic Messages → 走 Messages 路由
     expect(routeOf('deepseek', 'a1', 'openai')).toBe('lingshell-p-a1')
     expect(routeOf('deepseek', 'a1', 'anthropic')).toBe('lingshell-ds-a1')
-    expect(routeOf('qwen', 'a1', 'anthropic')).toBe('lingshell-p-a1')
+    expect(routeOf('qwen', 'a1', 'anthropic')).toBe('lingshell-ds-a1')   // 协议一律可选：选了 anthropic 就走 Messages 路由
+    expect(usesPiAi('qwen', 'anthropic')).toBe(false)
     expect(usesPiAi('deepseek')).toBe(false)
     expect(usesPiAi('deepseek', 'openai')).toBe(true)
     // 第三种协议：单独一条路由，同样走 pi-ai
@@ -17,7 +18,7 @@ describe('模型配置 → dsh 路由 / key 变量', () => {
     expect(routeOf('deepseek', 'a1', 'openai-responses')).toBe('lingshell-r-a1')
     expect(usesPiAi('openai', 'openai-responses')).toBe(true)
     expect(usesPiAi('openai')).toBe(true)
-    expect(usesPiAi('anthropic', 'openai-responses')).toBe(false)   // Anthropic 只有 Messages
+    expect(usesPiAi('anthropic', 'openai-responses')).toBe(true)   // 三种协议一律放开：显式选了 Responses 就按 Responses 走
     expect(keyEnvOf('mp_x9')).toBe('LINGSHELL_MP_MP_X9_KEY')
     expect(keyEnvOf()).toBe('LINGSHELL_MP_DEFAULT_KEY')
   })
@@ -44,9 +45,9 @@ describe('withRoute', () => {
   it('DeepSeek 走 OpenAI 兼容：官方地址修回 https://api.deepseek.com（含 /anthropic），带 deepseek 思考格式与 reasoning_content 回放', () => {
     const r = withRoute({}, { profileId: 'd', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: 'https://api.deepseek.com/anthropic', protocol: 'openai' })
     expect(r['lingshell-p-d']).toMatchObject({
-      api: 'openai-completions', baseURL: 'https://api.deepseek.com', reasoning: 'high',
+      api: 'openai-completions', baseURL: 'https://api.deepseek.com', reasoning: 'medium',
       compat: { thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true, supportsStore: false },
-      models: [{ id: 'deepseek-v4-pro', reasoningEfforts: { off: null, high: 'high', max: 'max' } }],
+      models: [{ id: 'deepseek-v4-pro', reasoningEfforts: { off: null, low: 'low', medium: 'high', high: 'max' } }],
     })
     // 其它提供商不带 DeepSeek 专属项
     const q = withRoute({}, { profileId: 'q', provider: 'qwen', model: 'qwen-max', baseUrl: '' })['lingshell-p-q']
@@ -60,15 +61,26 @@ describe('withRoute', () => {
     // ollama：本地端点不认识 reasoningEffort，不声明
     const o = withRoute({}, { profileId: 'o2', provider: 'ollama', model: 'qwen3:8b', baseUrl: '' })['lingshell-p-o2']
     expect(o.models[0]).not.toHaveProperty('reasoningEfforts')
-    // qwen 选了「高」→ 发 high
+    // qwen 选了「高」→ 档位名 high
     const hi = withRoute({}, { profileId: 'q2', provider: 'qwen', model: 'qwen-max', baseUrl: '', thinking: 'high' })['lingshell-p-q2']
     expect(hi.reasoning).toBe('high')
-    // DeepSeek 选「低」→ 不思考（off 不发送）
-    const off = withRoute({}, { profileId: 'd2', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'low' })['lingshell-p-d2']
-    expect(off).not.toHaveProperty('reasoning')
-    // DeepSeek 选「高」→ max
+    // DeepSeek 选「低」→ 传档位名 low（pi-ai 再按 reasoningEfforts 翻成官方 low）
+    const low = withRoute({}, { profileId: 'd2', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'low' })['lingshell-p-d2']
+    expect(low.reasoning).toBe('low')
+    // DeepSeek 选「中」→ 档位名 medium（线上值是 high，见 reasoningEfforts）
+    const mid = withRoute({}, { profileId: 'd4', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'medium' })['lingshell-p-d4']
+    expect(mid.reasoning).toBe('medium')
+    // DeepSeek 选「高」→ 档位名 high（线上值 max，见 reasoningEfforts）
     const max = withRoute({}, { profileId: 'd3', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'high' })['lingshell-p-d3']
-    expect(max.reasoning).toBe('max')
+    expect(max.reasoning).toBe('high')
+    // DeepSeek 选「关」→ 档位名 off；pi-ai 的 thinkingFormat:deepseek 会据此发 thinking:{type:'disabled'}
+    const offRoute = withRoute({}, { profileId: 'd5', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'openai', thinking: 'off' })['lingshell-p-d5']
+    expect(offRoute.reasoning).toBe('off')
+    expect(offRoute.models[0]).toMatchObject({ reasoningEfforts: { off: null } })
+    // 还没核对过官方文档的厂商（火山方舟）：不声明档位、也不发参数，界面整块置灰
+    const volc = withRoute({}, { profileId: 'v1', provider: 'volc', model: 'doubao-seed', baseUrl: '', thinking: 'high' })['lingshell-p-v1']
+    expect(volc).not.toHaveProperty('reasoning')
+    expect(volc.models[0]).not.toHaveProperty('reasoningEfforts')
   })
   it('Responses 协议：独立路由 + 本协议白名单内的 compat，不声明推理档位', () => {
     const r = withRoute({}, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai-responses', thinking: 'high' })
@@ -95,7 +107,7 @@ describe('withRoute', () => {
       mode: 'normal', maxRetries: 5,
       backoff: { initialDelayMs: 500, maxDelayMs: 10_000, jitterRatio: 0.1 },
     })
-    expect(r.retryPolicy.retryableCodes).toEqual(['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT'])
+    expect(r.retryPolicy.retryableCodes).toEqual(['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT', 'STREAM_CLOSED'])
     // 与总表常量同源（改曲线只需改 RETRY_POLICY）
     expect(r.retryPolicy.maxRetries).toBe(RETRY_POLICY.maxRetries)
     // Responses 协议同样带策略

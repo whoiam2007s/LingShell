@@ -52,6 +52,15 @@ export function noteSessionEvent(ev: { type?: string; sessionId?: string; [k: st
 /** 某个会话当前的状态（没有 = 正常/空闲） */
 export const runStateOf = (sessionId: string): RunState | undefined => states.get(sessionId)
 
+/**
+ * 打开某个会话（切过去）就当他看过了：把状态点收起来。
+ * 以前只有「下一轮正常结束」才清，失败后再没跑过的会话会一直亮红点（历史异常一直提醒）。
+ */
+export function clearRunState(sessionId: string): void {
+  if (!states.delete(sessionId)) return
+  notify()
+}
+
 /** 订阅状态变化，返回最新快照（历史会话抽屉用） */
 export function useRunStates(): (sessionId: string) => RunState | undefined {
   const [, bump] = useState(0)

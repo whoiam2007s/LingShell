@@ -13,13 +13,13 @@ export class HttpTransport implements AppClient {
   }
   agent: AppClient['agent'] = {
     createSession: ni, listSessions: ni, sendTurn: ni, interruptTurn: ni, compact: ni, steer: ni, unsteer: ni,
-    listPersisted: ni, reconnectSession: ni, deleteSession: ni, renameSession: ni, search: ni, setWorkDir: ni, resetContext: ni, suggestCommand: ni, forkSession: ni,
+    listPersisted: ni, reconnectSession: ni, deleteSession: ni, renameSession: ni, search: ni, setWorkDir: ni, resetContext: ni, continueSession: ni, suggestCommand: ni, forkSession: ni,
   }
   settings: AppClient['settings'] = {
     get: ni, save: ni,
   }
   auth: AppClient['auth'] = {
-    decide: ni, listForSession: ni, grant: ni, revoke: ni, getTrust: ni, setTrust: ni,
+    decide: ni, listForSession: ni, grant: ni, revoke: ni,
   }
   hosts: AppClient['hosts'] = { list: ni, save: ni, delete: ni, appendNote: ni, sshConfigPreview: ni, importSshConfig: ni, detectAgent: ni, sessionImportPreview: ni, importSessions: ni }
   knownHosts: AppClient['knownHosts'] = { list: ni, decide: ni, acceptChanged: ni, remove: ni, importOpenSsh: ni }

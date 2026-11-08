@@ -1,5 +1,5 @@
 // AppClient 的AI：会话与对话、授权、执行记录、用量、MCP、模板、Skills、附件、知识库、安全规则、改动汇总与回滚。主进程注册见 apps/desktop/src/main/ai/register.ts，渲染层实现见 apps/ui/src/client/transports/ipc/ai.ts
-import type { SessionInfo, SessionMeta, ApprovalAnswer, AuthLevel, TrustLevel, AuditEntry, McpServerSummary, McpServerInput, McpServerStatus, McpToolInfo, ThinkingLevel } from '../types.js'
+import type { SessionInfo, SessionMeta, ApprovalAnswer, AuthLevel, AuditEntry, McpServerSummary, McpServerInput, McpServerStatus, McpToolInfo, ThinkingLevel } from '../types.js'
 import type { PromptTemplate, TemplateInput } from '../../ops/index.js'
 import type { NlCommandRequest } from '../../terminal/index.js'
 import type { UsageRange, UsageSummary, UsageTotals, UsageCurrency, UsagePrices } from '../../ai/index.js'
@@ -27,11 +27,14 @@ export interface AiApi {
     setWorkDir(sessionId: string, workDir: string): Promise<void>   // 绑定工作目录，重启会话应用
     // 上下文重置：作废旧 thread 换一个空的（保留 workspace/授权），seed 作为新上下文的首条消息发出
     resetContext(sessionId: string, seed?: string): Promise<void>
+    // 接续：用摘要开一个新会话，源会话原样保留在列表里（不换 thread、不清历史）；
+    // 新会话继承源会话的工作目录与模型配置，标题由界面给
+    continueSession(sourceSessionId: string, opts?: { title?: string }): Promise<{ session: SessionInfo; digest: string }>
     // 终端里自然语言写命令：用当前模型一次性生成一条命令（不建会话、不带工具、不带终端内容）。失败抛错（中文原因）
     suggestCommand(req: NlCommandRequest): Promise<string>
     // 从某条用户消息（messageId = 界面上该消息的服务端 id）之前分叉：fork = 新会话「原标题（分叉）」，原会话保留；
     // regenerate = 本会话原地重跑这条消息（切点前的历史回放给界面）。回合进行中抛 turn_in_progress。text = 该消息原话
-    forkSession(sessionId: string, messageId: string, mode: 'fork' | 'regenerate'): Promise<{ session: SessionInfo; text: string }>
+    forkSession(sessionId: string, messageId: string, mode: 'fork' | 'regenerate', opts?: { includeTurn?: boolean }): Promise<{ session: SessionInfo; text: string; digest?: string }>
   }
   // 授权按 hostKey（'local' | hostId | 'host:port'）记录：同主机所有终端共享一份授权
   auth: {
@@ -39,8 +42,7 @@ export interface AiApi {
     listForSession(sessionId: string): Promise<{ hostKey: string; level: AuthLevel }[]>
     grant(sessionId: string, hostKey: string, level: AuthLevel): Promise<void>
     revoke(sessionId: string, hostKey: string): Promise<void>
-    getTrust(sessionId: string): Promise<TrustLevel>
-    setTrust(sessionId: string, level: TrustLevel): Promise<void>
+    // 信任档不再是独立入口：由四档执行模式派生（见 safety.execMode / safety.setExecMode）
   }
   // AI 在终端上的执行记录（新在前）
   audit: {

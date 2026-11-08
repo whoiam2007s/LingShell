@@ -1,4 +1,5 @@
 agent:compact
+agent:continueSession
 agent:createSession
 agent:deleteSession
 agent:forkSession
@@ -40,11 +41,9 @@ audit:listForSession
 audit:listRecent
 audit:restore
 auth:decide
-auth:getTrust
 auth:grant
 auth:listForSession
 auth:revoke
-auth:setTrust
 autoReplies:delete
 autoReplies:list
 autoReplies:save

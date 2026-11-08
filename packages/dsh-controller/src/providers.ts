@@ -37,29 +37,35 @@ const COMPAT = { supportsStore: false, supportsDeveloperRole: false, maxTokensFi
 // DeepSeek 走 OpenAI 兼容时（同 pi-ai catalog 里 deepseek 的写法）：思考开关用 thinking 字段，
 // 回放助手消息带 reasoning_content（思考模式下多轮工具调用不带会被拒）
 const DEEPSEEK_COMPAT = { ...COMPAT, thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true } as const
-// 声明成推理模型，上面两项才生效；路由默认推理强度 high（与官方 Messages 适配器的默认一致：开思考）
-const DEEPSEEK_EFFORTS = { off: null, high: 'high', max: 'max' } as const
+// 档位声明见下面的 effortsOf：统一由 shared 的 THINKING_WIRE 生成，这里不另抄一份
+// （抄两份必然对不上，之前 DeepSeek 就是栽在这上面）。
 // Responses 协议（OpenAI 官方 / Azure / Codex 系）的兼容开关：只能填 pi-ai 给本协议的白名单字段，
 // completions 那套（supportsStore、maxTokensField）混进来会被配置校验拒，所以单独一份。
 // 保守取值：不带 developer 角色、不发 strict 工具 schema；max_output_tokens 是官方端点都认的，留着让输出上限生效
 const RESPONSES_COMPAT = { supportsDeveloperRole: false, supportsMaxOutputTokens: true, supportsStrictMode: false } as const
-// 其它支持思考深度的厂商：pi-ai 的档位名与线上值同名
-const COMMON_EFFORTS = { low: 'low', medium: 'medium', high: 'high' } as const
-/** 该厂商声明给 pi-ai 的档位；undefined = 不支持（界面上会置灰） */
-const effortsOf = (provider: string) => {
-  if (provider === 'deepseek') return DEEPSEEK_EFFORTS
-  return THINKING_WIRE[provider] ? COMMON_EFFORTS : undefined
+/**
+ * 该厂商声明给 pi-ai 的档位（dsh 会把它翻成 pi-ai 的 thinkingLevelMap，未声明的档位钉成不支持）。
+ * undefined = 不支持（界面上会置灰）。值 'xxx' = 发这个值；null = 支持但不发参数（只有「关」）。
+ * 表在 shared/THINKING_WIRE，这里只做一次形态转换，不再维护第二份。
+ */
+const effortsOf = (provider: string): Record<string, string | null> | undefined => {
+  const map = THINKING_WIRE[provider]
+  if (!map) return undefined
+  const out: Record<string, string | null> = {}
+  for (const [lv, wire] of Object.entries(map)) out[lv] = wire === null ? null : String(wire)
+  return Object.keys(out).length ? out : undefined
 }
 
 // 请求级重试策略（网络 / 服务端 / 限流 / 超时）：显式写下来，不依赖 provider 的隐含默认 ——
 // 想调曲线（例如改成 2s 起步）只改这一处。5 次指数退避 + 10% 抖动，封顶 10 秒：
-// 约 0.5s → 1s → 2s → 4s → 8s。可重试码沿用 dsh 的默认集合（传输 / 超时 / 5xx / 429 / 空响应）。
+// 约 0.5s → 1s → 2s → 4s → 8s。可重试码 = dsh 默认集合（传输 / 超时 / 5xx / 429 / 空响应）+ 断流：
+// DeepSeek 的 SSE 偶发在 message_stop 之前关掉（STREAM_CLOSED），不重试的话整轮直接失败、工具也不执行。
 export const RETRY_POLICY = {
   mode: 'normal',
   maxRetries: 5,
   backoff: { initialDelayMs: 500, maxDelayMs: 10_000, jitterRatio: 0.1 },
 } as const
-const RETRYABLE_CODES = ['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT']
+const RETRYABLE_CODES = ['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT', 'STREAM_CLOSED']
 
 // input：模型接受的输入模态。pi-ai 对手工声明的模型默认只认文本，带图片的请求会被拒；「支持图片」开了才声明 image
 export interface PiModel { id: string; name: string; contextWindow: number; maxTokens: number; input: ('text' | 'image')[]; reasoningEfforts?: Record<string, string | null> }
@@ -124,7 +130,10 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
       baseURL: endpointBaseOf(s),
       compat: responses ? RESPONSES_COMPAT : ds ? DEEPSEEK_COMPAT : COMPAT,
       retryPolicy: { ...RETRY_POLICY, backoff: { ...RETRY_POLICY.backoff }, retryableCodes: [...RETRYABLE_CODES] },
-      ...(wire && wire !== 'off' ? { reasoning: wire } : {}),
+      // 传给 pi-ai 的是**档位名**（low/medium/high），不是线上值：pi-ai 会再用模型声明的
+      // reasoningEfforts（档位 → 厂商线上值）翻译一次。之前传了翻译后的值，等于翻了两次
+      // （DeepSeek「中」→ high → 又被当成 high 档 → max，和官方语义不符）。
+      ...(responses || !level || wire === undefined ? {} : { reasoning: level }),
       models: [...others, model],
     },
   }

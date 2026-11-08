@@ -10,9 +10,10 @@ export class JsonAuthStore implements AuthStore {
     try {
       const raw = readFileSync(this.file, 'utf8')
       const parsed = JSON.parse(raw)
-      return { records: parsed.records ?? [], trust: parsed.trust ?? {} }
+      // execMode 是 0.1.6 起的四档执行模式；旧文件没有这个字段，由 AuthRegistry 按 trust 迁移
+      return { records: parsed.records ?? [], execMode: parsed.execMode ?? {}, trust: parsed.trust ?? {} }
     } catch {
-      return { records: [], trust: {} }
+      return { records: [], execMode: {}, trust: {} }
     }
   }
 

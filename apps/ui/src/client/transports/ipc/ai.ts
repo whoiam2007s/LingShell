@@ -1,5 +1,5 @@
 // AppClient AI部分的 IPC 实现（接口见 packages/shared/src/protocol/client/ai.ts，主进程见 apps/desktop/src/main/ai/register.ts）
-import type { AppClient, AiApi, ApprovalAnswer, AuditEntry, AuthLevel, McpServerInput, McpServerStatus, McpServerSummary, McpToolInfo, NlCommandRequest, PromptTemplate, SessionInfo, SessionMeta, TemplateInput, TrustLevel, UsageCurrency, UsagePrices, UsageRange, UsageSummary, UsageTotals } from '@lingshell/shared'
+import type { AppClient, AiApi, ApprovalAnswer, AuditEntry, AuthLevel, McpServerInput, McpServerStatus, McpServerSummary, McpToolInfo, NlCommandRequest, PromptTemplate, SessionInfo, SessionMeta, TemplateInput, UsageCurrency, UsagePrices, UsageRange, UsageSummary, UsageTotals } from '@lingshell/shared'
 
 export function createAiIpc(): AiApi {
   return {
@@ -18,16 +18,15 @@ export function createAiIpc(): AiApi {
       search: (query: string) => window.electronAPI.invoke('agent:search', query) as Promise<{ sessionId: string; snippet: string }[]>,
       setWorkDir: (id: string, workDir: string) => window.electronAPI.invoke('agent:setWorkDir', id, workDir) as Promise<void>,
       resetContext: (id: string, seed?: string) => window.electronAPI.invoke('agent:resetContext', id, seed) as Promise<void>,
+      continueSession: (srcId: string, opts?: { title?: string }) => window.electronAPI.invoke('agent:continueSession', srcId, opts) as Promise<{ session: SessionInfo; digest: string }>,
       suggestCommand: (req: NlCommandRequest) => window.electronAPI.invoke('agent:suggestCommand', req) as Promise<string>,
-      forkSession: (id: string, messageId: string, mode: 'fork' | 'regenerate') => window.electronAPI.invoke('agent:forkSession', id, messageId, mode) as Promise<{ session: SessionInfo; text: string }>,
+      forkSession: (id: string, messageId: string, mode: 'fork' | 'regenerate', opts?: { includeTurn?: boolean }) => window.electronAPI.invoke('agent:forkSession', id, messageId, mode, opts) as Promise<{ session: SessionInfo; text: string; digest?: string }>,
     },
     auth: {
       decide: (approvalId: string, ans: ApprovalAnswer) => window.electronAPI.invoke('auth:decide', approvalId, ans) as Promise<void>,
       listForSession: (sessionId: string) => window.electronAPI.invoke('auth:listForSession', sessionId) as Promise<{ hostKey: string; level: AuthLevel }[]>,
       grant: (sessionId: string, hostKey: string, level: AuthLevel) => window.electronAPI.invoke('auth:grant', sessionId, hostKey, level) as Promise<void>,
       revoke: (sessionId: string, hostKey: string) => window.electronAPI.invoke('auth:revoke', sessionId, hostKey) as Promise<void>,
-      getTrust: (sessionId: string) => window.electronAPI.invoke('auth:getTrust', sessionId) as Promise<TrustLevel>,
-      setTrust: (sessionId: string, level: TrustLevel) => window.electronAPI.invoke('auth:setTrust', sessionId, level) as Promise<void>,
     },
     audit: {
       listForSession: (sid: string) => window.electronAPI.invoke('audit:listForSession', sid) as Promise<AuditEntry[]>,

@@ -27,7 +27,7 @@ import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { StaticWorkingDirectory } from './workingDirectory.js'
 import * as deepseek from '@deepseek-ai/dsh-llm-deepseek'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
-import { contextWindowOf, providerMeta, tr } from '@lingshell/shared'
+import { contextWindowOf, providerMeta, thinkingWireOf, tr } from '@lingshell/shared'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
@@ -56,7 +56,7 @@ import { withPathsBlock, withContextBlocks, type TurnAttachment, type ContextAtt
 import { askUserToolDef, ASK_GUIDANCE } from './askUser.js'
 import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
-import { forkPoint, forkTitle } from './fork.js'
+import { forkPoint, forkTitle, digestSeed } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
 import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
 import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
@@ -102,7 +102,7 @@ export interface DshControllerConfig extends TerminalToolDeps {
   // contextWindow：用户覆盖的上下文窗口（0/缺省 = 按 provider/模型自动）
   // protocol：接口协议（缺省按 protocolOf：DeepSeek = anthropic，其它 = openai）；切协议 = 换路由，下一回合生效
   // multimodal：这套配置开了「支持图片」（附图片的消息只在开了时才发；路由按它声明模型的输入模态）
-  resolveSettings(profileId?: string): { profileId?: string; provider: string; model: string; apiKey: string; baseUrl: string; contextWindow?: number; protocol?: ModelProtocol; multimodal?: boolean }
+  resolveSettings(profileId?: string): { profileId?: string; provider: string; model: string; apiKey: string; baseUrl: string; contextWindow?: number; protocol?: ModelProtocol; multimodal?: boolean; thinking?: ThinkingLevel }
   requestApproval(req: ApprovalRequest): Promise<ApprovalAnswer>
   // 计划审批卡（propose_plan）；缺省则该工具报不可用
   requestPlan?(req: PlanRequest): Promise<ApprovalAnswer>
@@ -124,6 +124,10 @@ export interface DshControllerConfig extends TerminalToolDeps {
   // MCP：连接管理器（boot 时把已连上的服务工具注册进来）；授权要看会话信任档与是否无人值守巡检
   mcp?: McpManager
   trustOf?(sessionId: string): TrustLevel
+  // 四档执行模式（0.1.6 起唯一的信任控制入口）：注入后由注册表持有并持久化；
+  // 没注入时退回控制器内存（单测 / 无注册表的宿主）
+  execModeOf?(sessionId: string): ExecMode
+  setExecMode?(sessionId: string, mode: ExecMode): void
   isUnattended?(sessionId: string): boolean
   // 每次模型请求的用量（实时事件才报，重连回放不报）→ 用量统计
   recordUsage?(u: { sessionId: string; provider: string; model: string; input: number; cacheRead: number; output: number; unattended?: boolean; source?: string }): void
@@ -362,17 +366,30 @@ export class DshController {
   private userId?: string
   private deepseekRoute(route: string, s: Settings): void {
     const baseURL = deepseekBaseOf(s)
+    // 思考档位也要跟着变：适配器支持 thinking: enabled/disabled + reasoningEffort: off/low/high/max
+    // （以前这里只传地址和模型，档位根本没进请求，所以「低」档照样开思维链）
     const cur = this.dsRoutes.get(route)
-    if (cur) { Object.assign(cur, { baseURL, model: s.model, multimodal: !!s.multimodal }); return }
-    const holder = { baseURL, model: s.model, multimodal: !!s.multimodal }
+    if (cur) { Object.assign(cur, { baseURL, model: s.model, multimodal: !!s.multimodal, thinking: s.thinking }); return }
+    const holder = { baseURL, model: s.model, multimodal: !!s.multimodal, thinking: s.thinking }
     let cache: { key: string; opts: unknown } | undefined
+    // 四档 → 适配器参数（对齐 DeepSeek 官方：thinking 默认打开，effort 支持 low/high/max）：
+    //   关        → thinking:'disabled'（官方 Anthropic 格式里写作 reasoning.effort:'none'）
+    //   低/中/高  → thinking:'enabled' + effort low/high/max（都开着思考，只是强度不同）
+    // 线上值从 shared 的 THINKING_WIRE 取，不在这里写第二份；没设过档位 = 一个都不传，沿用适配器默认。
+    const thinkOpts = (lv?: ThinkingLevel) => {
+      if (lv === undefined) return {}
+      const wire = thinkingWireOf('deepseek', lv)
+      if (wire === undefined) return {}
+      if (wire === null) return { thinking: 'disabled' as const }
+      return { thinking: 'enabled' as const, reasoningEffort: wire as 'low' | 'high' | 'max' }
+    }
     // 模型目录按「支持图片」改写本配置所用模型的输入模态（见 providers.deepseekModels）
     const options = () => {
       const key = JSON.stringify(holder)
       if (cache?.key !== key) {
         // retryPolicy：与 pi-ai 路由同一份（网络 / 服务 / 限流 / 超时 5 次退避重试，见 providers.RETRY_POLICY）
         const opts = deepseek.resolveAdapterOptions({ baseURL: holder.baseURL, retryPolicy: { ...RETRY_POLICY, backoff: { ...RETRY_POLICY.backoff } } } as any, undefined as any) as any
-        cache = { key, opts: { ...opts, models: deepseekModels(opts.models, holder.model, holder.multimodal) } }
+        cache = { key, opts: { ...opts, ...thinkOpts(holder.thinking), models: deepseekModels(opts.models, holder.model, holder.multimodal) } }
       }
       return cache.opts
     }
@@ -446,8 +463,20 @@ export class DshController {
         this.overrides.set(String(exec.callId), { sessionId, rule: this.modeRuleOf(sessionId) })   // 执行记录注明是哪个档放行的
         return next()
       }
+      // 目录外的写：授权记录只到「主机 + 级别」（不带路径），auto / trust 档不能让它替路径判定放行。
+      // confirm 本来就每条写都问、preview 已在上面拒掉，这条只补 auto / trust 批过写入后的缺口。
+      if (d.kind === 'allow' && this.needsAskOutside(sessionId, String(exec.name), exec.arguments)) {
+        this.pendingAsk.set(String(exec.callId), { sessionId, name: exec.name, args: exec.arguments, reason: 'elevation' })
+        return { kind: 'ask', reason: 'elevation' }
+      }
       if (d.kind === 'allow') {
-        if (d.rule) this.overrides.set(String(exec.callId), { sessionId, rule: d.rule })   // 执行记录里注明按哪条规则放行
+        // 执行记录的来源标注：命令规则优先；auto / trust 档放行的写操作补一句「执行模式：…」。
+        // 以前只在「模式放宽」那条路径写，走已有授权直接放行时不写 —— 同一个档放行的记录长得不一样。
+        const mode = this.execModeOf(sessionId)
+        const modeNote = (mode === 'auto' || mode === 'trust') && this.modeFactsOf(sessionId, String(exec.name), exec.arguments).kind === 'write'
+          ? this.modeRuleOf(sessionId) : undefined
+        const rule = d.rule ?? modeNote
+        if (rule) this.overrides.set(String(exec.callId), { sessionId, rule })   // 执行记录里注明按哪条规则 / 哪个档放行
         return next()
       }
       if (d.kind === 'deny') return d
@@ -558,15 +587,19 @@ export class DshController {
   isPreview(sessionId: string): boolean { return this.execModeOf(sessionId) === 'preview' }
 
   /**
-   * 会话级执行模式（四档）。缺省 = confirm（与升级前行为一致）。
+   * 会话级执行模式（四档）。0.1.6 起是唯一的信任控制入口：
+   * 优先读注入的注册表（持久化，重启后还在），没注入时退回控制器内存。
    * preview 模式与老的 preview 布尔开关互通：设成 preview 等价于老的开预演，其它模式等价于关。
    */
   execModeOf(sessionId: string): ExecMode {
+    const ext = this.cfg.execModeOf?.(sessionId)
+    if (ext) return ext
     return this.modes.get(sessionId) ?? (this.preview.has(sessionId) ? 'preview' : DEFAULT_EXEC_MODE)
   }
 
-  /** 设会话模式；同时同步老的 preview 集合，避免两条路径给出不同答案 */
+  /** 设会话模式：写回注册表（持久化）+ 内存兜底；同时同步老的 preview 集合，避免两条路径给出不同答案 */
   setExecMode(sessionId: string, mode: ExecMode): void {
+    this.cfg.setExecMode?.(sessionId, mode)
     if (mode === 'preview') this.preview.add(sessionId)
     else this.preview.delete(sessionId)
     if (mode === DEFAULT_EXEC_MODE) this.modes.delete(sessionId)
@@ -601,20 +634,32 @@ export class DshController {
     return relaxByMode(mode, existing, this.modeFactsOf(sessionId, name, args), alwaysAskTool(name) || this.onProdHost(name, args))
   }
 
+  /**
+   * 目录外的写：授权记录只到「主机 + 级别」（不带路径），不能让它替路径判定放行。
+   * 没批过这个目录 → 问；批过（auto / trust 档的记忆）→ 放。confirm 本来就每条写都问、preview 已在上游拒掉。
+   */
+  private needsAskOutside(sessionId: string, name: string, args: unknown): boolean {
+    const mode = this.execModeOf(sessionId)
+    if (mode !== 'auto' && mode !== 'trust') return false
+    const f = this.modeFactsOf(sessionId, name, args)
+    return f.kind === 'write' && f.outsideWorkDir === true && f.granted !== true
+  }
+
   /** 执行记录里注明这次是哪个执行模式放行的 */
   private modeRuleOf(sessionId: string): string {
     return tr('执行模式：{m}', { m: modeLabelOf(this.execModeOf(sessionId)) })
   }
 
-  /** auto 档：用户（含 AI 复核自动放行）批准后记「工具 + 范围」，同范围下次不再问 */
+  /** auto / trust 档：用户（含 AI 复核自动放行）批准后记「工具 + 范围」，同范围下次不再问 */
   private rememberToolGrant(sessionId: string, name: string, args: unknown): void {
-    if (this.execModeOf(sessionId) !== 'auto') return
+    const mode = this.execModeOf(sessionId)
+    if (mode !== 'auto' && mode !== 'trust') return
     const key = grantKeyOf(name, this.modeFactsOf(sessionId, name, args))
     if (key) this.toolGrants.remember(sessionId, key)
   }
   /** 「执行选中步骤」：关掉预演，把勾选的步骤记为已批准计划（下一轮里逐字一致的命令免逐条授权，同 propose_plan 批准） */
   approvePlan(sessionId: string, steps: PlanStep[]): number {
-    this.preview.delete(sessionId)
+    this.setExecMode(sessionId, 'confirm')   // 预演在四档里也是一种模式，必须一起退出来，否则后续写还是被拦
     const ok = sanitizeSteps(steps)
     if (ok.length) this.plans.approve(sessionId, ok.map((s) => ({ hostKey: this.cfg.resolveHostKey(s.terminal_id), command: s.command, path: s.path })))
     return ok.length
@@ -738,6 +783,7 @@ export class DshController {
     const live: Live = {
       info, dshId, window, provider: s.provider, model: s.model, profileId: meta.modelProfileId, applied: s.profileId, route: agentOptions,
       handle: handle as any, relay, ctxTokens: 0, steps: 0, compactions: 0, lastUsed: Date.now(), turning: false,
+      ...(meta.thinking ? { thinking: meta.thinking } : {}),   // 会话级思考深度：从会话记录恢复（重启后还在）
     }
     this.sessions.set(id, live)
     await this.evictIdle(id)
@@ -872,8 +918,26 @@ export class DshController {
       if (!live) return
       if (error) this.cfg.log?.('warn', 'compaction failed', { sessionId: id, error: error.slice(0, 200) })
       this.emit({ type: 'agent:contextCompacted', sessionId: id, ...(error ? { error } : {}) })
+      if (!error) this.remeasure(id, s)   // 百分比立刻改小，别让人以为没压下去
       this.maybeSuggestReset(id, s)
     }
+  }
+
+  // 压缩刚结束时，界面上的百分比还是**上一次请求**的旧值——真实 usage 要等下一轮请求才回来，
+  // 中间这段时间用户会以为「压了没用」。这里直接用 dsh 的 token 计量服务按当前 surface 重算一次，
+  // 数字立刻变小；下一轮请求回来后再用真实 usage 覆盖（同一套估算口径，差得不远）。
+  // 手动压缩（compactNow）和自动压缩（compaction/end）都走这里。
+  private remeasure(id: string, s: Live): void {
+    let tokens: number | undefined
+    try {
+      const meter = (this.ctx as any)?.tokenMeter
+      const session = (s.handle.agent as any)?.session
+      const m = meter?.measure && session ? meter.measure(session) : undefined
+      if (typeof m?.surfaceTokens === 'number' && m.surfaceTokens > 0) tokens = m.surfaceTokens
+    } catch { /* 计量失败不影响压缩本身：保持旧数字，等下一次请求刷新 */ }
+    if (tokens === undefined || tokens === s.ctxTokens) return
+    s.ctxTokens = tokens
+    this.emitUsage(id, s)
   }
 
   private maybeSuggestReset(id: string, s: Live): void {
@@ -975,8 +1039,13 @@ export class DshController {
    * 回合进行中只记下、下一回合生效（pending=true）。level 空 = 跟随模型配置。
    */
   async setSessionThinking(sessionId: string, level?: ThinkingLevel): Promise<{ pending: boolean }> {
+    const meta = this.cfg.sessionStore?.list().find((x) => x.id === sessionId)
+    if (!meta) throw new Error('session_not_found')
+    // 落库：重启 / 会话被闲置驱逐后再点回来，这一档还在（以前只在内存，重启就回「跟随配置」）
+    const { thinking: _old, ...rest } = meta
+    this.cfg.sessionStore?.upsert(level ? { ...rest, thinking: level } : rest)
     const live = this.sessions.get(sessionId)
-    if (!live) throw new Error('session_not_found')
+    if (!live) return { pending: false }        // 不在内存：已落库，恢复会话时按库里的值生效
     live.thinking = level
     if (live.turning) return { pending: true }
     await this.applyProfile(live)
@@ -986,7 +1055,7 @@ export class DshController {
   /** 当前会话生效的思考深度（未覆盖时 undefined = 跟随配置） */
   sessionThinking(sessionId: string): { level?: ThinkingLevel; pending: boolean } {
     const live = this.sessions.get(sessionId)
-    if (!live) return { level: undefined, pending: false }
+    if (!live) return { level: this.cfg.sessionStore?.list().find((x) => x.id === sessionId)?.thinking, pending: false }
     return { level: live.thinking, pending: live.turning }
   }
 
@@ -1280,17 +1349,23 @@ export class DshController {
     await this.waitIdle(sessionId)
     const live = this.sessions.get(sessionId)
     if (!live) return false
+    // 历史本来就很短（刚压缩过 / 才几轮）：引擎会在「摘要不比原文短」时抛英文错误，
+    // 这里提前拦下并说清楚原因，免得用户对着看不懂的报错反复点。
+    if (live.ctxTokens > 0 && live.ctxTokens < 8_000)
+      throw new Error(tr('上下文还很短（约 {n}K tokens），不用压缩', { n: Math.max(1, Math.round(live.ctxTokens / 1000)) }))
     const out = await engine.compactNow(live.handle.agent as any, new AbortController().signal)
     return !!out
   }
 
-  /** 等这个会话的回合结束（没有会话 / 已空闲立即返回）。轮询 500ms，代价可忽略 */
-  private waitIdle(sessionId: string): Promise<void> {
-    return new Promise((resolve) => {
+  /** 等这个会话的回合结束（没有会话 / 已空闲立即返回）。轮询 500ms，代价可忽略；超时给明确错误，别让界面一直转 */
+  private waitIdle(sessionId: string, timeoutMs = 10 * 60_000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const started = Date.now()
       const check = () => {
         const l = this.sessions.get(sessionId)
-        if (!l || !l.turning) resolve()
-        else setTimeout(check, 500)
+        if (!l || !l.turning) return resolve()
+        if (Date.now() - started > timeoutMs) return reject(new Error(tr('等待本轮结束超时（{n} 分钟），等它跑完再点一次压缩', { n: Math.round(timeoutMs / 60_000) })))
+        setTimeout(check, 500)
       }
       check()
     })
@@ -1306,6 +1381,69 @@ export class DshController {
     if (seed?.trim()) await this.sendTurn(sessionId, seed)
   }
 
+  /** 会话标题去重：同名时追加序号，免得列表里两行一模一样分不清（分叉 / 接续专用） */
+  private uniqueTitle(base: string): string {
+    const taken = new Set((this.cfg.sessionStore?.list() ?? []).map((s) => s.title))
+    if (!taken.has(base)) return base
+    for (let i = 2; i < 1000; i++) {
+      const t = `${base} ${i}`
+      if (!taken.has(t)) return t
+    }
+    return `${base} ${Date.now()}`
+  }
+
+  /**
+   * 接续：把源会话的上下文带进一个**新会话**，源会话原样留在列表里（不换 thread、不清历史）。
+   *
+   * 0.1.6 修（B3）：以前是把源会话的整段事件前缀原样拷过去（buildForkSeed）——压缩过的会话
+   * 带的是「摘要 + 压缩后保留的原文」（保留量能到上下文窗口 60%，最多 600K），没压缩过的直接
+   * 搬整段历史，新会话一开局就几十万 token。现在改成**只带「最近一次压缩摘要 + 最近几轮对话
+   * 的文字摘录」（digest）**，由界面作为新会话第一条消息的上下文发出去；结构化历史（工具调用、
+   * 附件引用）不带。工作目录 / 模型配置 / 思考深度照搬，标题由界面给（如「原标题（接续）」）。
+   */
+  async continueSession(srcId: string, opts?: { title?: string }): Promise<{ session: SessionInfo; digest: string }> {
+    const src = this.cfg.sessionStore?.list().find((x) => x.id === srcId)
+    if (!src) throw new Error('session_not_found')
+    // 源会话可能没在内存里（点开过又闲置被驱逐）：先按存档恢复出事件日志
+    if (!this.sessions.has(srcId)) await this.reconnectSession(src)
+    const live = this.sessions.get(srcId)
+    if (!live) throw new Error('session_not_found')
+    if (live.turning) throw new Error(tr('turn_in_progress: 本轮还在进行，等它结束（或先停止）再开新会话'))
+    const session = (live.handle.agent as any)?.session
+    const events: DshEvent[] = typeof session?.snapshotEvents === 'function' ? session.snapshotEvents() : []
+    const digest = continuationDigest(events, live.lastSummary)
+    // 「摘要 + 最近几轮」重组成种子事件：新会话打开即能看到上一会话的真实历史。
+    // 段里只要有一个引用不可靠（压缩检查点 / 越界引用），digestSeed 返回 undefined，退回「只带 digest」。
+    const ds = digestSeed(events, {
+      summary: live.lastSummary ?? '',
+      buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
+    })
+    const id = `sess_${randomUUID().slice(0, 8)}`
+    const createdAt = new Date().toISOString()
+    const mkMeta = (sid: string, seeded: boolean): SessionMeta => ({
+      id: sid, title: opts?.title || src.title, threadId: sid, createdAt, lastActiveAt: createdAt,
+      workDir: src.workDir,
+      ...(src.modelProfileId ? { modelProfileId: src.modelProfileId } : {}),
+      ...(src.thinking ? { thinking: src.thinking } : {}),
+      ...(seeded || !digest.trim() ? {} : { contextDigest: digest }),
+    })
+    // 带种子 = 新会话里已经有真实历史（回放给界面）；建不起来就退一步用 digest，绝不让接续失败
+    if (ds) {
+      try {
+        const info = await this.spawn(id, mkMeta(id, true), false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
+        this.cfg.sessionStore?.upsert({ ...mkMeta(id, true), title: info.title })
+        return { session: info, digest: '' }
+      } catch (e) {
+        this.cfg.log?.('warn', 'continue with seed failed, fallback to digest', { sessionId: id, err: String(e).slice(0, 300) })
+        this.sessions.delete(id)
+      }
+    }
+    const plainId = `sess_${randomUUID().slice(0, 8)}`
+    const info = await this.spawn(plainId, mkMeta(plainId, false), false)
+    this.cfg.sessionStore?.upsert({ ...mkMeta(plainId, false), title: info.title })
+    return { session: info, digest }
+  }
+
   /**
    * 从某条用户消息之前分叉（切点见 fork.ts）。回合进行中不行。
    *  - mode='fork'：新会话「原标题（分叉）」，工作目录 / 模型配置照搬（授权不继承，同新建会话），原会话不动；
@@ -1313,7 +1451,7 @@ export class DshController {
    *  - mode='regenerate'：原地重跑——本会话换成分叉出的 dsh 会话（同上下文重置，旧日志留在磁盘、可搜到），
    *    回放切点之前的历史，再把这条消息原样（含附件）重发。
    */
-  async forkSession(sessionId: string, messageId: string, mode: 'fork' | 'regenerate'): Promise<{ session: SessionInfo; text: string }> {
+  async forkSession(sessionId: string, messageId: string, mode: 'fork' | 'regenerate', opts?: { includeTurn?: boolean }): Promise<{ session: SessionInfo; text: string; digest?: string }> {
     const src = this.cfg.sessionStore?.list().find((m) => m.id === sessionId)
     if (!src) throw new Error('session_not_found')
     if (!this.sessions.has(sessionId)) await this.reconnectSession(src)
@@ -1325,18 +1463,49 @@ export class DshController {
     const session = (live.handle.agent as any)?.session
     const events: DshEvent[] = typeof session?.snapshotEvents === 'function' ? session.snapshotEvents() : []
     let p: ReturnType<typeof forkPoint>
-    try { p = forkPoint(events, messageId) } catch (e) { throw bail(e instanceof Error ? e.message : String(e)) }
-    const fork: ForkSeed | undefined = p.boundary === undefined ? undefined
-      : { seed: buildForkSeed(events as any, p.boundary as any), inherited: p.boundary + 1, parent: live.dshId }
+    try { p = forkPoint(events, messageId, opts) } catch (e) { throw bail(e instanceof Error ? e.message : String(e)) }
+    // 只有「重新生成」还用事件种子（原地重跑最后一轮，历史必须逐字一致）；
+    // 「从这里分叉」改成带 digest（摘要 + 最近几轮），不再把整段历史搬进新会话。
+    const fork: ForkSeed | undefined = mode === 'regenerate' && p.boundary !== undefined
+      ? { seed: buildForkSeed(events as any, p.boundary as any), inherited: p.boundary + 1, parent: live.dshId }
+      : undefined
     const now = new Date().toISOString()
     if (mode === 'fork') {
       const id = `sess_${randomUUID().slice(0, 8)}`
       const { dshId: _d, ...rest } = src
-      const meta: SessionMeta = { ...rest, id, threadId: id, title: forkTitle(src.title), createdAt: now, lastActiveAt: now }
-      await this.times.copy(live.dshId, id, p.turns, p.calls)
-      const info = await this.spawn(id, meta, false, fork)
-      this.cfg.sessionStore?.upsert(meta)
-      return { session: info, text: p.text }
+      // 切点之前的上下文压成 digest：随新会话第一条消息发出去（界面负责附上）
+      const idx = p.boundary === undefined ? -1 : events.findIndex((e) => e.seq === p.boundary)
+      const upTo = events.slice(0, idx + 1)
+      const digest = continuationDigest(upTo, live.lastSummary)
+      // 「摘要 + 最近几轮」重组成种子事件：新会话打开就是真实历史（消息 / 工具卡都在），不用重新输入。
+      // 没有可拷的历史（从第一条消息分叉）时退回只带 digest 的旧行为。
+      const ds = digestSeed(upTo, {
+        summary: live.lastSummary ?? '',
+        buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
+      })
+      const meta: SessionMeta = {
+        ...rest, id, threadId: id, title: this.uniqueTitle(forkTitle(src.title)), createdAt: now, lastActiveAt: now,
+        ...(ds || !digest.trim() ? {} : { contextDigest: digest }),
+      }
+      // 种子建不起来（dsh 校验没过等）就退一步：换个新 id 用 digest 建，绝不让分叉直接失败
+      if (ds) {
+        try {
+          const info = await this.spawn(id, meta, false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
+          this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
+          return { session: info, text: p.text, digest: '' }
+        } catch (e) {
+          this.cfg.log?.('warn', 'fork with seed failed, fallback to digest', { sessionId: id, err: String(e).slice(0, 300) })
+          this.sessions.delete(id)
+        }
+      }
+      const plainId = `sess_${randomUUID().slice(0, 8)}`
+      const plainMeta: SessionMeta = {
+        ...rest, id: plainId, threadId: plainId, title: this.uniqueTitle(forkTitle(src.title)), createdAt: now, lastActiveAt: now,
+        ...(digest.trim() ? { contextDigest: digest } : {}),
+      }
+      const info = await this.spawn(plainId, plainMeta, false)
+      this.cfg.sessionStore?.upsert({ ...plainMeta, title: info.title })
+      return { session: info, text: p.text, digest }
     }
     const meta = { ...src, dshId: `${sessionId}_${randomUUID().slice(0, 8)}` }
     await this.times.copy(live.dshId, meta.dshId, p.turns, p.calls)
@@ -1377,4 +1546,17 @@ function snippetAround(text: string, at: number, len: number, pad = 40): string 
 function textBlocks(blocks: unknown): string {
   if (!Array.isArray(blocks)) return ''
   return blocks.filter((b: any) => b?.type === 'text' && typeof b.text === 'string').map((b: any) => b.text).join('\n').trim()
+}
+
+/**
+ * 接续新会话时带过去的上下文：最近一次压缩摘要 + 最近几轮对话（只带文字）。
+ * 不是整段事件前缀 —— 长会话那样会一开局就是几十万 token（见 continueSession 的说明）。
+ */
+function continuationDigest(events: readonly DshEvent[], summary?: string, max = 6000): string {
+  const parts: string[] = []
+  const s = (summary ?? '').trim()
+  if (s) parts.push(`【上一会话的压缩摘要】\n${s.length > max ? `${s.slice(0, max)}…` : s}`)   // i18n-ignore 发给模型的上下文
+  const recent = recentContext(events as DshEvent[], max)
+  if (recent) parts.push(`【上一会话最近几轮对话】\n${recent}`)   // i18n-ignore 发给模型的上下文
+  return parts.join('\n\n')
 }

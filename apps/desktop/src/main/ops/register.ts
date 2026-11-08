@@ -244,8 +244,8 @@ export function registerOpsIpc(ctx: MainContext, deps: Deps) {
     putRun: (run) => scheduleStore.putRun(run),
     prepare: async (s, title) => {
       const { id: sessionId } = await controller.createSession({ title })
-      // 无人值守授权：只读档 + 预授目标主机 read（仅本会话）；运行期间决策走 unattendedDecide
-      auth.setTrust(sessionId, 'readonly')
+      // 无人值守授权：内部只读标记（四档之外，不落盘）+ 预授目标主机 read（仅本会话）；运行期间决策走 unattendedDecide
+      auth.markReadonly(sessionId)
       for (const t of s.targets) auth.grant(sessionId, t, 'read')
       unattended.set(sessionId, new Set(s.targets))
       const cleanup = async () => {

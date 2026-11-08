@@ -422,44 +422,60 @@ export interface ModelProfile {
 }
 
 /**
- * 思考深度：只暴露三档，各厂商内部词汇不同（DeepSeek 只有 high/max、OpenAI 只到 high），
- * 由下面的表把三档翻译成各家认识的值。pi-ai 的完整档位是
- * off/minimal/low/medium/high/xhigh/max，这里不全部暴露 —— 多数用户分不清 minimal 和 low。
+ * 思考深度：只暴露四档 —— 关 / 低 / 中 / 高。
+ *
+ * 各厂商词汇不同（DeepSeek 官方是 low/high/max 三档 + 关闭思考，OpenAI 是 minimal/low/medium/high），
+ * 由下面的表把四档翻译成各家认识的值（表里只写核对过官方文档的厂商）。pi-ai 的完整档位是
+ * off/minimal/low/medium/high/xhigh/max，这里只暴露 off/low/medium/high —— 多数用户分不清 minimal 和 low。
  */
-export type ThinkingLevel = 'low' | 'medium' | 'high'
-export const THINKING_LEVELS: ThinkingLevel[] = ['low', 'medium', 'high']
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high'
+export const THINKING_LEVELS: ThinkingLevel[] = ['off', 'low', 'medium', 'high']
 
 /**
- * 各厂商三档对应的实际派发值（pi-ai 的 reasoningEffort 词汇）。
- * undefined = 该厂商不支持思考深度（界面上置灰，不发参数）。
+ * 各厂商每档对应的实际派发值（pi-ai 的 reasoningEffort 词汇）。三种取值：
+ *   'xxx' —— 就发这个值；
+ *   null  —— 这一档支持，但什么都不发（只有「关」会这样：不思考 = 参数缺席或显式 disabled）；
+ *   缺省  —— 该厂商没有这一档（界面上置灰）。
+ *
+ * 表里只写**核对过官方文档**的厂商，没核对到的一律不写 —— 界面上宁可置灰，也不瞎发参数
+ * （不认识的字段轻则被忽略，重则 400）。厂商对照与依据见 docs/思考深度-厂商对照.md。
  */
-export const THINKING_WIRE: Record<string, Record<ThinkingLevel, string> | undefined> = {
-  // DeepSeek 只有 high / max；低档 = 不思考（不发参数由调用方处理，这里给 'off'）
-  deepseek: { low: 'off', medium: 'high', high: 'max' },
+export const THINKING_WIRE: Record<string, Partial<Record<ThinkingLevel, string | null>> | undefined> = {
+  // DeepSeek 官方支持 low / high / max 三档（默认 thinking 打开、effort 默认 high）；
+  // 「无 / none」才是关闭思考，我们这一档叫「低」，所以映射到 low（低强度思考），不是关掉。
+  // 「关」= 这一档不发 reasoning_effort（DeepSeek 这时候由适配器显式发 thinking:disabled）
+  deepseek: { off: null, low: 'low', medium: 'high', high: 'max' },
+  // 下面各家文档里的取值就是 low / medium / high，与 pi-ai 的档位名同名。
+  // 「关」暂未逐个核对到官方写法，先不声明 → 界面上「关」置灰。
   openai: { low: 'low', medium: 'medium', high: 'high' },
   xai: { low: 'low', medium: 'medium', high: 'high' },
-  glm: { low: 'low', medium: 'medium', high: 'high' },
+  glm: { low: 'low', medium: 'high', high: 'max' },   // GLM-5.x 官方只有 low/high/max（见 docs/思考深度-厂商对照.md）
   minimax: { low: 'low', medium: 'medium', high: 'high' },
-  volc: { low: 'low', medium: 'medium', high: 'high' },
-  hunyuan: { low: 'low', medium: 'medium', high: 'high' },
-  qianfan: { low: 'low', medium: 'medium', high: 'high' },
-  spark: { low: 'low', medium: 'medium', high: 'high' },
   qwen: { low: 'low', medium: 'medium', high: 'high' },
-  moonshot: { low: 'low', medium: 'medium', high: 'high' },
+  moonshot: { low: 'low', medium: 'high', high: 'max' },   // Kimi 官方 reasoning_effort = low/high/max（默认 max）
   gemini: { low: 'low', medium: 'medium', high: 'high' },
   mistral: { low: 'low', medium: 'medium', high: 'high' },
   // 聚合网关：模型名带厂商前缀，能力跟着上游走，这里按通用三档放行
   openrouter: { low: 'low', medium: 'medium', high: 'high' },
-  siliconflow: { low: 'low', medium: 'medium', high: 'high' },
+  // 以下厂商**故意不声明**（核对过官方文档再补）：火山方舟 / 腾讯混元 / 百度千帆 / 讯飞星火 /
+  // 硅基流动 —— 各家字段名与支持情况都不一样，没查清前宁可不发参数，界面上这几家的档位置灰。
+  // （原来是按「各家都一样」硬套的三档，已移除 —— 那和瞎猜没区别。）
+  //
   // Anthropic 走的是 thinking token 预算而不是 effort 名字，暂不支持（置灰）
   // ollama / openai-compatible：本地与自定义端点，不认识 reasoningEffort，置灰
 }
 
-/** 该厂商是否支持思考深度 */
-export const thinkingSupported = (provider: string): boolean => !!THINKING_WIRE[provider]
+/** 该厂商界面上能选的档位（按 关 / 低 / 中 / 高 顺序）；空数组 = 完全不支持思考深度 */
+export const thinkingLevelsOf = (provider: string): ThinkingLevel[] => {
+  const map = THINKING_WIRE[provider]
+  return map ? THINKING_LEVELS.filter((lv) => lv in map) : []
+}
 
-/** 三档 → 实际派发值；不支持返回 undefined */
-export function thinkingWireOf(provider: string, level?: ThinkingLevel): string | undefined {
+/** 该厂商有没有可选的思考档位（只有「关」不算） */
+export const thinkingSupported = (provider: string): boolean => thinkingLevelsOf(provider).some((lv) => lv !== 'off')
+
+/** 档位 → 实际派发值；null = 支持但不发参数；undefined = 这一档不支持 / 没选档位 */
+export function thinkingWireOf(provider: string, level?: ThinkingLevel): string | null | undefined {
   if (!level) return undefined
   return THINKING_WIRE[provider]?.[level]
 }
@@ -467,7 +483,7 @@ export function thinkingWireOf(provider: string, level?: ThinkingLevel): string 
 /** 档位往下标；没设时按「中」显示（与各厂商默认一致） */
 export const thinkingIndexOf = (level?: ThinkingLevel): number => {
   const i = level ? THINKING_LEVELS.indexOf(level) : -1
-  return i < 0 ? 1 : i
+  return i < 0 ? THINKING_LEVELS.indexOf('medium') : i
 }
 export const MODEL_PROFILE_ID_RE = /^[a-z0-9_]{1,40}$/
 // 测试连接的结果：ok=false 时 error 是给人看的原因；warning = 连上了但有需要注意的地方（如模型列表里没有该模型）
@@ -759,6 +775,8 @@ export interface SessionMeta {
   workDir?: string          // 会话绑定的工作目录（绝对路径），注入 system 提示词 + 新本地终端 cwd
   dshId?: string            // dsh 侧会话 id（上下文重置会换新的）；缺省 = id
   modelProfileId?: string   // 会话级模型覆盖（模型配置 id）；缺省 / 配置已删 = 默认配置
+  thinking?: ThinkingLevel  // 会话级思考深度（覆盖模型配置里的默认值）；缺省 = 跟随配置。重启后要还在
+  contextDigest?: string    // 分叉 / 接续带过来的上下文（上一会话摘要 + 最近几轮）；界面显示成只读历史块
 }
 export interface TerminalLayoutItem {
   kind: 'local' | 'ssh'
@@ -925,12 +943,12 @@ export interface SkillInput { name: string; description: string; body: string }
 // openai = OpenAI Chat Completions（{base}/chat/completions，Bearer）；
 // openai-responses = OpenAI Responses（{base}/responses，Bearer；只有 OpenAI 官方 / Azure / Codex 这类端点支持）
 export type ModelProtocol = 'anthropic' | 'openai' | 'openai-responses'
-// Anthropic 只有 Messages 协议，没有 OpenAI 入口；其它提供商明选「openai / openai-responses」就照办，
-// 没选 / 非法值回落缺省：DeepSeek = anthropic（保持 dsh 0.2 升级后的行为），其余 = openai
+// 三种协议对任何提供商都**放开可选**：哪家端点到底支持什么，各家口径一直在变（官方 / 兼容层 / 代理），
+// 我们不替用户下结论，选错由「测试连接」的 protocolMismatch 提示切回。
+// 没选 / 非法值回落缺省：DeepSeek = anthropic（保持 dsh 0.2 升级后的行为），Anthropic = anthropic，其余 = openai
 export const protocolOf = (provider: string, protocol?: unknown): ModelProtocol => {
-  if (provider === 'anthropic') return 'anthropic'
-  if (protocol === 'openai' || protocol === 'openai-responses') return protocol
-  return provider === 'deepseek' ? 'anthropic' : 'openai'
+  if (protocol === 'anthropic' || protocol === 'openai' || protocol === 'openai-responses') return protocol
+  return provider === 'deepseek' || provider === 'anthropic' ? 'anthropic' : 'openai'
 }
 /** 各协议实际请求的路径（界面上显示「实际请求 …」用；根地址见 endpointBaseOf） */
 export const protocolPathOf = (protocol: ModelProtocol): string =>

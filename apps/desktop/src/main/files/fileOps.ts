@@ -7,7 +7,7 @@
 import { readFile, writeFile, stat, mkdir, lstat, readdir, rename, unlink, rmdir, utimes } from 'node:fs/promises'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import type { SFTPWrapper } from 'ssh2'
 import {
@@ -120,6 +120,16 @@ export async function writeWithBackup(fa: FileAccess, path: string, data: Buffer
   const backupPath = old === undefined ? undefined : await backupFile(fa, path, old, now)
   await fa.write(path, data)
   return { path, backupPath }
+}
+
+/**
+ * 写文件前先保证父目录存在（本地 mkdir -p；SSH 逐级 mkdir，已存在忽略）。
+ * AI 的 write_file 走这个：以前直接写，父目录不存在就 ENOENT，AI 只好再跑一条 mkdir，
+ * 用户为此多弹一张授权卡（0.1.6 验收里实测「写一个文件点两次允许」）。
+ */
+export async function writeEnsureDir(fa: FileAccess, path: string, data: Buffer, now = new Date(), max = MAX_FILE_BYTES): Promise<{ path: string; backupPath?: string }> {
+  await fa.mkdirp(dirname(path))
+  return writeWithBackup(fa, path, data, now, max)
 }
 
 /** 把 path 的内容 data 存进该主机的备份目录，返回备份路径 */

@@ -16,7 +16,7 @@ import { BlockChip } from '../AttachmentChips.js'
 export interface MsgActions {
   busy: boolean
   onEdit(msgId: string, text: string): void
-  onFork(msgId: string): void
+  onFork(msgId: string, includeTurn?: boolean): void
   onRegenerate(msgId: string): void
 }
 export const MsgActionsContext = createContext<MsgActions | null>(null)
@@ -131,7 +131,7 @@ function MsgToolbar({ item, isUser, regenFrom, turnUserMsgId, onEdit }: { item: 
         </>
       )}
       {!isUser && forkFrom && act && (
-        <button data-msg-fork-reply onClick={() => act.onFork(forkFrom)} disabled={!act || act.busy}
+        <button data-msg-fork-reply onClick={() => act.onFork(forkFrom, true)} disabled={!act || act.busy}
           title={act.busy ? tr('从这里分叉：从这一轮之前分叉出新会话（本轮进行中，结束后再操作）') : tr('从这里分叉：以这一轮的提问为切点新建会话，后面的对话不带过去（原会话保留）')}><GitBranchPlus className="h-3.5 w-3.5" /></button>
       )}
       {!isUser && regenFrom && act && (

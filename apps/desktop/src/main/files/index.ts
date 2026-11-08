@@ -2,7 +2,7 @@
 export { DOC_EXTS, DOC_TEXT_MAX_CHARS, artifactInfo, docToText } from './docText.js'
 export { EXT_EDIT_MAX_BYTES } from './externalEdit.js'
 export { readForCompare } from './fileCompare.js'
-export { MAX_FILE_BYTES, backupFile, backupName, localAccess, sftpAccess, writeWithBackup } from './fileOps.js'
+export { MAX_FILE_BYTES, backupFile, backupName, localAccess, sftpAccess, writeEnsureDir, writeWithBackup } from './fileOps.js'
 export type { FileAccess } from './fileOps.js'
 export { registerFilePreview } from './filePreviewIpc.js'
 export { TransferService, hasOpenssl } from './transfer.js'

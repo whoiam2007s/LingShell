@@ -17,7 +17,7 @@ function setup(o: { sys?: Partial<SystemSettings>; complete?: SafetyDeps['comple
   const handlers = new Map<string, (e: unknown, ...a: unknown[]) => unknown>()
   const events: SafetyChangedEvent[] = []
   const auth = new AuthRegistry({ store: { load: () => ({ records: [], trust: {} }), save: () => {} } })
-  if (o.trust) auth.setTrust('s1', o.trust)
+  if (o.trust) auth.setExecMode('s1', o.trust === 'confirm' ? 'confirm' : 'auto')   // 信任档已由四档派生：确认→逐条确认，全自主→确认一次
   const calls: { user: string; profileId?: string }[] = []
   const preview = new Set<string>()
   const s = registerSafety({

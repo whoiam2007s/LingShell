@@ -82,6 +82,8 @@ function AppShell() {
   activeRef.current = activeId
   const activeTitle = sessions.find((s) => s.id === activeId)?.title ?? ''
   const activeWorkDir = sessions.find((s) => s.id === activeId)?.workDir
+  // 分叉 / 接续带过来的上下文（上一会话摘要 + 最近几轮）：新会话里显示成只读历史块，不让它看着像空会话
+  const activeSeed = sessions.find((s) => s.id === activeId)?.contextDigest
   // 资源管理器：这个对话上次停在的目录，没有就用工作目录（每次打开 / 切对话时取一次）
   const explorerRoot = useMemo(() => (drawer === 'explorer' ? getLastDir(`session:${activeId}`) ?? activeWorkDir : undefined), [drawer, activeId, activeWorkDir])
 
@@ -151,6 +153,24 @@ function AppShell() {
       lastReady.current = s.id
       client.layout.save({ activeSessionId: s.id }).catch(() => {})
       return s.id
+    } catch (e) { logSessionFailure(log, e); if (seq === selectSeq.current) setPhase(errToPhase(e)) }
+  }
+
+  // 接续：用旧会话的摘要开一个新会话（旧会话原样留在会话列表里，工作目录 / 模型配置照搬）
+  const continueSession = async (fromId: string, title: string): Promise<{ id: string; digest: string } | undefined> => {
+    const seq = ++selectSeq.current
+    setPhase({ phase: 'starting' })
+    try {
+      // 新会话不播种子：带过去的上下文（摘要 + 最近几轮）由界面作为第一条消息的附件发出去，token 可控
+      const r = await client.agent.continueSession(fromId, { title })
+      const s = r.session
+      await refreshSessions()
+      if (seq !== selectSeq.current) return { id: s.id, digest: r.digest }
+      setActiveId(s.id)
+      setPhase({ phase: 'ready' })
+      lastReady.current = s.id
+      client.layout.save({ activeSessionId: s.id }).catch(() => {})
+      return { id: s.id, digest: r.digest }
     } catch (e) { logSessionFailure(log, e); if (seq === selectSeq.current) setPhase(errToPhase(e)) }
   }
 
@@ -331,10 +351,12 @@ function AppShell() {
             activeSessionId={activeId}
             sessionPhase={phase}
             sessionTitle={activeTitle}
+            seedDigest={activeSeed}
             workDir={activeWorkDir}
             onPickWorkDir={pickWorkDir}
             onRename={(t) => renameSession(activeId, t)}
             onNew={() => { void newSession() }}
+            onContinueSession={(title) => (activeId ? continueSession(activeId, title) : newSession(title).then((id) => (id ? { id, digest: '' } : undefined)))}
             onOpenHistory={() => setDrawer((d) => (d === 'history' ? null : 'history'))}
             onOpenSettings={() => setShowSettings(true)}
             onManageTemplates={() => openSettingsAt('templates')}

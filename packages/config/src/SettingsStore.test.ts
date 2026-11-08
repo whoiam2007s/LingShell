@@ -132,6 +132,19 @@ describe('SettingsStore', () => {
     expect(raw.profiles.map((x: { multimodal?: unknown }) => x.multimodal)).toEqual([true, undefined, undefined])
   })
 
+  it('思考深度：低/中/高按配置落盘并能读回，非法值不落盘', () => {
+    const s = new SettingsStore(dir, mockEnc)
+    s.save({ provider: 'deepseek', model: 'deepseek-flash', baseUrl: '', modelProfiles: [
+      { id: 'a', name: 'A', provider: 'deepseek', model: 'deepseek-flash', baseUrl: '', thinking: 'high' },
+      { id: 'b', name: 'B', provider: 'deepseek', model: 'deepseek-flash', baseUrl: '' },
+      { id: 'c', name: 'C', provider: 'deepseek', model: 'deepseek-flash', baseUrl: '', thinking: 'max' as unknown as 'high' },
+    ], defaultProfileId: 'a' })
+    expect(s.get().modelProfiles?.map((x) => x.thinking)).toEqual(['high', undefined, undefined])
+    expect(s.resolveProfile('a').thinking).toBe('high')
+    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))
+    expect(raw.profiles.map((x: { thinking?: unknown }) => x.thinking)).toEqual(['high', undefined, undefined])
+  })
+
   it('多配置：每套 key 单独加密存；留空保留、换提供商不保留；get 不回明文；默认配置决定顶层镜像', () => {
     const s = new SettingsStore(dir, mockEnc)
     s.save({ ...s.get(), modelProfiles: [

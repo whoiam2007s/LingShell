@@ -26,8 +26,8 @@ const PROGRESS_NOUN: Record<GitInProgress, string> = { merge: tk('op|合并'), r
 // Git 面板（参照 VS Code / IDEA）：当前终端所在目录的仓库（本地 / SSH 都行）。
 // 顶部：分支、领先 / 落后、抓取 / 拉取 / 推送；四页：更改（暂存、丢弃、提交、AI 写说明）/ 分支（含标签）/ 历史（提交图）/ 储藏。
 // 读走独立通道（不在终端里刷屏）；写操作都是手动点的，危险的先确认，都记执行记录。切终端时由外层 key 重挂载。
-// onWide：历史页需要宽一点，通知外层把抽屉加宽
-export function GitDrawer({ term, onClose, onWide }: { term?: TerminalInfo; onClose: () => void; onWide?: (wide: boolean) => void }) {
+// 抽屉宽度固定用最宽档（历史 / diff 页要的宽度），切 tab 不再变宽窄
+export function GitDrawer({ term, onClose }: { term?: TerminalInfo; onClose: () => void }) {
   const tid = term?.id ?? ''
   const ok = !!term && !(term.type === 'ssh' && term.os === 'windows')
   const [dir, setDir] = useState('')
@@ -49,8 +49,7 @@ export function GitDrawer({ term, onClose, onWide }: { term?: TerminalInfo; onCl
   const [review, setReview] = useState<{ paths?: string[] } | null>(null)
   const lastErr = useRef('')
   const [rebase, setRebase] = useState<string | null>(null)
-  const setTab = (t: Tab) => { setTabState(t); onWide?.(t === 'history') }
-  useEffect(() => () => onWide?.(false), [])
+  const setTab = (t: Tab) => setTabState(t)
 
   const st = res?.ok ? res.status : undefined
   const inflight = useRef(false), refetch = useRef(false)

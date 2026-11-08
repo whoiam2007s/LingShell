@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { AppSettings, ModelProfile, ModelProtocol, ProviderId, SystemSettings, UsagePrices, ModelPrice } from '@lingshell/shared'
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_SETTINGS, migrateAppearance, tr, PROVIDERS, MODEL_PROFILE_ID_RE, providerMeta, protocolOf, multimodalDefault, canonicalModel } from '@lingshell/shared'
+import type { AppSettings, ModelProfile, ModelProtocol, ProviderId, SystemSettings, ThinkingLevel, UsagePrices, ModelPrice } from '@lingshell/shared'
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_SETTINGS, migrateAppearance, tr, PROVIDERS, MODEL_PROFILE_ID_RE, providerMeta, protocolOf, multimodalDefault, canonicalModel, THINKING_LEVELS } from '@lingshell/shared'
 import { readJson, writeJson } from './jsonFile.js'
 
 // 加密器接口：由调用方注入（desktop 注入 Electron safeStorage 实现）。
@@ -20,6 +20,7 @@ export interface PersistedProfile extends KeySlot {
   id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number
   protocol?: ModelProtocol   // 只有 DeepSeek 落盘；缺省按 protocolOf 解读（DeepSeek = anthropic，其它 = openai）
   multimodal?: boolean       // 支持图片；缺省按模型名猜（multimodalOf）
+  thinking?: ThinkingLevel   // 思考深度（低/中/高）；缺省 = 不设，DeepSeek 按「中」发
 }
 
 // 磁盘上存储的结构。apiKey 字段存的是密文（base64），不是明文。
@@ -39,7 +40,7 @@ export interface PersistedSettings extends KeySlot {
 }
 
 // 主进程内部用：解密后的完整配置（含明文 key），不经 IPC
-export interface ResolvedProfile { id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number; protocol: ModelProtocol; multimodal: boolean; apiKey: string }
+export interface ResolvedProfile { id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number; thinking?: ThinkingLevel; protocol: ModelProtocol; multimodal: boolean; apiKey: string }
 
 // 「支持图片」：用户设过就按设置，没设过按模型名猜（已知视觉模型默认开）
 export const multimodalOf = (x: { provider: string; model: string; multimodal?: unknown }): boolean =>
@@ -120,6 +121,7 @@ export function sanitizeProfile(x: unknown): PersistedProfile | undefined {
     ...(typeof p.contextWindow === 'number' && Number.isFinite(p.contextWindow) ? { contextWindow: p.contextWindow } : {}),
     ...(p.protocol ? { protocol: p.protocol } : {}),
     ...(typeof p.multimodal === 'boolean' ? { multimodal: p.multimodal } : {}),
+    ...(p.thinking && THINKING_LEVELS.includes(p.thinking) ? { thinking: p.thinking } : {}),
     ...(slot.apiKeyCipher || slot.apiKeyPlain ? slot : {}),
   }
 }
@@ -131,7 +133,7 @@ function withCanonicalModel<T extends { provider: string; model: string; baseUrl
 
 const view = (x: PersistedProfile): ModelProfile => ({
   id: x.id, name: x.name, provider: x.provider, model: x.model, baseUrl: x.baseUrl, contextWindow: x.contextWindow ?? 0, hasApiKey: hasKey(x),
-  protocol: protocolOf(x.provider, x.protocol), multimodal: multimodalOf(x),
+  thinking: x.thinking, protocol: protocolOf(x.provider, x.protocol), multimodal: multimodalOf(x),
 })
 
 export class SettingsStore {
@@ -175,7 +177,7 @@ export class SettingsStore {
   resolveProfile(id?: string): ResolvedProfile {
     const { profiles, defaultProfileId } = profilesOf(this.read())
     const x = profiles.find((pr) => pr.id === id) ?? profiles.find((pr) => pr.id === defaultProfileId)!
-    return { id: x.id, name: x.name, provider: x.provider, model: x.model, baseUrl: x.baseUrl, contextWindow: x.contextWindow, protocol: protocolOf(x.provider, x.protocol), multimodal: multimodalOf(x), apiKey: this.keyOf(x) }
+    return { id: x.id, name: x.name, provider: x.provider, model: x.model, baseUrl: x.baseUrl, contextWindow: x.contextWindow, thinking: x.thinking, protocol: protocolOf(x.provider, x.protocol), multimodal: multimodalOf(x), apiKey: this.keyOf(x) }
   }
 
   /** 默认配置的明文 key（兼容旧调用） */
@@ -253,6 +255,7 @@ export class SettingsStore {
         // 协议只对 DeepSeek 有意义：非法 / 缺省规整成 anthropic；其它提供商不落盘
         ...(provider === 'deepseek' ? { protocol: protocolOf(provider, x.protocol) } : {}),
         ...(typeof x.multimodal === 'boolean' ? { multimodal: x.multimodal } : {}),
+        ...(x.thinking && THINKING_LEVELS.includes(x.thinking) ? { thinking: x.thinking } : {}),
         ...slot,
       }
     })

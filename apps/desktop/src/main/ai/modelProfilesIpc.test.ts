@@ -106,10 +106,10 @@ describe('testModelConnection：Anthropic Messages 协议', () => {
     await testModelConnection({ provider: 'deepseek', model: 'm', baseUrl: '', apiKey: 'k' }, fake)
     expect(urls).toEqual(['https://api.deepseek.com/models', 'https://api.deepseek.com/anthropic/v1/messages'])
   })
-  it('非 DeepSeek 提供商即使传 anthropic 也按 OpenAI 兼容测', async () => {
+  it('非 DeepSeek 提供商选 anthropic 就按 Messages 协议测（三种协议一律放开）', async () => {
     const b = await base
     await testModelConnection({ provider: 'qwen', model: 'm1', baseUrl: `${b}/v1`, apiKey: 'sk-ok', protocol: 'anthropic' })
-    expect(seen.at(-1)).toMatchObject({ url: '/v1/models', auth: 'Bearer sk-ok' })
+    expect(seen.at(-1)).toMatchObject({ url: '/v1/v1/messages', auth: 'x-api-key sk-ok 2023-06-01' })
   })
 })
 
@@ -129,12 +129,12 @@ describe('testModelConnection：OpenAI Responses 协议', () => {
     expect(r.error).toContain('HTTP 404')
     expect(r.error).toContain('不支持 OpenAI Responses 协议')
   })
-  it('与另两种协议互不影响：切回 completions 走 /chat/completions，Anthropic 厂商仍走 Messages', async () => {
+  it('与另两种协议互不影响：切回 completions 走 /chat/completions，Anthropic 厂商选了 Responses 就走 /responses', async () => {
     const b = await base
     expect(await testModelConnection({ provider: 'openai', model: 'm1', baseUrl: `${b}/nomodels`, apiKey: 'sk-ok', protocol: 'openai' })).toMatchObject({ ok: true })
     expect(seen.at(-1)!.url).toBe('/nomodels/chat/completions')
     expect(await testModelConnection({ provider: 'anthropic', model: 'claude', baseUrl: `${b}/am`, apiKey: 'sk-ok', protocol: 'openai-responses' })).toMatchObject({ ok: true })
-    expect(seen.at(-1)!.url).toBe('/am/v1/messages')
+    expect(seen.at(-1)!.url).toBe('/am/models')   // 协议一律放开：选了 Responses 就按 Responses 测（不再强制回 Messages）
   })
 })
 

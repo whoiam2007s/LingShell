@@ -60,11 +60,18 @@ describe('四档执行模式接进网关', () => {
     const second = modeFacts({ name: 'write_file', args: { path: `${WD}/b.txt` }, workDir: WD, granted })
     expect(second.granted).toBe(true)
     expect(relaxByMode('auto', { kind: 'ask' }, second)).toBe(true)
-    // 目录外的写：不进记忆，哪个档都要问
+    // 目录外的写：按「目标父目录」记忆 —— 没批过这个目录要问，批过同目录就不再问
     const outside = modeFacts({ name: 'write_file', args: { path: '/etc/nginx/nginx.conf' }, workDir: WD, granted })
     expect(outside.outsideWorkDir).toBe(true)
-    expect(grantKeyOf('write_file', outside)).toBeUndefined()
-    expect(relaxByMode('auto', { kind: 'ask' }, outside)).toBe(false)
+    const dirKey = grantKeyOf('write_file', outside)
+    expect(dirKey).toMatch(/^write_file@dir:/)                              // 按目录记，不是不记
+    expect(outside.granted).toBe(false)
+    expect(relaxByMode('auto', { kind: 'ask' }, outside)).toBe(false)       // 第一次：问
+    grants.remember('sess_1', dirKey!)
+    // 同一个目录里再写一个文件 → 不再问
+    expect(relaxByMode('auto', { kind: 'ask' }, modeFacts({ name: 'write_file', args: { path: '/etc/nginx/conf.d/x.conf' }, workDir: WD, granted }))).toBe(false)   // 子目录是另一个目录，仍要问
+    expect(relaxByMode('auto', { kind: 'ask' }, modeFacts({ name: 'write_file', args: { path: '/etc/nginx/other.conf' }, workDir: WD, granted }))).toBe(true)       // 同目录：放行
+    expect(relaxByMode('auto', { kind: 'ask' }, modeFacts({ name: 'write_file', args: { path: '/etc/hosts' }, workDir: WD, granted }))).toBe(false)                 // 另一个目录：还要问
     // 只读命令的记忆粒度是 @readonly；会改东西的命令不记忆
     const ls = modeFacts({ name: 'exec_in_terminal', args: { command: 'ls -l' }, isReadOnly: ro, granted })
     expect(grantKeyOf('exec_in_terminal', ls)).toBe('exec_in_terminal@readonly')

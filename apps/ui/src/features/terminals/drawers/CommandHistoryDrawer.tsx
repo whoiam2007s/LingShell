@@ -58,21 +58,21 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-3">
-        <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">{tr('命令历史')}</span>
+      <div className="flex h-10 shrink-0 items-center gap-2 whitespace-nowrap border-b border-[var(--color-border-subtle)] px-3">
+        <span className="shrink-0 whitespace-nowrap text-[12px] font-semibold text-[var(--color-text-primary)]">{tr('命令历史')}</span>
         {/* 来源筛选：用户 / AI / 全部。默认用户 —— AI 执行的命令太多，列表会被刷满 */}
         {([['user', tr('用户')], ['ai', tr('AI')], ['all', tr('全部')]] as const).map(([k, label]) => (
           <button key={k} data-hist-src={k} title={k === 'user' ? tr('只显示你在终端里手敲的命令') : k === 'ai' ? tr('只显示 AI 执行的命令') : tr('全部命令')} onClick={() => setSrc(k)}
-            className={`flex h-6 items-center rounded px-1.5 text-[11px] ${src === k ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
+            className={`flex h-6 shrink-0 items-center whitespace-nowrap rounded px-1.5 text-[11px] ${src === k ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
             {label}
           </button>
         ))}
         <button title={tr('只显示当前终端')} onClick={() => setOnlyCurrent((v) => !v)}
-          className={`ml-auto flex h-6 items-center gap-1 rounded px-1.5 text-[11px] ${onlyCurrent ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
+          className={`ml-auto flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 text-[11px] ${onlyCurrent ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
           <Filter className="h-3 w-3" />{tr('当前')}
         </button>
-        <button title={tr('清空该主机历史')} onClick={() => setConfirmClear(true)} className="flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"><Trash2 className="h-3.5 w-3.5" /></button>
-        <button onClick={onClose} className="flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><X className="h-3.5 w-3.5" /></button>
+        <button title={tr('清空该主机历史')} onClick={() => setConfirmClear(true)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"><Trash2 className="h-3.5 w-3.5" /></button>
+        <button onClick={onClose} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><X className="h-3.5 w-3.5" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {shown.length === 0 && <div className="px-2 py-3 text-[11px] text-[var(--color-text-muted)]">{tr('（无历史命令）')}</div>}

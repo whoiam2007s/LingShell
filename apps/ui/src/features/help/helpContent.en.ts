@@ -60,6 +60,10 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     id: 'chat', title: 'AI chat and permissions', icon: MessageSquare,
     blocks: [
       { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hover for "Rename" and "Export session"), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), and "Knowledge base". Drawers slide out next to the activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
+      { h: 'Status dots in session history', p: 'Each session in "Session history" has a small dot before its title showing the result of **the last turn** of that session: running = blue (breathing), waiting for your approval / plan = orange, failed = red.', tips: [
+        'Opening the drawer or the session does not clear it; the red dot goes away only after that session\'s **next turn succeeds**.',
+        'It reflects the last turn only, not historical failures; no dot = the last turn finished normally.',
+      ] },
       { h: 'Wide tables in chat', p: 'Markdown tables in AI replies size to their content: each column is 6–28 characters wide. When a table is wider than the bubble, a horizontal scrollbar appears, the first column stays fixed, and shadows on both sides hint at more content; narrow tables still fill the bubble width.', steps: [
         'Hover over a table and "Expand" appears at the top right: view it full width in a large window; press Esc or click outside to close.',
         '"Copy as Markdown" keeps the table format; "Copy for Excel" copies tab-separated text that splits into columns when pasted into Excel / WPS / Feishu Sheets.',
@@ -82,11 +86,12 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'The first access to each host still shows one card (Read): the AI gets that host\'s output, which is what Read permission covers. Later queries on the same host don\'t ask again. To check several terminals at once, have the AI use batch run (`exec_on_terminals`), which merges into one card. The terminal list also includes each terminal\'s recent directory, so just asking "which directory" usually doesn\'t need `pwd` and doesn\'t show a card.',
         'Read-only detection uses the same conservative allowlist as scheduled inspections: commands it doesn\'t recognize (including ones with write redirection, command substitution, sudo, or interpreters) are always treated as Write.',
       ] },
-      { h: 'Trust levels', p: 'Click the shield "Session permissions / Execution log" → "Session trust level" on the "Session permissions" page. Each session has its own setting; the default is "Autonomous".', tips: [
-        'Autonomous: once a host is permitted, commands run directly; dangerous commands still need confirmation when "Confirm each dangerous command" is on (on by default).',
-        'Confirm: every write command needs confirmation; reads aren\'t asked again.',
-        'Read-only: write commands are always denied.',
-        'Production hosts are treated as "Confirm" even under Autonomous, dangerous commands always need confirmation, and every upload and download needs confirmation.',
+      { h: 'Execution mode (four levels)', p: 'This is the only place trust is controlled: the "Execution mode" button at the top of the chat, set per session, defaulting to "Confirm every step" (same behavior as before the upgrade). The shield "Session permissions" page only shows the current level; changing it happens in that button.', tips: [
+        'Preview: the AI only investigates and proposes; every write is denied (read-only commands still run).',
+        'Confirm every step: every write needs confirmation; a read-only command is remembered once approved. Deletes and dangerous commands are always asked.',
+        'Confirm once: the same kind of operation (tool + scope) is asked once and then remembered.',
+        'Trust: writes inside the working directory are not asked; writes outside it are asked the first time, and once that directory is approved it is not asked again; deletes, dangerous commands, uploads/downloads and writes on production hosts are always asked.',
+        'The memory lives in memory only: switching levels forgets it, and so does restarting.',
         'The same page shows "Granted (local/hosts)", with "Upgrade to Write" and "Revoke", or you can grant in advance with "Grant read" / "Grant write" under "Add permission".',
       ] },
       { h: 'Plans (propose_plan)', p: 'For multi-step changes that need 3 or more write commands, the AI first shows a "Plan" card: the purpose, host, and command of each step, with dangerous steps marked in red as "Dangerous".', steps: [
@@ -97,6 +102,8 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       { h: 'Execution log', p: 'The "Execution log" page in the shield drawer lists every AI action: time, host · terminal, decision (ran / ran edited / you denied / in plan…), exit code, and command. Check "Show all sessions" to see every session.', tips: [
         'The AI backs up files automatically before rewriting them, and the log entry has a "Restore" button.',
         'When there are successful commands, click "Save as runbook" to turn this work into a runbook.',
+        'Writes allowed by "Confirm once" / "Trust" are annotated with "Rule: execution mode: …" so you can tell afterwards why no card appeared. The default "Confirm each" mode adds no annotation (everything asked you anyway).',
+        'When the AI writes a file (write_file) and the parent folder does not exist, it is created automatically: one operation, one permission card. The AI does not need to run `mkdir` first.',
       ] },
       { h: 'Rollback plan before running', p: 'When the AI runs change commands (editing config, starting/stopping services, installing/removing packages, moving or deleting files, etc.), it also provides a rollback command and rollback notes; if something genuinely can\'t be rolled back, the notes say "Cannot be rolled back" and why. Read-only commands don\'t need one.', steps: [
         'The permission card shows "Run" and "Rollback" side by side, with the rollback notes below the rollback command. When the AI gave no rollback plan, the "Rollback" column is marked in yellow "AI provided no rollback plan"; you can deny and ask it to add one.',
@@ -109,7 +116,18 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'If the original terminal is closed, another open terminal on the same host is used; if the host has no open terminal, open one first and then roll back. If the AI is running a command in that terminal, you\'re asked to try again later.',
         'Failed rollbacks (non-zero exit code) are marked "Rollback failed"; click "Roll back" again to retry.',
       ] },
-      { h: 'Context and auto-compaction', p: 'When the context exceeds the "Auto-compaction threshold", earlier chat is compacted automatically without interrupting the task. The threshold is calculated automatically: the context window of the session\'s model × 60%, up to 600K (the window is set in "Settings → Model settings", and each profile shows its calculated threshold), so there\'s nothing to configure. When the step count reaches "Suggest new session after steps" (default 100) and compaction has happened, you\'re asked whether to "Start new session from summary": history is cleared, the working directory, terminals, and permissions are kept, and the compaction summary (editable) becomes the first message of the new session.' },
+      { h: 'Context and compaction', p: 'When the context exceeds the "auto-compaction threshold", earlier chat is compacted automatically without interrupting the task. The threshold is calculated automatically: the context window of the session\'s model × 60%, up to 600K (the window is set in "Settings → Model settings", and each profile shows its calculated threshold), so there is nothing to configure.', steps: [
+        'Compact manually: click the usage chip at the top of the chat (total tokens + percentage). Earlier chat turns into a summary while the latest turn is kept verbatim; if a turn is still running it tells you to try again when it finishes instead of making you wait. The usage numbers refresh afterwards.',
+        'If the history is still short it simply says "The context is still short — no need to compact" and skips the request.',
+        'If there is nothing left to shrink it says "the earlier part of this conversation cannot be shrunk any further (the summary would not be shorter than the original)" and suggests starting a new session or forking from a message.',
+        'Compaction only changes what is sent to the model; the chat you see does not change.',
+      ], tips: [
+        'When the step count reaches "Suggest new session after steps" (default 100) and compaction has happened, you are asked before your next message whether to "Start new session from summary": the current chat stays in history (you can always click back to it) and the new session starts from "the latest compaction summary + the last 2 turns" as real history; working directory, model profile and thinking depth are carried over.',
+      ] },
+      { h: 'Loading earlier messages', p: 'Only the recent stretch of the conversation is rendered; a button at the top reads "Load earlier messages (N earlier questions)".', tips: [
+        'One click is measured in questions (at least 2 more), not in items — so even when a stretch is mostly long model output and tool cards, one click visibly moves the timeline back.',
+        'After loading, the viewport is pinned to the message you were reading, so you are not thrown elsewhere.',
+      ] },
       { h: 'The "+" menu before the input box', steps: [
         '"Add context" ▸ File / Folder: attach the path of a local file (images show as images) or folder to this message; see "Chat attachments and images".',
         '"Working directory": shows the currently bound directory; click to change it. Local terminals the AI opens in this session start here, and it\'s also the Explorer root; the default is your home directory. Terminals already running don\'t switch directories (each keeps its own current directory; SSH terminals use the remote directory). When the AI needs to work in this directory it opens a new local terminal; if you ask "which directory", it explains the working directory and each terminal\'s actual directory separately.',
@@ -161,19 +179,30 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'DeepSeek offers "DeepSeek V4 Pro" (deepseek-v4-pro) and "DeepSeek V4.1 Flash" (deepseek-flash, supports images; officially upgraded in place to V4.1-Flash-1017 on 2026-10-17), both with a 1M context window. Retired official models (deepseek-chat, deepseek-reasoner, deepseek-v4-flash, deepseek-v4-flash-vision-exp) in profiles using the official URL switch to deepseek-flash automatically, keeping the key; profiles with self-hosted gateway URLs are left as they are.',
         '"Model settings" in config export ("Settings → Backup & diagnostics → Config export") includes all profiles; keys are exported only when you set an export password.',
       ] },
-      { h: 'API protocol', p: '"API protocol" below "Provider" in the edit form decides which format is used to call the model:', steps: [
-        '"Anthropic Messages (recommended, officially supported)": the default for DeepSeek. Requests go to `URL/v1/messages` with the key in the `x-api-key` header. Leaving "API URL" empty or entering `https://api.deepseek.com` switches automatically to the official `https://api.deepseek.com/anthropic`.',
-        '"OpenAI-compatible (Chat Completions)": requests go to `URL/chat/completions` with the key in `Authorization: Bearer`. When DeepSeek uses it, the official URL becomes `https://api.deepseek.com` automatically (an entered `/anthropic` is corrected too).',
-        'Qwen, Kimi, Ollama, and OpenAI-compatible endpoints always use OpenAI-compatible; this can\'t be changed.',
-        'The small tag next to each profile name in the list shows its protocol ("Anthropic" / "OpenAI").',
+      { h: 'API protocol', p: '"API protocol" below "Provider" in the edit form decides which format is used to call the model. All three protocols are selectable for any provider — pick what your endpoint actually supports (support varies and changes, so we don\'t decide for you):', steps: [
+        '"Anthropic Messages": requests go to `URL/v1/messages` with the key in the `x-api-key` header. The default for DeepSeek; leaving "API URL" empty or entering `https://api.deepseek.com` switches automatically to the official `https://api.deepseek.com/anthropic`.',
+        '"OpenAI-compatible": requests go to `URL/chat/completions` with the key in `Authorization: Bearer`. When DeepSeek uses it, the official URL becomes `https://api.deepseek.com` automatically (an entered `/anthropic` is corrected too).',
+        '"OpenAI Responses": requests go to `URL/responses` with the key in `Authorization: Bearer`.',
+        'When unsure, click "Test connection": a 404 / 405 means the endpoint probably doesn\'t support the chosen protocol, and the result tells you which one to use.',
+        'The small tag next to each profile name in the list shows its protocol ("Anthropic" / "OpenAI" / "Responses").',
       ], tips: [
         'After you change the protocol (saved automatically), sessions using this profile call the model with the new protocol from the next turn, keeping the chat history; a turn the AI is working on isn\'t interrupted.',
-        'DeepSeek profiles saved by older versions don\'t have this option and are treated as Anthropic Messages (the same as after upgrading).',
+        'Profiles saved by older versions that don\'t have this option fall back to the default (DeepSeek = Anthropic Messages, others = OpenAI-compatible).',
       ] },
       { h: 'If the model doesn\'t support the Anthropic protocol', p: 'If your DeepSeek URL is a self-hosted or third-party gateway that only supports the OpenAI format, Anthropic protocol requests fail (typically HTTP 404 / 405, or a malformed response).', steps: [
         'Edit the profile and click "Test connection". When a protocol mismatch is suspected, the result says "This URL may not support the Anthropic protocol" and a "Switch to OpenAI-compatible and retry" button appears.',
         'Click "Switch to OpenAI-compatible and retry" (or set "API protocol" to "OpenAI-compatible" manually and test again); the change saves automatically.',
       ], tips: ['Conversely, if "OpenAI-compatible" returns 404 / 405, the URL may be missing a segment (such as `/v1`), or the gateway may only support the Anthropic protocol; try switching back to "Anthropic Messages".'] },
+      { h: 'Thinking depth (off / low / medium / high)', p: 'Each model profile can set a default thinking depth, and a session can override it. The four levels map to each vendor\'s own levels, and the "sent as" value is shown next to them.', steps: [
+        '"Settings → Model settings → edit a profile → Thinking depth": saved into that profile and used by sessions that follow it; close the settings and come back and your choice is still there.',
+        'In the chat, click the model name at the top: the four buttons at the bottom of the panel are the override for **this session** and are marked "· this session"; click "Follow profile" to clear it and go back to the profile default (marked "· follows profile").',
+        'The session-level choice is stored with the session: it survives restarts and switching away and back.',
+      ], tips: [
+        'What the four levels mean: off = do not think at all (fastest and cheapest — good for chit-chat or fixing a typo); low / medium / high = increasing thinking effort.',
+        'DeepSeek follows its official docs: off = thinking explicitly disabled (`thinking: disabled`), low = `low`, medium = `high`, high = `max`. Note that "low" is low-effort thinking, not the same as off.',
+        'A greyed-out level means the vendor has not published that level and we could not confirm the parameter, so nothing would be sent — better not to offer it. Volcengine Ark, Tencent Hunyuan, Baidu Qianfan, iFlytek Spark and SiliconFlow are greyed out for now; Anthropic\'s own models (Claude) use a thinking-token budget instead of effort names; and the first version of the OpenAI Responses protocol declares no level at all.',
+        'A higher level thinks longer — slower and more expensive; use high for troubleshooting and planning, low or off is fine for quick Q&A.',
+      ] },
       { h: 'Switching models', p: 'Switching affects only the current session (saved with the session, kept after restart):', steps: [
         'Click the model name to the right of the title at the top of the chat area to show all model profiles, then pick one (the current one is checked).',
       ], tips: [
@@ -260,7 +289,10 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'These calls also count toward "Usage" (source: "Other").',
       ] },
       { h: 'Character encoding', p: 'If Chinese text is garbled on an older server, change "Character encoding" in the SSH host form to GBK / GB18030 / Big5 (default UTF-8); it applies to terminals opened afterward. Running terminals can\'t switch; local terminals don\'t have this option.' },
-      { h: 'Command history', p: '"Command history" in the terminal\'s right activity bar lists commands recorded by this app for that host (local terminals share one list). Double-click to fill one into the terminal without running it. Input typed while the cursor is at a password prompt from sudo / ssh / mysql etc. isn\'t recorded.' },
+      { h: 'Command history', p: '"Command history" in the terminal\'s right activity bar lists commands recorded by this app for that host (local terminals share one list). Double-click to fill one into the terminal without running it. Input typed while the cursor is at a password prompt from sudo / ssh / mysql etc. isn\'t recorded.', steps: [
+        'By default only **commands you typed yourself** are shown; switch to "AI" to see the ones the AI ran (with execution mode and exit code).',
+        'Hover a long command to see it in full (up to 10 lines) — no horizontal dragging.',
+      ], tips: ['There is a search box that filters by command text, and a scope switch between this host and all hosts.'] },
       { h: 'Command autocomplete', p: 'Off by default. After turning on "Command autocomplete" in "Settings → Terminal → Input", typing after the prompt in a local Git Bash or SSH terminal shows up to 8 suggestions below the cursor: the host\'s command history (frequent and recent first), quick commands, and a few built-in common commands (such as `systemctl status`, `journalctl -u`, `docker ps`, `tail -f`). Prefix matches come first, substring matches also work, and the matched part is highlighted.', steps: [
         '↑ / ↓ to select (intercepted only while the popup is shown; otherwise ↑ browses shell history as usual).',
         'Tab or → accepts: completes the rest (for substring matches, what you typed is deleted first and the whole command written) without pressing Enter; clicking an item works too.',
@@ -896,9 +928,15 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'The app forks a new session "Original title (fork)" from just before this message, switches to it and sends the edited text: the new session contains only the conversation before this message plus the edited turn.',
         'The original session is kept in full; switch back any time from "Session history" on the left.',
       ] },
-      { h: 'Fork from here', p: '"Fork from here" (branch icon) on your messages also forks a new session and switches to it, but doesn\'t send: the message is put into the input box so you can edit it before sending, or ask a different way.', tips: [
-        'The forked session keeps the original session\'s working directory and model profile. Terminal permissions aren\'t inherited; like a new session, they\'re granted again as needed.',
-        'Attachments (files, images) on the message aren\'t carried over when editing / forking; add them again if needed.',
+      { h: 'Fork from here', p: '"Fork from here" (branch icon) forks a new session "Original title (fork)" at this message and switches to it.', steps: [
+        'The new session opens with the history before the fork point: "latest compaction summary + the last 2 turns" are rebuilt as the session\'s real history — message bubbles and tool cards included, copyable and clickable, still there after a restart, and you don\'t have to retype anything.',
+        'The summary is attached to the first message of that history and shown as a "previous session summary" chip; click it to read the summary instead of having a wall of text in the bubble.',
+        'This message\'s text is put into the input box so you can edit it before sending, or ask a different way.',
+        'Forking from an AI reply includes that whole turn (question + reply) in the history carried over.',
+      ], tips: [
+        'The forked session keeps the original session\'s working directory, model profile and thinking depth. Terminal permissions aren\'t inherited; like a new session, they\'re granted again as needed.',
+        'If the slice contains compaction checkpoints or other special events, the app safely falls back to "summary only": the new session shows an expandable read-only history block at the top instead.',
+        'Forking the same session repeatedly adds a number to the title ("… (fork) 2", "… (fork) 3") so they are easy to tell apart.',
       ] },
       { h: 'Code blocks in AI replies', p: 'Hover a code block in an AI reply and buttons appear in the top-right corner. Every code block has "Copy code"; command code blocks (bash / sh / shell / zsh / console / PowerShell / cmd, or no language) also have "Insert into terminal" and "Run in current terminal". The "current terminal" is the one showing in the terminal area on the right (the focused pane when split). With no terminal open, these two buttons are grayed out.', steps: [
         'Insert into terminal (cursor icon): a single-line command is written after the current terminal\'s prompt without pressing Enter, and keyboard focus moves to the terminal so you can check or edit it and press Enter yourself. A multi-line command opens the "Compose bar" at the bottom of the terminal and fills it in (without running); review it and send from the Compose bar.',
@@ -1430,11 +1468,11 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       { h: 'Execution modes (four levels, per session)', p: 'Pick one with the "Execution mode" button in the chat header; it applies to the current session only. The default "Confirm each" is exactly how things worked before:', steps: [
         'Dry run: read-only investigation still works, but write commands, file writes, uploads and external tools are all blocked, and the AI writes a plan instead (see the next block).',
         'Confirm each (default): permissions are remembered per host, so approving once on a host is enough; deletes and dangerous commands always ask.',
-        'Confirm once: permissions are remembered by tool plus inside or outside the working directory, so approving one operation of a kind stops the asking, even on other hosts. Writes outside the working directory, deletes and dangerous commands still ask.',
-        'Trust: writes inside the working directory and read-only commands run directly; writes outside it, commands that modify things and deletes still ask. Uploads and downloads always ask, and production hosts keep asking for every change.',
+        'Confirm once: permissions are remembered by tool plus scope, so approving one operation of a kind stops the asking, even on other hosts. Writes outside the working directory are remembered per target directory (only after that directory is approved); deletes and dangerous commands still ask.',
+        'Trust: writes inside the working directory and read-only commands run directly; writes outside it ask the first time and are remembered per directory. Commands that modify things and deletes still ask. Uploads and downloads always ask, and production hosts keep asking for every change.',
       ], tips: [
         'Rules that hold in every mode: deletes (`rm` and friends) and dangerous commands always ask first, rules set to "deny" always deny, and read operations always run.',
-        'The "Confirm once" memory lives in memory only: it is cleared when the app restarts or when you switch modes.',
+        'The "Confirm once" and "Trust" memory lives in memory only: it is cleared when the app restarts or when you switch modes (including the per-directory entries).',
         'The execution log notes which mode allowed a call (for example "Execution mode: Trust"), so you can tell afterwards.',
       ] },
       { h: 'Dry-run mode (plan, don\'t act)', steps: [
@@ -1537,6 +1575,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'The "Branches" tab switches, creates, renames, deletes, merges and rebases, and manages tags and remotes. The "History" tab shows the commit graph, searches by message / author / code, compares revisions, and cherry-picks / reverts / resets / checks out. Right-click a commit for "Clean up commits from here" (interactive rebase: squash, reorder, reword, drop) or "New branch from here".',
         'The "Stash" tab stashes current changes (optionally including untracked files), shows the files and diffs inside, and applies / pops / drops.',
         'When there are conflicts, a red bar "Conflicts: N files" appears at the top. Click a conflicted file to open the three-way merge editor (current / base / incoming), choose hunk by hunk or edit by hand, then save and mark resolved. You can also "Let AI resolve conflicts", or after resolving use "Continue / Skip / Abort" in the banner.',
+        '"Send to chat" puts the repository state, changed files, recent commits and working-tree diff into the input box as context (it does not send automatically); clicking again updates the same block instead of stacking. In the message it shows up as a "repo xxx@branch" chip — click to read the content.',
       ], tips: [
         'Status and diffs are read over a separate channel (a separate exec channel over SSH, a background Git Bash locally), so they don\'t flood your terminal or enter command history.',
         'Writes such as stage, commit, push and reset are recorded in the "Execution log" (with exit code). Discard, delete, force push, rebase and other risky actions ask for confirmation first. Push uses --force-with-lease, so it never blindly overwrites others\' commits.',

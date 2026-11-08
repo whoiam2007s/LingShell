@@ -1001,6 +1001,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       name: 'write_file',
       description: '修改或新建终端所在主机（本地或 SSH）上的文本文件。二选一：content=整文件新内容（新建/重写）；'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + 'old_text+new_text=把文件里唯一出现的 old_text 换成 new_text（改局部首选，old_text 须逐字一致并带足上下文）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + '父目录不存在会自动创建，**不要先跑 mkdir、也不要拆成「mkdir + 写文件」两步**（那样用户要点两次授权卡）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '首次写入该主机、或会话为「确认」档 / 生产主机时会把 diff 给用户确认；覆盖前自动备份原文件，用户可在执行记录里一键还原。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '改文件请用本工具，不要在终端里用 sed -i / echo > / cat <<EOF 改。需该主机的写入授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
@@ -1022,6 +1023,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           sessionId: sidOf(exec), terminalId: args.terminal_id, command: tr('写入 {path}', { path: r.path }),
           decision: 'write_allowed', filePath: r.path, backupPath: r.backupPath,
           created: plan.old === undefined, ...(r.hash ? { afterHash: r.hash } : {}),
+          ...ruleOf(o?.rule),   // 执行记录注明按哪条规则 / 哪个执行模式放行
         })
         // diff 随结果回给 UI（工具卡展开可看改了什么，免弹卡时也看得到）；截断控制进模型的长度
         const diff = truncateLines(unifiedDiff(plan.old ?? '', plan.next, r.path), DIFF_MAX_LINES)

@@ -8,7 +8,7 @@
 // 说拒的照拒，说问的只有判定表也同意放行时才放行 —— 这样默认档 confirm 一行代码都不经过这里，
 // 行为与升级前完全一致。
 
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import {
   dangerCheck, decideByMode, isDestructiveCommand, isDestructiveTool, tr,
   type ExecMode, type OpFacts,
@@ -42,13 +42,28 @@ export function isOutsideWorkDir(path: unknown, workDir?: string): boolean {
 }
 
 /**
- * 「确认一次」档的记忆粒度：工具 + 范围（不含主机，所以换主机同类操作不再问）。
- * 只记可以安全复用的两类：工作目录内的写、只读命令。目录外的写、删除、危险命令一律不记。
+ * 目录外写的授权记忆键：取目标文件的父目录（Windows 不分大小写，统一小写后再比）。
+ * 判不出（相对路径 / 没给 path）返回 undefined —— 这种不记，下次照样问。
+ */
+function dirKeyOf(path: unknown): string | undefined {
+  const p = typeof path === 'string' ? path.trim() : ''
+  if (!p || !isAbsolute(p)) return undefined
+  const d = resolve(dirname(p)).replace(/[\\/]+$/, '')
+  return process.platform === 'win32' ? d.toLowerCase() : d
+}
+
+/**
+ * 「确认一次」/「信任」档的记忆粒度：工具 + 范围（不含主机，所以换主机同类操作不再问）。
+ * 可以安全复用的三类：工作目录内的写、目录外的写（按目标父目录）、只读命令。
+ * 删除、危险命令一律不记（永远问）。
  */
 export function grantKeyOf(name: string, f: OpFacts): string | undefined {
   if (f.destructive || f.risk === 'dangerous') return undefined
   if (f.kind === 'exec') return f.readOnlyCommand ? `${name}@readonly` : undefined
-  if (f.kind === 'write') return f.outsideWorkDir ? undefined : `${name}@cwd`
+  if (f.kind === 'write') {
+    if (!f.outsideWorkDir) return `${name}@cwd`
+    return f.outsideDir ? `${name}@dir:${f.outsideDir}` : undefined   // 判不出目录就不记（保守：下次还问）
+  }
   return undefined                                          // 读操作本来就放行，不必记
 }
 
@@ -91,6 +106,7 @@ export function modeFacts(o: FactsInput): OpFacts {
     const byName = (o.name.startsWith('delete_') || o.name.startsWith('remove_')) && a.dryRun !== true
     facts.destructive = isDestructiveTool(o.name, a) || byName
     facts.outsideWorkDir = isOutsideWorkDir(a.path, o.workDir)
+    if (facts.outsideWorkDir) facts.outsideDir = dirKeyOf(a.path)
   }
   const key = grantKeyOf(o.name, facts)
   facts.granted = key !== undefined && o.granted?.(key) === true

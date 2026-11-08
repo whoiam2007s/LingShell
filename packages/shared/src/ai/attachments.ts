@@ -127,7 +127,9 @@ export const CONTEXT_MAX_CHARS = 12000
 
 const ctxName = (s: string) => s.replace(/["\r\n<>]/g, ' ').trim().slice(0, 120)
 const ctxBody = (s: string) => s.replace(/<\/context>/g, '</ context>')
-const CTX_TAIL = /\n*<context type="(terminal|host|session|shell)" name="([^"\n]*)">\n((?:(?!\n<\/context>)[\s\S])*)\n<\/context>\s*$/   // 正文不含 \n</context>（写入时已转义），只匹配最后一块
+// 只匹配最后一块；类型白名单从 CONTEXT_KINDS 生成 —— 以前手写成 terminal|host|session|shell，
+// 新增 git 时漏了它，结果 git 上下文整段显示在消息气泡里（发送内容里剥不下来）。
+const CTX_TAIL = new RegExp(`\\n*<context type="(${CONTEXT_KINDS.join('|')})" name="([^"\\n]*)">\\n((?:(?!\\n<\\/context>)[\\s\\S])*)\\n<\\/context>\\s*$`)
 
 /** 在用户原话后追加上下文块（没有时原样返回） */
 export function withContextBlocks(text: string, ctxs: ContextAttachment[]): string {

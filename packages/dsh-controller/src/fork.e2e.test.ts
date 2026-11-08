@@ -111,15 +111,19 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
   }, 60_000)
 
   let fork2 = ''
-  it('从第 2 条之前分叉：继承第 1 轮并回放', async () => {
+  it('从第 2 条之前分叉：把「最近一轮」重组成种子，新会话一打开就有历史', async () => {
     events.length = 0
     const r = await ctrl.forkSession(sid, ids[1], 'fork')
     fork2 = r.session.id
     expect(r.text).toBe('问二')
-    expect(msgsOf(fork2)).toEqual(['U:问一', 'A:答:问一'])
+    expect(msgsOf(fork2)).toEqual(['U:问一', 'A:答:问一'])   // 切点之前那一轮是真实历史，不是空白会话
+    expect(r.digest).toBe('')                              // 有种子就不再额外带 digest（同一段上下文别发两遍）
+    // 从 AI 回复分叉：这一轮也要带上（用户反馈「丢了最新的一轮」）
+    const r2 = await ctrl.forkSession(sid, ids[1], 'fork', { includeTurn: true })
+    expect(msgsOf(r2.session.id)).toEqual(['U:问一', 'A:答:问一', 'U:问二', 'A:答:问二'])
     reqs.length = 0
     await runTurn(fork2, '问三')
-    expect(askedIn(reqs[0])).toEqual(['问一', '问三'])
+    expect(askedIn(reqs[0])).toEqual(['问一', '问三'])       // 种子那一轮真的进了模型上下文
   }, 60_000)
 
   it('重新生成最后一轮：前面不变，最后一条只问一次', async () => {
@@ -148,6 +152,6 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
     await ctrl.reconnectSession(store.get(sid)!)
     await ctrl.reconnectSession(store.get(fork2)!)
     expect(msgsOf(sid)).toEqual(['U:问一', 'A:答:问一', 'U:问二', 'A:答:问二'])
-    expect(msgsOf(fork2)).toEqual(['U:问一', 'A:答:问一', 'U:问三', 'A:答:问三'])
+    expect(msgsOf(fork2)).toEqual(['U:问一', 'A:答:问一', 'U:问三', 'A:答:问三'])   // 分叉会话 = 种子那一轮 + 自己那一轮
   }, 60_000)
 })

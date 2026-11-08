@@ -1,9 +1,18 @@
-import type { AuthLevel, TrustLevel, AuthDecision, AuthRecord } from '@lingshell/shared'
+import type { AuthLevel, TrustLevel, AuthDecision, AuthRecord, ExecMode } from '@lingshell/shared'
+import { DEFAULT_EXEC_MODE, modeOfTrust, trustOfMode } from '@lingshell/shared'
 import { dangerCheck } from './danger.js'
 
 export interface AuthState {
   records: AuthRecord[]
-  trust: Record<string, TrustLevel>     // sessionId → 信任档
+  /**
+   * 四档执行模式：sessionId → 模式。0.1.6 起这是**唯一**的信任控制入口，会落盘。
+   */
+  execMode?: Record<string, ExecMode>
+  /**
+   * 旧的「会话信任档」快照。只在加载 0.1.5 及更早的 auth.json 时用来迁移成 execMode；
+   * 新的写入只放派生快照，方便回退到旧版本时仍能读。
+   */
+  trust?: Record<string, TrustLevel>
 }
 export interface AuthStore {
   load(): AuthState
@@ -14,8 +23,10 @@ const RANK: Record<AuthLevel, number> = { none: 0, read: 1, write: 2 }
 function key(s: string, t: string) { return `${s} ${t}` }
 
 export class AuthRegistry {
-  private records = new Map<string, AuthLevel>()   // key(session,term) → level
-  private trust = new Map<string, TrustLevel>()    // session → trust
+  private records = new Map<string, AuthLevel>()      // key(session,term) → level
+  private modes = new Map<string, ExecMode>()         // session → 四档执行模式（持久化）
+  // 内部只读标记：定时巡检等无人值守流程用，不落盘、不对用户暴露（四档里没有「只读」这一项）
+  private readOnlySessions = new Set<string>()
   // 限时提权：key(session,host) → 到期时间 ms。只在内存（重启即失效），不落 auth.json
   private sudo = new Map<string, number>()
   private now: () => number
@@ -23,7 +34,11 @@ export class AuthRegistry {
     this.now = opts.now ?? Date.now
     const st = opts.store.load()
     for (const r of st.records) this.records.set(key(r.sessionId, r.terminalId), r.level)
-    for (const [sid, lvl] of Object.entries(st.trust ?? {})) this.trust.set(sid, lvl)
+    // 迁移：旧文件只有 trust，没有 execMode
+    for (const [sid, mode] of Object.entries(st.execMode ?? {})) this.modes.set(sid, mode)
+    for (const [sid, legacy] of Object.entries(st.trust ?? {})) {
+      if (!this.modes.has(sid)) this.modes.set(sid, modeOfTrust(legacy))
+    }
   }
 
   private persist() {
@@ -32,16 +47,37 @@ export class AuthRegistry {
       const [sessionId, terminalId] = k.split(' ')
       records.push({ sessionId, terminalId, level })
     }
+    const execMode: Record<string, ExecMode> = {}
     const trust: Record<string, TrustLevel> = {}
-    for (const [sid, lvl] of this.trust) trust[sid] = lvl
-    this.opts.store.save({ records, trust })
+    for (const [sid, mode] of this.modes) {
+      execMode[sid] = mode
+      trust[sid] = trustOfMode(mode)      // 派生快照：仅为回退到 0.1.5 时能读
+    }
+    this.opts.store.save({ records, execMode, trust })
   }
 
   getLevel(sessionId: string, terminalId: string): AuthLevel {
     return this.records.get(key(sessionId, terminalId)) ?? 'none'
   }
-  getTrust(sessionId: string): TrustLevel { return this.trust.get(sessionId) ?? 'autonomous' }
-  setTrust(sessionId: string, level: TrustLevel): void { this.trust.set(sessionId, level); this.persist() }
+
+  // ── 四档执行模式（唯一信任控制入口，与聊天顶部模式按钮同一个值）──
+  getExecMode(sessionId: string): ExecMode { return this.modes.get(sessionId) ?? DEFAULT_EXEC_MODE }
+  setExecMode(sessionId: string, mode: ExecMode): void {
+    this.modes.set(sessionId, mode)
+    this.persist()
+  }
+
+  /**
+   * 底层信任档：由执行模式派生，不再允许用户单独设置。
+   * 只有内部只读标记（定时巡检）会覆盖它 —— 那种会话不该因为四档而被放宽。
+   */
+  getTrust(sessionId: string): TrustLevel {
+    if (this.readOnlySessions.has(sessionId)) return 'readonly'
+    return trustOfMode(this.getExecMode(sessionId))
+  }
+  /** 内部用：把某个会话锁成只读（定时巡检）。不落盘、不暴露给 UI。 */
+  markReadonly(sessionId: string): void { this.readOnlySessions.add(sessionId) }
+  clearReadonly(sessionId: string): void { this.readOnlySessions.delete(sessionId) }
 
   grant(sessionId: string, terminalId: string, level: AuthLevel): void {
     const cur = this.getLevel(sessionId, terminalId)
@@ -52,10 +88,11 @@ export class AuthRegistry {
   revoke(sessionId: string, terminalId: string): void {
     this.records.delete(key(sessionId, terminalId)); this.persist()
   }
-  // 清除某会话的全部授权和信任档（删会话时调用）。
+  // 清除某会话的全部授权和执行模式（删会话时调用）。
   revokeSession(sessionId: string): void {
     for (const k of [...this.records.keys()]) if (k.split(' ')[0] === sessionId) this.records.delete(k)
-    this.trust.delete(sessionId)
+    this.modes.delete(sessionId)
+    this.readOnlySessions.delete(sessionId)
     for (const k of [...this.sudo.keys()]) if (k.split(' ')[0] === sessionId) this.sudo.delete(k)
     this.persist()
   }
@@ -95,6 +132,8 @@ export class AuthRegistry {
   }
 
   // 决策链（设计文档 §4.3）。纯函数，无 IO，原子。
+  // 信任档由执行模式派生：trust === 'confirm' 时每条 write 都问（= 逐条确认档），
+  // trust === 'autonomous' 时按已批授权放行（= 确认一次 / 信任档，放宽范围见 shared/ai/execMode.ts）。
   // confirmDangerous=false 时关掉「危险命令逐次确认」闸门（系统设置项）：只认 write 授权。
   // prod=true（主机标为生产）：信任档至少按 confirm 算（每条写入都问），危险命令无视开关一律确认。
   decide(sessionId: string, terminalId: string, needed: 'read' | 'write', command?: string, confirmDangerous = true, prod = false): AuthDecision {
@@ -114,7 +153,7 @@ export class AuthRegistry {
       if (needed === 'write' && risk === 'dangerous' && confirmDangerous) {
         return { kind: 'prompt', reason: 'dangerous_command', risk: 'dangerous' }   // 安全闸
       }
-      // 确认档：即便已授权，每条 write 仍逐命令确认（read 安全不问）。这是 confirm 与 autonomous 的差异。
+      // 逐条确认档：即便已授权，每条 write 仍逐命令确认（read 安全不问）。这是 confirm 与 auto/trust 的差异。
       if (needed === 'write' && trust === 'confirm') {
         return { kind: 'prompt', reason: 'elevation', risk }
       }

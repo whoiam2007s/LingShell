@@ -1,4 +1,5 @@
 agent.compact → agent:compact
+agent.continueSession → agent:continueSession
 agent.createSession → agent:createSession
 agent.deleteSession → agent:deleteSession
 agent.forkSession → agent:forkSession
@@ -35,11 +36,9 @@ audit.listForSession → audit:listForSession
 audit.listRecent → audit:listRecent
 audit.restore → audit:restore
 auth.decide → auth:decide
-auth.getTrust → auth:getTrust
 auth.grant → auth:grant
 auth.listForSession → auth:listForSession
 auth.revoke → auth:revoke
-auth.setTrust → auth:setTrust
 autoReplies.delete → autoReplies:delete
 autoReplies.list → autoReplies:list
 autoReplies.save → autoReplies:save

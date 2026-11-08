@@ -5,17 +5,18 @@ import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_SETTINGS, contextWindowOf, protocolOf,
 import { DEFAULT_HIGHLIGHT_RULES } from '../terminal/index.js'
 
 describe('接口协议', () => {
-  it('protocolOf：DeepSeek 缺省 / 非法值 = anthropic，可选 openai；其它提供商缺省 openai，都可明选 openai-responses', () => {
+  it('protocolOf：三种协议对任何提供商都放开；缺省 DeepSeek / Anthropic = anthropic，其余 = openai，非法值回落缺省', () => {
     expect(protocolOf('deepseek')).toBe('anthropic')
     expect(protocolOf('deepseek', 'bogus')).toBe('anthropic')
     expect(protocolOf('deepseek', 'openai')).toBe('openai')
     expect(protocolOf('qwen')).toBe('openai')
-    expect(protocolOf('moonshot', 'anthropic')).toBe('openai')
-    // 第三种协议：anthropic 之外的厂商都能选，非法值照旧回落缺省
+    expect(protocolOf('moonshot', 'anthropic')).toBe('anthropic')   // 全都可选：各家支持情况不一样，由用户决定
+    // 第三种协议：谁都能选，非法值照旧回落缺省
     expect(protocolOf('openai', 'openai-responses')).toBe('openai-responses')
     expect(protocolOf('deepseek', 'openai-responses')).toBe('openai-responses')
     expect(protocolOf('qwen', 'bogus')).toBe('openai')
-    expect(protocolOf('anthropic', 'openai-responses')).toBe('anthropic')   // Anthropic 只有 Messages
+    expect(protocolOf('anthropic', 'openai-responses')).toBe('openai-responses')   // 不替用户断言「Anthropic 只有 Messages」
+    expect(protocolOf('anthropic')).toBe('anthropic')                              // 没选时缺省仍是 Messages
   })
   it('protocolPathOf：三种协议各自的请求路径', () => {
     expect(protocolPathOf('anthropic')).toBe('/v1/messages')

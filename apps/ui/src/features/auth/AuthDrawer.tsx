@@ -1,15 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
 import { ShieldCheck, Trash2, ArrowUp, X } from 'lucide-react'
 import { Select } from '../../components/ui/Select.js'
-import { tr, tk, type AuthLevel, type TrustLevel, type HostSummary } from '@lingshell/shared'
+import { tr, tk, type AuthLevel, type ExecMode, type HostSummary } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
 import { AuditList } from './AuditList.js'
 import { SudoLeaseList } from './SafetyBits.js'
 import { useSession } from '../../lib/sessionContext.js'
 
-const TRUST_LABEL: Record<TrustLevel, string> = { autonomous: tk('全自主'), confirm: tk('trust|确认'), readonly: tk('只读') }
-const TRUST_ORDER: TrustLevel[] = ['autonomous', 'confirm', 'readonly']
+// 执行模式（四档）是唯一的信任控制入口：这里只展示当前值，切换在聊天顶部的模式按钮
+const MODE_LABEL: Record<ExecMode, string> = { preview: tk('预演'), confirm: tk('逐条确认'), auto: tk('确认一次'), trust: tk('信任') }
 const LEVEL_LABEL: Record<AuthLevel, string> = { none: tk('无'), read: tk('读取'), write: tk('写入') }
 
 // hostKey → 友好名：'local'→「本地」；hostId→主机 label（user@host）；host:port 临时连接→原样
@@ -19,12 +19,12 @@ function hostKeyLabel(hostKey: string, hosts: HostSummary[]) {
   return h ? tr('{label}（{user}@{host}）', { label: h.label, user: h.username, host: h.host }) : hostKey
 }
 
-// 会话授权抽屉：信任档选择器 + 已授权列表（本地/主机，可撤销/升级）+ 添加授权；另一个标签页是执行记录。
+// 会话授权抽屉：当前执行模式（四档，只读展示）+ 已授权列表（本地/主机，可撤销/升级）+ 添加授权；另一个标签页是执行记录。
 // 授权粒度是 hostKey（本地 + 每台主机），同主机所有终端共享一份授权。
 // 仅在抽屉打开时挂载；sessionId 来自全局 SessionProvider。
 export function AuthDrawer({ onClose }: { onClose: () => void }) {
   const { sessionId } = useSession()
-  const [trust, setTrust] = useState<TrustLevel>('autonomous')
+  const [mode, setMode] = useState<ExecMode>('confirm')
   const [list, setList] = useState<{ hostKey: string; level: AuthLevel }[]>([])
   const [hosts, setHosts] = useState<HostSummary[]>([])
   const [pick, setPick] = useState('')
@@ -32,7 +32,7 @@ export function AuthDrawer({ onClose }: { onClose: () => void }) {
 
   const refresh = useCallback(() => {
     if (!sessionId) return
-    client.auth.getTrust(sessionId).then(setTrust).catch(() => {})
+    client.safety.execMode(sessionId).then(setMode).catch(() => {})
     client.auth.listForSession(sessionId).then(setList).catch(() => {})
     client.hosts.list().then(setHosts).catch(() => {})
   }, [sessionId])
@@ -45,10 +45,6 @@ export function AuthDrawer({ onClose }: { onClose: () => void }) {
     return off
   }, [refresh])
 
-  const onTrustChange = (level: TrustLevel) => {
-    setTrust(level)
-    client.auth.setTrust(sessionId, level).catch(() => refresh())
-  }
   const onRevoke = (hostKey: string) => {
     client.auth.revoke(sessionId, hostKey).then(refresh).catch(() => {})
   }
@@ -83,11 +79,15 @@ export function AuthDrawer({ onClose }: { onClose: () => void }) {
           <AuditList sessionId={sessionId} hosts={hosts} />
         ) : (
           <>
-            {/* 信任档选择器 */}
+            {/* 执行模式（四档）：唯一的信任控制入口，这里只展示当前值 */}
             <div className="flex items-center justify-between">
-              <span className="text-[12px] font-medium text-[var(--color-text-secondary)]">{tr('会话信任档')}</span>
-              <Select size="sm" className="w-24" value={trust} onValueChange={(v) => onTrustChange(v as TrustLevel)}
-                options={TRUST_ORDER.map((t) => ({ value: t, label: tr(TRUST_LABEL[t]) }))} />
+              <span className="text-[12px] font-medium text-[var(--color-text-secondary)]">{tr('执行模式')}</span>
+              <span className="rounded bg-[var(--color-bg-raised)] px-2 py-0.5 text-[11.5px] text-[var(--color-text-primary)]">
+                {tr(MODE_LABEL[mode])}
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] leading-relaxed text-[var(--color-text-muted)]">
+              {tr('执行模式决定哪些操作会自动放行；切换在聊天输入框上方的模式按钮。')}
             </div>
 
             {/* 已授权列表（本地 + 主机） */}

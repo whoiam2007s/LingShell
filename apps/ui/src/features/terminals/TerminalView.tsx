@@ -102,7 +102,6 @@ export function TerminalView() {
   const [hosts, setHosts] = useState<HostSummary[]>([])
   // 终端 id → hostId（仅来自「已保存主机」的 SSH 有），用于布局持久化以便重启重连
   const hostIds = useRef<Map<string, string>>(new Map())
-  const [gitWide, setGitWide] = useState(false)   // Git 面板在「历史」页时抽屉加宽
   const [explorerWide, setExplorerWide] = useState(false)   // 资源管理器开着详细信息列时抽屉加宽
   const [dual, setDual] = useState<{ terminalId: string; root: string } | null>(null)   // 双栏文件管理（SSH 终端）
   const openDual = (id: string) => { setDrawer(null); setDual({ terminalId: id, root: getTermCwd(id) || '/' }) }
@@ -720,8 +719,8 @@ export function TerminalView() {
       <ComposeBar terms={terms} activeId={activeId} bcast={bcast} />
       <QuickCommandBar terms={terms} activeId={activeId} bcast={bcast} lead={<ComposeToggle />} trailing={<HostStatsTags active={activeTerm} />} />
       <SshConnectDialog open={sshOpen} onClose={() => setSshOpen(false)} onConnected={onSshConnected} />
-      <TerminalDrawer open={drawer !== null} onClose={() => setDrawer(null)} xwide={drawer === 'database' || drawer === 'k8s'} widthClass={drawer === 'git' && gitWide ? 'w-[600px] max-w-full' : drawer === 'explorer' && explorerWide ? 'w-[560px] max-w-full' : undefined} wide={drawer === 'docker' || drawer === 'processes' || drawer === 'ports' || drawer === 'hostcheck' || drawer === 'systemd' || drawer === 'git' || !!opsView}>
-        {drawer === 'git' && <GitDrawer key={activeId} term={activeTerm} onClose={() => setDrawer(null)} onWide={setGitWide} />}
+      <TerminalDrawer open={drawer !== null} onClose={() => setDrawer(null)} xwide={drawer === 'database' || drawer === 'k8s'} widthClass={drawer === 'git' ? 'w-[600px] max-w-full' : drawer === 'explorer' && explorerWide ? 'w-[560px] max-w-full' : undefined} wide={drawer === 'docker' || drawer === 'processes' || drawer === 'ports' || drawer === 'hostcheck' || drawer === 'systemd' || drawer === 'git' || drawer === 'history' || !!opsView}>
+        {drawer === 'git' && <GitDrawer key={activeId} term={activeTerm} onClose={() => setDrawer(null)} />}
         {drawer === 'hostcheck' && <HostCheckDrawer key={activeId} term={activeTerm} onClose={() => setDrawer(null)} />}
         {drawer === 'cron' && <CronDrawer key={activeId} term={activeTerm} onClose={() => setDrawer(null)} />}
         {drawer === 'disk' && <DiskUsageDrawer key={`${activeId}:${diskPath ?? ''}`} term={activeTerm} initialPath={diskPath} onClose={() => setDrawer(null)}

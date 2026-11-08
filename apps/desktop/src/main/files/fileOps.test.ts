@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mkdtempSync, readFileSync, existsSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { localAccess, writeWithBackup, backupName, readText, saveText, type FileAccess } from './fileOps.js'
+import { localAccess, writeWithBackup, writeEnsureDir, backupName, readText, saveText, type FileAccess } from './fileOps.js'
 
 // 本地 fs 实现，备份目录换成临时目录
 function tmpAccess(): { fa: FileAccess; dir: string; bak: string } {
@@ -39,6 +39,20 @@ describe('writeWithBackup', () => {
   it('备份名：时间在前、路径拼平', () => {
     expect(backupName('/etc/nginx/nginx.conf', new Date(2026, 0, 2, 3, 4, 5, 6))).toBe('20260102-030405-006_etc_nginx_nginx.conf')
     expect(backupName('C:\\a\\b.txt', new Date(2026, 0, 2, 3, 4, 5, 6))).toBe('20260102-030405-006_C_a_b.txt')
+  })
+  it('父目录不存在时自动建目录再写（B1：不再需要 AI 补一条 mkdir）', async () => {
+    const { fa, dir, bak } = tmpAccess()
+    const f = join(dir, 'no', 'such', 'deep', 'x.txt')
+    expect(existsSync(join(dir, 'no'))).toBe(false)
+    const r = await writeEnsureDir(fa, f, Buffer.from('hello\n'))
+    expect(readFileSync(f, 'utf8')).toBe('hello\n')
+    expect(r.backupPath).toBeUndefined()          // 新建文件：没有旧内容，也就不产生备份
+    expect(existsSync(bak)).toBe(false)
+    // 目录已存在时照旧写入（并能覆盖 + 备份）
+    await fa.write(f, Buffer.from('old\n'))
+    const r2 = await writeEnsureDir(fa, f, Buffer.from('new\n'))
+    expect(readFileSync(f, 'utf8')).toBe('new\n')
+    expect(readFileSync(r2.backupPath!, 'utf8')).toBe('old\n')
   })
 })
 

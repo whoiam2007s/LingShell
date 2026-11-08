@@ -16,7 +16,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "model",
   "kind": "row",
-  "label": "接口协议"
+  "label": "接口协议",
+  "hint": "三种协议都放开：按你的端点实际支持的选，不确定就点「测试连接」"
  },
  {
   "tab": "model",
@@ -28,7 +29,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   "tab": "model",
   "kind": "row",
   "label": "思考深度",
-  "tip": "控制模型思考多少：低 = 更快更省，高 = 想得更久但更慢更贵。不设则沿用厂商默认（DeepSeek 目前默认就等于「中」）。"
+  "tip": "控制模型思考多少：关 = 让模型完全不思考（最快最省）；低 = 少想一点，高 = 想得更久但更慢更贵。灰掉的档位是该厂商没有公开这一档，选了也不会发参数。"
  },
  {
   "tab": "model",
