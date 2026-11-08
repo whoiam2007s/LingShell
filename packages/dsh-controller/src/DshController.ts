@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
 import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
@@ -25,9 +25,10 @@ import ApprovalService from '@deepseek-ai/dsh-user-approval'
 // 0.2.1 起不再 default 导出类，模块命名空间本身就是插件（name/Config/apply）
 import * as JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { StaticWorkingDirectory } from './workingDirectory.js'
+import { imageToolDef } from './imageTool.js'
 import * as deepseek from '@deepseek-ai/dsh-llm-deepseek'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
-import { contextWindowOf, providerMeta, thinkingWireOf, tr } from '@lingshell/shared'
+import { contextWindowOf, providerMeta, IMAGE_MAX_PER_MESSAGE, IMAGE_MAX_TOTAL_BYTES, base64Bytes, thinkingWireOf, tr } from '@lingshell/shared'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
@@ -56,7 +57,7 @@ import { withPathsBlock, withContextBlocks, type TurnAttachment, type ContextAtt
 import { askUserToolDef, ASK_GUIDANCE } from './askUser.js'
 import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
-import { forkPoint, forkTitle, digestSeed } from './fork.js'
+import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
 import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
 import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
@@ -251,6 +252,22 @@ export class DshController {
       const vault = this.cfg.secretVault
       const mask = vault ? (s: string) => vault.mask(s) : undefined   // 密钥保险箱明文回写（不受脱敏开关影响）
       for (const def of terminalToolDefs(deps)) ctx.tools.register(defineTool(def as any))
+      // 看图工具（read_image）：把 1–8 张图片交给当前会话的多模态模型识别。
+      // 「支不支持图片」在执行期按会话当前配置再判一次 —— 回合中切了模型也不会误用。
+      ctx.tools.register(defineTool(withRedaction(imageToolDef({
+        sessionIdOf: (agentId) => deps.sessionIdOf?.(agentId) ?? '',
+        supportsImages: (sid) => !!this.cfg.resolveSettings(this.sessions.get(sid)?.profileId).multimodal,
+        readLocalFile: async (p) => new Uint8Array(await readFile(p)),
+        readImageId: async (id) => {
+          const url = await readStoredImage(this.attachmentRoot, id)
+          const m = url ? /^data:([^;]+);base64,(.*)$/s.exec(url) : null
+          return m ? { bytes: new Uint8Array(Buffer.from(m[2], 'base64')), mediaType: m[1] } : undefined
+        },
+        ...(deps.downloadFile ? { downloadFile: deps.downloadFile } : {}),
+        chatWithImages: (sid, q, imgs) => this.chatWithImages(sid, q, imgs),
+        cwdOf: (tid) => (tid ? this.cfg.terminalCwd?.(tid) : undefined),
+        audit: (e) => this.cfg.audit?.(e),
+      }) as any, secrets, undefined, mask) as any))
       ctx.tools.register(defineTool(withRedaction(planToolDef(deps, this.plans), secrets, undefined, mask) as any))
       ;(ctx as any).systemPrompt.section({ name: 'lingshell:plan', order: 150, text: PLAN_GUIDANCE })
       ;(ctx as any).systemPrompt.section({ name: 'lingshell:explain', order: 151, text: EXPLAIN_GUIDANCE })
@@ -989,6 +1006,12 @@ export class DshController {
     if (live && !live.turning) await this.applyProfile(live)
     const images = attachments.filter((a) => a.kind === 'image')
     if (images.length && !this.cfg.resolveSettings(live?.profileId).multimodal) throw new Error(tr('当前模型不支持图片，可在模型设置里开启「支持图片」或切换模型'))
+    // 防御：界面上限（8 张 / 合计 20MB）被绕过时（旧版本、脚本直调 IPC）也要挡住，别让超大一坨图进请求
+    if (images.length > IMAGE_MAX_PER_MESSAGE)
+      throw new Error(tr('每条消息最多 {n} 张图片', { n: IMAGE_MAX_PER_MESSAGE }))
+    const imageBytes = images.reduce((n, i) => n + base64Bytes(i.data), 0)
+    if (imageBytes > IMAGE_MAX_TOTAL_BYTES)
+      throw new Error(tr('图片总量超过 {mb}MB，请删掉几张再发', { mb: Math.round(IMAGE_MAX_TOTAL_BYTES / 1024 / 1024) }))
     const paths = attachments.flatMap((a) => (a.kind === 'file' || a.kind === 'dir' ? [{ kind: a.kind, path: a.path }] : []))
     // 用户贴进来的终端输出里若带密钥保险箱的明文，进模型前同样换回占位符（@ 引用 / 终端块同样）
     const mask = (s: string) => this.cfg.secretVault?.mask(s) ?? s
@@ -1171,6 +1194,53 @@ export class DshController {
         this.cfg.recordUsage?.({ sessionId: '', source, provider: s.provider, model: s.model, input: u.inputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, output: u.outputTokens ?? 0 })
       }
       else if (c.type === 'finish' && (c.reason?.kind === 'error' || c.reason?.kind === 'aborted')) throw new Error(c.reason.failure?.message || c.reason.kind)
+    }
+    return text
+  }
+
+  // ── 图片识别子请求（read_image 工具用）──────────────────
+  // 与 complete() 同一套 hand-built 调用，但用**会话当前的路由与模型**（会话里切过模型也算），
+  // 并且消息里带图片块。图片先进附件库，适配器发请求时按引用读字节（与用户消息里的图片块同一套）。
+  // 不进会话历史、不占一轮；用量照常计入统计（source=image-read，会话 id 记本会话）。
+  private async chatWithImages(
+    sessionId: string,
+    question: string,
+    images: { name: string; bytes: Uint8Array; mediaType: string }[],
+  ): Promise<string> {
+    const ctx = await this.boot()
+    const live = this.sessions.get(sessionId)
+    if (!live) throw new Error(tr('会话还没启动，先发一条消息再试'))
+    const route = (live as any).route as { provider: string; model: string } | undefined
+    if (!route) throw new Error(tr('会话还没有可用的模型路由，先发一条消息再试'))
+    if (!this.cfg.resolveSettings(live.profileId).multimodal) {
+      throw new Error(tr('当前模型不支持图片，无法识别：可在模型设置里开启「支持图片」或切换到多模态模型'))
+    }
+    const refs: unknown[] = await (ctx as any).attachments.saveImages(
+      images.map((i) => ({ data: i.bytes, mediaType: i.mediaType, name: i.name })),
+    )
+    const msg = createUserMessage({
+      content: [{ type: 'text', text: question }, ...refs.map((attachment) => ({ type: 'image', attachment }))] as any,
+      source: { kind: 'user' },
+    })
+    let text = ''
+    const stream = (ctx as any).llm.stream({
+      provider: route.provider, model: route.model, messages: [msg],
+    }) as AsyncIterable<{
+      type: string; text?: string
+      usage?: { inputTokens?: number; cacheReadTokens?: number; outputTokens?: number }
+      reason?: { kind: string; failure?: { message: string } }
+    }>
+    for await (const c of stream) {
+      if (c.type === 'text-delta') text += c.text ?? ''
+      else if (c.type === 'usage' && typeof c.usage?.inputTokens === 'number') {
+        const u = c.usage
+        this.cfg.recordUsage?.({
+          sessionId, source: 'image-read', provider: live.provider, model: live.model,
+          input: u.inputTokens ?? 0, cacheRead: u.cacheReadTokens ?? 0, output: u.outputTokens ?? 0,
+        })
+      } else if (c.type === 'finish' && (c.reason?.kind === 'error' || c.reason?.kind === 'aborted')) {
+        throw new Error(c.reason.failure?.message || c.reason.kind)
+      }
     }
     return text
   }
@@ -1428,7 +1498,11 @@ export class DshController {
       ...(seeded || !digest.trim() ? {} : { contextDigest: digest }),
     })
     // 带种子 = 新会话里已经有真实历史（回放给界面）；建不起来就退一步用 digest，绝不让接续失败
-    if (ds) {
+    // 交给 dsh 之前先本地验一次引用自洽：历史里有过压缩替换 / buildForkSeed 补的收尾事件可能带着
+    // 源会话的原始 seq，dsh 会直接抛「sourceEventSeqs must reference earlier events: X >= current seq Y」
+    if (ds && !seedHasEarlierRefs(ds.seed)) {
+      this.cfg.log?.('warn', 'continue seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
+    } else if (ds) {
       try {
         const info = await this.spawn(id, mkMeta(id, true), false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
         this.cfg.sessionStore?.upsert({ ...mkMeta(id, true), title: info.title })
@@ -1469,6 +1543,11 @@ export class DshController {
     const fork: ForkSeed | undefined = mode === 'regenerate' && p.boundary !== undefined
       ? { seed: buildForkSeed(events as any, p.boundary as any), inherited: p.boundary + 1, parent: live.dshId }
       : undefined
+    // 重新生成是「原地逐字重放」，没有 digest 兜底可言：种子不自洽就直接给中文原因（别把 dsh 的英文校验抛给用户）
+    if (fork && !seedHasEarlierRefs(fork.seed)) {
+      this.cfg.log?.('warn', 'regenerate seed rejected by local check', { sessionId, events: fork.seed.length })
+      throw bail(tr('这段历史里有过压缩替换，没法原地重新生成；用「从这里分叉」或直接在输入框里重发这条消息'))
+    }
     const now = new Date().toISOString()
     if (mode === 'fork') {
       const id = `sess_${randomUUID().slice(0, 8)}`
@@ -1488,7 +1567,9 @@ export class DshController {
         ...(ds || !digest.trim() ? {} : { contextDigest: digest }),
       }
       // 种子建不起来（dsh 校验没过等）就退一步：换个新 id 用 digest 建，绝不让分叉直接失败
-      if (ds) {
+      if (ds && !seedHasEarlierRefs(ds.seed)) {
+        this.cfg.log?.('warn', 'fork seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
+      } else if (ds) {
         try {
           const info = await this.spawn(id, meta, false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
           this.cfg.sessionStore?.upsert({ ...meta, title: info.title })

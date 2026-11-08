@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { EthernetPort, ExternalLink, Loader2, RefreshCw, X } from 'lucide-react'
+import { EthernetPort, ExternalLink, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 import {
   filterPorts, forwardTarget, localForwardUrl, portsSupported, tr,
   type ListenPort, type PortForwardInfo, type PortList, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
+import { askAiChip } from '../../../lib/askAi.js'
+import { portBatchChip, portEntryChip } from './portsQuote.js'
 
 const errText = (e: unknown) => String((e as { message?: string })?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 const IB = 'flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-40'
@@ -66,12 +68,40 @@ export function PortsDrawer({ term, onClose }: { term?: TerminalInfo; onClose: (
       .finally(() => { setBusy(undefined); setTimeout(refresh, 500) })
   }
 
+  // 「问 AI」：单个端口问「该不该对外」，整表问「哪些暴露了、怎么收紧」
+  const hostLabel = () => (local ? tr('where|本机') : tr('「{title}」上', { title: term?.title ?? '' }))
+  const askPort = (r: ListenPort) => {
+    void askAiChip({
+      ctx: 'ports',
+      ...portEntryChip({
+        host: hostLabel(),
+        entry: { proto: r.proto, addr: r.addr, port: r.port, ...(r.process ? { process: r.process } : {}), ...(r.pid ? { pid: r.pid } : {}) },
+        ...(list?.tool ? { tool: list.tool } : {}),
+      }),
+      question: tr('这个端口该不该对外？有哪些风险，怎么收紧'),
+    })
+    onClose()
+  }
+  const askBatch = () => {
+    void askAiChip({
+      ctx: 'ports',
+      ...portBatchChip({
+        host: hostLabel(),
+        entries: shown.map((r) => ({ proto: r.proto, addr: r.addr, port: r.port, ...(r.process ? { process: r.process } : {}), ...(r.pid ? { pid: r.pid } : {}) })),
+        ...(list?.tool ? { tool: list.tool } : {}),
+      }),
+      question: tr('哪些端口对外暴露、风险排序，怎么收紧'),
+    })
+    onClose()
+  }
+
   const header = (
     <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-3">
       <EthernetPort className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
       <span className="shrink-0 text-[12px] font-semibold text-[var(--color-text-primary)]">{local ? tr('监听端口 · 本机') : tr('监听端口')}</span>
       {list && <span className="shrink-0 text-[10.5px] text-[var(--color-text-muted)]">{list.rows.length} · {list.tool}</span>}
       <span className="ml-auto" />
+      {ok && <button title={tr('问 AI：这些端口哪些不该对外')} disabled={!shown.length} onClick={askBatch} className={IB}><Sparkles className="h-3.5 w-3.5" /></button>}
       {ok && <button title={tr('刷新')} disabled={loading} onClick={refresh} className={IB}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /></button>}
       <button title={tr('关闭')} onClick={onClose} className={IB}><X className="h-3.5 w-3.5" /></button>
     </div>
@@ -112,6 +142,7 @@ export function PortsDrawer({ term, onClose }: { term?: TerminalInfo; onClose: (
                 {r.process ? <>{r.process}<span className="text-[var(--color-text-muted)]">/{r.pid}</span></> : <span className="text-[var(--color-text-muted)]">—</span>}
               </span>
               <span className={`${w.act} flex shrink-0 items-center justify-end gap-1 font-sans`}>
+                <button title={tr('问 AI：这个端口该不该对外')} onClick={() => askPort(r)} className="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"><Sparkles className="h-3 w-3" /></button>
                 {busy === k ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--color-accent)]" />
                   : local ? (r.pid && r.pid > 4 ? <button data-port-kill onClick={() => setKill(r)} title={tr('结束占用 {port} 端口的进程（PID {pid}）', { port: r.port, pid: r.pid })} className={`${BTN} text-[var(--color-danger)]`}>{tr('结束进程')}</button> : null)
                   : f ? <>

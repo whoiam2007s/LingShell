@@ -2,7 +2,7 @@
 // 本机图片文件（png / jpg / gif / webp / bmp / svg）一律显示为图片 tag：模型支持图片时作为图片发送，不支持时只发路径。
 // 粘贴 / 拖入的位图（截图等，没有路径）只能作为图片发送：模型不支持时只给提示。
 import { useEffect, useRef, useState } from 'react'
-import { IMAGE_MAX_PER_MESSAGE, redactSecrets, tr, type ContextKind } from '@lingshell/shared'
+import { IMAGE_MAX_PER_MESSAGE, IMAGE_MAX_SOURCE_BYTES, IMAGE_MAX_TOTAL_BYTES, base64Bytes, fitImageBudget, redactSecrets, tr, type ContextKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { normalizeImage, imageFileAtt, pathAtt, contextAtt, toTurn, toView, toChip, imageCount, errMsg, NO_IMAGE_HINT, termBlockAtt, TERM_BLOCK_MIME, type DraftAtt, type TermBlock } from './attachments.js'
 import { onAttachTermBlock, parseBlockDrag } from '../../lib/termBlock.js'
@@ -33,12 +33,23 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
     const cur = itemsRef.current
     // 同一路径只留一个
     const seen = new Set(cur.map((a) => a.path))
-    const merged = [...cur, ...next.filter((a) => { if (!a.path) return true; if (seen.has(a.path)) return false; seen.add(a.path); return true })]
+    let merged = [...cur, ...next.filter((a) => { if (!a.path) return true; if (seen.has(a.path)) return false; seen.add(a.path); return true })]
     const imgs = merged.filter((a) => a.kind === 'image' && (multimodal || !a.path))   // 只发路径的图片文件不占张数
-    if (imgs.length <= IMAGE_MAX_PER_MESSAGE) { setItemsBoth(merged); return }
-    setHint(tr('每条消息最多 {n} 张图片', { n: IMAGE_MAX_PER_MESSAGE }))
-    const drop = new Set<DraftAtt>(imgs.slice(IMAGE_MAX_PER_MESSAGE))
-    setItemsBoth(merged.filter((a) => !drop.has(a)))
+    if (imgs.length > IMAGE_MAX_PER_MESSAGE) {
+      setHint(tr('每条消息最多 {n} 张图片', { n: IMAGE_MAX_PER_MESSAGE }))
+      const drop = new Set<DraftAtt>(imgs.slice(IMAGE_MAX_PER_MESSAGE))
+      merged = merged.filter((a) => !drop.has(a))
+    }
+    // 总量上限：压缩后合计超过 20MB 时，从尾部开始丢（先加的优先保留），并说明丢了几张
+    const kept = merged.filter((a) => a.kind === 'image')
+    const sizes = kept.map((a) => base64Bytes((a as { data?: string }).data ?? ''))
+    const fit = fitImageBudget(sizes)
+    if (fit < kept.length) {
+      const dropped = new Set<DraftAtt>(kept.slice(fit))
+      merged = merged.filter((a) => !dropped.has(a))
+      setHint(tr('图片总量超过 {mb}MB，已保留前 {n} 张', { mb: Math.round(IMAGE_MAX_TOTAL_BYTES / 1024 / 1024), n: fit }))
+    }
+    setItemsBoth(merged)
   }
   const addBitmaps = async (srcs: { blob: Blob; name: string }[]) => {
     if (!srcs.length) return
@@ -60,7 +71,12 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
       const out: DraftAtt[] = []
       for (const [i, p] of paths.entries()) {
         const k = ks[i]
-        if (k === 'image') out.push(await imageFileAtt(p).catch(() => pathAtt('file', p)))
+        if (k === 'image') {
+          const att = await imageFileAtt(p).catch(() => pathAtt('file', p))
+          // 原图超过 10MB 或解码失败时只留了路径：明确告诉用户「这张没压缩，只发路径」
+          if (att.kind === 'image' && !att.data) setHint(tr('图片超过 {mb}MB 或无法解码，将只发送路径：{name}', { mb: Math.round(IMAGE_MAX_SOURCE_BYTES / 1024 / 1024), name: att.name }))
+          out.push(att)
+        }
         else if (k) out.push(pathAtt(k, p))
       }
       if (sidRef.current !== sid) return   // 读取期间切了会话

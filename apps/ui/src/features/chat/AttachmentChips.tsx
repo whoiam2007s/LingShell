@@ -2,7 +2,7 @@
 // 统一一行高：图标或小缩略图（16px）+ 名称 + ×。图片 = 图片附件，或文件名是图片的文件（按路径发出的图片文件）。
 // 点击打开：图片 → 应用内预览（可缩放、多张左右切换）；文件 → 系统默认程序打开；目录 → 系统资源管理器。
 import { useEffect, useState } from 'react'
-import { FileText, Folder, Image as ImageIcon, Info, X, TerminalSquare, Server, MessageSquare, SquareTerminal, GitBranch } from 'lucide-react'
+import { FileText, Folder, Image as ImageIcon, Info, X, TerminalSquare, Server, MessageSquare, SquareTerminal, GitBranch, Container, History, EthernetPort, Boxes, TriangleAlert, HeartPulse } from 'lucide-react'
 import { tr, tk, type MsgAttachment, type ContextKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { imageSrc, isImageAtt, errMsg, PATH_ONLY_HINT, NO_IMAGE_HINT, type ChipView } from './attachments.js'
@@ -40,8 +40,14 @@ export function AttachmentChips({ items, onRemove, onError, noImage, className }
 }
 
 // 上下文标签（@ 终端 / 主机 / 历史会话、`!命令` 终端块）：悬停看随消息发给 AI 的文字
-const CTX_ICON: Record<ContextKind, typeof FileText> = { terminal: TerminalSquare, host: Server, session: MessageSquare, shell: SquareTerminal, git: GitBranch }
-const CTX_LABEL: Record<ContextKind, string> = { terminal: tk('终端'), host: tk('主机'), session: tk('会话'), shell: tk('终端块'), git: tk('仓库') }
+const CTX_ICON: Record<ContextKind, typeof FileText> = {
+  terminal: TerminalSquare, host: Server, session: MessageSquare, shell: SquareTerminal, git: GitBranch,
+  container: Container, history: History, ports: EthernetPort, k8s: Boxes, alert: TriangleAlert, check: HeartPulse,
+}
+const CTX_LABEL: Record<ContextKind, string> = {
+  terminal: tk('终端'), host: tk('主机'), session: tk('会话'), shell: tk('终端块'), git: tk('仓库'),
+  container: tk('容器'), history: tk('命令历史'), ports: tk('监听端口'), k8s: tk('K8s'), alert: tk('告警'), check: tk('体检'),
+}
 function CtxChip({ a, onRemove }: { a: MsgAttachment & { key?: string }; onRemove?: () => void }) {
   const ctx = a.ctx ?? 'terminal'
   const Icon = CTX_ICON[ctx]

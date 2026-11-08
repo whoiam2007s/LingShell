@@ -2,17 +2,16 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { AlertTriangle, Bot, CheckCircle2, HardDrive, Loader2, Play, Stethoscope, X, Sparkles } from 'lucide-react'
 import { paletteSend } from '../../lib/paletteBus.js'
 import {
-  certDaysLeft, diffIsEmpty, diffProfiles, findIssues, hostCheckSupported, profileReportText, redactSecrets, summarizeDiff,
+  certDaysLeft, diffIsEmpty, diffProfiles, findIssues, hostCheckSupported, profileReportText, summarizeDiff,
   basisText, certForecastText, dayText, trendLevel, tr,
   type HostProfile, type HostTrend, type ProfileMeta, type TerminalInfo,
 } from '@lingshell/shared'
 import { HelpTip } from '../../components/ui/form.js'
-import { askAiTroubleshoot } from '../../lib/askAi.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { ComplianceTab } from './ComplianceTab.js'
 import { trx } from '../../lib/trx.js'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
-import { sendToChat } from '../../lib/sendToChat.js'
 import { Select } from '../../components/ui/Select.js'
 import { ProfileDiffView, errText, fmtTime, BTN } from './ProfileDiffView.js'
 
@@ -118,16 +117,23 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
     if (!hostKey) return
     client.trend.get([hostKey]).then((r) => setTrend(r[hostKey])).catch(() => setTrend(undefined))
   }, [hostKey, hist?.items.length])
-  // 问题项「用 AI 排查」：开新会话，带上这份体检的摘要
-  const askIssue = (text: string) => {
-    if (!cur || !term) return
-    askAiTroubleshoot({ host: term.title, ...(hostKey && !hostKey.includes(':') ? { hostId: hostKey } : {}), terminalId: term.id, alert: text, context: `主机体检报告摘要（${fmtTime(cur.at)}）：\n${profileReportText(cur, issues, diff)}` })   // i18n-ignore 发给模型的上下文
-  }
+  // 整份体检报告 = 一个「体检」chip；两个入口共用同一个 chip（去重只留一个），
+  // 但预填的问题不一样 —— 顶部是「解读整份报告」，问题标题旁是「排查这些具体问题」。
+  const chipOf = () => ({
+    ctx: 'check' as const,
+    name: tr('主机体检报告'),
+    text: profileReportText(cur!, issues, diff),
+  })
   const explain = () => {
     if (!cur) return
-    const text = redactSecrets(profileReportText(cur, issues, diff))
-    // i18n-ignore-next 发给模型的提示词
-    sendToChat(`请解读下面这份主机体检报告（应用自动只读采集），按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行。\n\n${text}`)
+    void askAiChip({ ...chipOf(), question: tr('解读这份体检报告：按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行') })
+  }
+  const triage = () => {
+    if (!cur) return
+    void askAiChip({
+      ...chipOf(),
+      question: tr('这份体检发现的问题（共 {n} 个）分别怎么排查：按严重程度给原因、验证方法和修复命令', { n: issues.length }),
+    })
   }
 
   const header = (
@@ -141,6 +147,10 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
           className="flex shrink-0 items-center gap-1 rounded border border-transparent bg-[var(--color-accent)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-bg-base)] hover:opacity-90 disabled:opacity-50">
           {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}{running ? tr('体检中…') : tr('开始体检')}
         </button>
+      )}
+      {ok && tab === 'check' && (
+        <button data-hostcheck-explain disabled={!cur} onClick={explain} title={tr('把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理')}
+          className={cn(BTN, 'h-7 text-[var(--color-accent)]')}><Bot className="h-3 w-3" />{tr('让 AI 解读')}</button>
       )}
       <button title={tr('关闭')} onClick={onClose} className={IB}><X className="h-3.5 w-3.5" /></button>
     </div>
@@ -173,7 +183,6 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
         <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-3 py-1.5">
           <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{tr('档案')}</span>
           <Select size="sm" className="min-w-0 flex-1" value={p?.id ?? ''} onValueChange={open} options={hist.items.map((m) => ({ value: m.id, label: metaLabel(m) }))} />
-          <button data-hostcheck-ai disabled={!p} onClick={explain} title={tr('把报告摘要（已脱敏）发到对话，请 AI 给处理建议')} className={cn(BTN, 'h-7 text-[var(--color-accent)]')}><Bot className="h-3 w-3" />{tr('让 AI 解读')}</button>
         </div>
       )}
       {err && <div className="shrink-0 whitespace-pre-wrap break-all border-b border-[var(--color-border-subtle)] px-3 py-1.5 text-[11px] text-[var(--color-danger)]">{err}</div>}
@@ -201,7 +210,10 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
           </Card>
 
           {p.type === 'check' && (
-            <Card title={tr('发现的问题（{n}）', { n: issues.length })}>
+            <Card title={tr('发现的问题（{n}）', { n: issues.length })} extra={issues.length > 0 && (
+              <button data-hostcheck-ai disabled={!cur} onClick={triage} title={tr('把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理')}
+                className="flex items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"><Sparkles className="h-3 w-3" />{tr('用 AI 排查')}</button>
+            )}>
               <div data-hostcheck-issues>
                 {issues.length === 0 ? <span className="flex items-center gap-1 text-[var(--color-success)]"><CheckCircle2 className="h-3 w-3" />{tr('没有发现问题')}</span>
                   : issues.map((i) => (
@@ -212,8 +224,6 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
                         <button data-issue-disk onClick={() => paletteSend({ type: 'diskUsage', path: i.path })} title={tr('打开「磁盘占用」，逐层看这个分区里谁占了空间（只读）')}
                           className="flex shrink-0 items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-accent)] opacity-60 hover:bg-[var(--color-bg-hover)] group-hover:opacity-100"><HardDrive className="h-3 w-3" />{tr('分析占用')}</button>
                       )}
-                      <button data-issue-ai onClick={() => askIssue(i.text)} title={tr('新开一个会话，把这个问题和体检摘要发给 AI 排查原因')}
-                        className="flex shrink-0 items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-accent)] opacity-60 hover:bg-[var(--color-bg-hover)] group-hover:opacity-100"><Sparkles className="h-3 w-3" />{tr('用 AI 排查')}</button>
                     </div>
                   ))}
               </div>
