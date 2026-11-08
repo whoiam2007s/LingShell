@@ -637,4 +637,7 @@ export const chat: Record<string, string> = {
   '命令历史': 'History',
   '监听端口': 'Ports',
   'K8s': 'K8s',
+  '体检': 'Health check',
+  '主机体检报告': 'Host health report',
+  '解读这份体检报告：按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行': 'Interpret this health report: list the problems by severity with recommended actions; explain the purpose before running any command on the host',
 }

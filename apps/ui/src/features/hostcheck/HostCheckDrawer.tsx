@@ -2,17 +2,16 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { AlertTriangle, Bot, CheckCircle2, HardDrive, Loader2, Play, Stethoscope, X, Sparkles } from 'lucide-react'
 import { paletteSend } from '../../lib/paletteBus.js'
 import {
-  certDaysLeft, diffIsEmpty, diffProfiles, findIssues, hostCheckSupported, profileReportText, redactSecrets, summarizeDiff,
+  certDaysLeft, diffIsEmpty, diffProfiles, findIssues, hostCheckSupported, profileReportText, summarizeDiff,
   basisText, certForecastText, dayText, trendLevel, tr,
   type HostProfile, type HostTrend, type ProfileMeta, type TerminalInfo,
 } from '@lingshell/shared'
 import { HelpTip } from '../../components/ui/form.js'
-import { askAiTroubleshoot } from '../../lib/askAi.js'
+import { askAiChip, askAiTroubleshoot } from '../../lib/askAi.js'
 import { ComplianceTab } from './ComplianceTab.js'
 import { trx } from '../../lib/trx.js'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
-import { sendToChat } from '../../lib/sendToChat.js'
 import { Select } from '../../components/ui/Select.js'
 import { ProfileDiffView, errText, fmtTime, BTN } from './ProfileDiffView.js'
 
@@ -118,16 +117,20 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
     if (!hostKey) return
     client.trend.get([hostKey]).then((r) => setTrend(r[hostKey])).catch(() => setTrend(undefined))
   }, [hostKey, hist?.items.length])
-  // 问题项「用 AI 排查」：开新会话，带上这份体检的摘要
+  // 问题项「用 AI 排查」：挂「告警」chip，带上这份体检的摘要
   const askIssue = (text: string) => {
     if (!cur || !term) return
     askAiTroubleshoot({ host: term.title, ...(hostKey && !hostKey.includes(':') ? { hostId: hostKey } : {}), terminalId: term.id, alert: text, context: `主机体检报告摘要（${fmtTime(cur.at)}）：\n${profileReportText(cur, issues, diff)}` })   // i18n-ignore 发给模型的上下文
   }
+  // 「让 AI 解读」：挂一个「体检」chip（报告摘要全文），问题放输入框，由用户自己按发送
   const explain = () => {
     if (!cur) return
-    const text = redactSecrets(profileReportText(cur, issues, diff))
-    // i18n-ignore-next 发给模型的提示词
-    sendToChat(`请解读下面这份主机体检报告（应用自动只读采集），按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行。\n\n${text}`)
+    void askAiChip({
+      ctx: 'check',
+      name: tr('主机体检报告'),
+      text: profileReportText(cur, issues, diff),
+      question: tr('解读这份体检报告：按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行'),
+    })
   }
 
   const header = (
