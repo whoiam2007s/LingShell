@@ -901,6 +901,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'First turn on "Supports images" for the profile you use in "Settings → Model settings" (models known to support vision have it on by default and show an "Image" tag in the list).',
         'Use "+" → "Add context" → "File" to pick images (png / jpg / jpeg / gif / webp / bmp / svg, up to 10MB each and up to 8 per message; you can multi-select them with ordinary files), press Ctrl+V in the input box to paste a screenshot, or drag images in. All of them show as images.',
         'Tags start with a small thumbnail; click to open the preview. After sending, the images go to the model with the message.',
+        'Let the AI look at images itself: say "look at D:\\logs\\shot.png" or "compare these two images" and it calls the image tool (`read_image`). It reads 1–8 images at a time (≤ 5MB each, ≤ 20MB total, png / jpg / webp / gif), and multiple images go out in a single request. It can also read image paths on SSH hosts (downloaded to your machine first) and images you pasted earlier. Reading images needs no approval, and each call leaves a "Read N image(s)" entry in the execution log.',
       ] },
       { h: 'Image preview', steps: [
         'Scroll to zoom around the cursor. Use "−" / "+" in the top bar to zoom, and "Fit to window" / "1:1" to switch; the current percentage is shown in the middle.',
@@ -1493,10 +1494,10 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
   {
     id: 'ai-troubleshoot', title: 'One-click AI troubleshooting for alerts', icon: Siren,
     blocks: [
-      { p: 'Click "Troubleshoot with AI" wherever an alert appears: a new session opens (titled "Troubleshoot: host alert") and sends "<host> has <alert>: <context>, please find the cause" to the AI without interrupting your current chat. Redaction rules are applied before sending.' },
+      { p: 'Click "Troubleshoot with AI" wherever an alert appears: a chip with the alert\'s context is attached above the input box, and a suggested troubleshooting request is prefilled in the input — **nothing is sent automatically**, you refine it and press send yourself. Open a separate session if you want one session per incident. Redaction rules are applied before attaching.' },
       { h: 'Entry points', steps: [
         'Terminal keyword alerts: while you\'re viewing that terminal, a notice "Alert: …" with "Troubleshoot with AI" appears at the bottom left (it hides after 10 seconds, but stays while hovered). If you\'re not viewing it, you get the usual tab badge / system notification, and the notice shows when you switch back. Context is the terminal\'s last 40 lines of output.',
-        'Host health check "Issues found": "Troubleshoot with AI" after each issue; context is a summary of that health check.',
+        'Host health check: the whole report uses a single "Health check" chip. "Let AI interpret" at the top interprets the entire report; "Troubleshoot with AI" next to the "Issues found (N)" heading focuses on those issues (that entry is hidden when there are none). Both share the same chip, so clicking both keeps one chip — only the prefilled question differs.',
         'Host dashboard anomaly cards: "Troubleshoot with AI" on the red anomaly line; context is current metrics, recent alerts, health check and trends.',
       ], tips: [
         'The AI investigates read-only first and gives a cause with evidence. If changes are needed, it explains the impact and how to roll back, then waits for your confirmation.',
