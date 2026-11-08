@@ -14,7 +14,10 @@ import type { ExecMode } from '@lingshell/shared'
 
 const SID = 's1'
 const TERM = 'term_1'
-const WORK = 'D:/work'
+// 工作目录必须用当前平台自己的绝对路径：写死 'D:/work' 在 Linux 上不是绝对路径，
+// isOutsideWorkDir 会按「判不出来一律当目录外」处理，整张验收矩阵就跟着偏（CI 上就是这么红的）
+const WORK = process.platform === 'win32' ? 'D:/work' : '/tmp/work'
+const OUTSIDE = process.platform === 'win32' ? 'C:/other/x.txt' : '/other/x.txt'
 // 只读命令白名单：这里用极简判定代替真实白名单（白名单本身有单测）
 const isReadOnly = (c: string) => /^(ls|cat|pwd|grep|df)\b/.test(c)
 
@@ -78,7 +81,7 @@ function approve(ctx: Ctx, name: string, args: unknown): void {
 // 常用入参
 const writeA = { terminal_id: TERM, path: `${WORK}/a.txt`, content: 'a' }
 const writeB = { terminal_id: TERM, path: `${WORK}/b.txt`, content: 'b' }
-const writeOut = { terminal_id: TERM, path: 'C:/other/x.txt', content: 'x' }
+const writeOut = { terminal_id: TERM, path: OUTSIDE, content: 'x' }
 const ls = { terminal_id: TERM, command: 'ls -la' }
 const rm = { terminal_id: TERM, command: 'rm -rf /tmp/x' }
 const touch = { terminal_id: TERM, command: 'touch a.txt' }
