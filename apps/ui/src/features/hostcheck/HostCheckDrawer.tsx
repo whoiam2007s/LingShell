@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, HardDrive, Loader2, Play, Stethoscope, X, Sparkles } from 'lucide-react'
+import { AlertTriangle, Bot, CheckCircle2, HardDrive, Loader2, Play, Stethoscope, X, Sparkles } from 'lucide-react'
 import { paletteSend } from '../../lib/paletteBus.js'
 import {
   certDaysLeft, diffIsEmpty, diffProfiles, findIssues, hostCheckSupported, profileReportText, summarizeDiff,
@@ -13,7 +13,7 @@ import { trx } from '../../lib/trx.js'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
 import { Select } from '../../components/ui/Select.js'
-import { ProfileDiffView, errText, fmtTime } from './ProfileDiffView.js'
+import { ProfileDiffView, errText, fmtTime, BTN } from './ProfileDiffView.js'
 
 // 主机体检：当前 SSH 终端所在主机（Linux）一次只读采集 → 结构化档案（按主机存最近 20 份）→ 分区卡片 + 「发现的问题」；
 // 顶部「和上次比」看配置漂移；「让 AI 解读」把报告摘要（脱敏）发到对话。切终端时由外层 key 重挂载
@@ -140,6 +140,10 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
           {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}{running ? tr('体检中…') : tr('开始体检')}
         </button>
       )}
+      {ok && tab === 'check' && (
+        <button data-hostcheck-explain disabled={!cur} onClick={explain} title={tr('把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理')}
+          className={cn(BTN, 'h-7 text-[var(--color-accent)]')}><Bot className="h-3 w-3" />{tr('让 AI 解读')}</button>
+      )}
       <button title={tr('关闭')} onClick={onClose} className={IB}><X className="h-3.5 w-3.5" /></button>
     </div>
   )
@@ -198,10 +202,10 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
           </Card>
 
           {p.type === 'check' && (
-            <Card title={tr('发现的问题（{n}）', { n: issues.length })} extra={
+            <Card title={tr('发现的问题（{n}）', { n: issues.length })} extra={issues.length > 0 && (
               <button data-hostcheck-ai disabled={!p} onClick={explain} title={tr('把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理')}
                 className="flex items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"><Sparkles className="h-3 w-3" />{tr('用 AI 排查')}</button>
-            }>
+            )}>
               <div data-hostcheck-issues>
                 {issues.length === 0 ? <span className="flex items-center gap-1 text-[var(--color-success)]"><CheckCircle2 className="h-3 w-3" />{tr('没有发现问题')}</span>
                   : issues.map((i) => (
