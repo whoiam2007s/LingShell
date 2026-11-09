@@ -1,12 +1,15 @@
 // 全局 tooltip：接管所有 title 属性。悬停时临时摘掉 title（原生提示就不出来），改显示随主题配色的提示框；移开再放回去。
 // ponytail: 一个监听管全部 723 处 title，不逐个改组件；要富文本 / 可交互提示时再单独做组件
+// 宽度上限：普通提示 600px（长文案自动折行，避免一行铺满整屏）；带 data-tip-wide 的（表格等复杂内容）放宽到 900px
+const MAX_W = 600
+const MAX_W_WIDE = 900
 const DELAY = 350        // 首次悬停的等待
 const WARM = 600         // 刚关掉一个提示后这么久内移到下一个，立即显示（像 VS Code）
 
 type Rect = { left: number; right: number; top: number; bottom: number; width: number }
-let place: ((text: string, r: Rect) => void) | null = null, hide: (() => void) | null = null
+let place: ((text: string, r: Rect, wide?: boolean) => void) | null = null, hide: (() => void) | null = null
 /** 手动显示（画在 canvas 上、没有元素可挂 title 的地方用，如终端滚动条标尺）：贴着 r 的下方 / 上方，立即显示 */
-export const showTipAt = (text: string, r: Rect) => place?.(text, r)
+export const showTipAt = (text: string, r: Rect, wide = false) => place?.(text, r, wide)
 export const hideTip = () => hide?.()
 
 export function installTooltips(doc: Document = document) {
@@ -14,8 +17,10 @@ export function installTooltips(doc: Document = document) {
   tip.setAttribute('role', 'tooltip')
   tip.dataset.appTooltip = ''
   Object.assign(tip.style, {
-    position: 'fixed', zIndex: '2147483647', display: 'none', pointerEvents: 'none', maxWidth: 'calc(100vw - 8px)', overflow: 'hidden', textOverflow: 'ellipsis',
-    padding: '4px 8px', borderRadius: '6px', fontSize: '12px', lineHeight: '1.45', whiteSpace: 'pre',   // 不自动折行，只按 title 里写的换行符分行
+    position: 'fixed', zIndex: '2147483647', display: 'none', pointerEvents: 'none',
+    maxWidth: `${MAX_W}px`, maxHeight: '60vh', overflow: 'hidden',
+    padding: '4px 8px', borderRadius: '6px', fontSize: '12px', lineHeight: '1.45',
+    whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',   // 长文案自动折行（title 里的换行符照旧生效）
     background: 'var(--color-bg-raised)', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-strong)',
     boxShadow: '0 4px 14px rgba(0,0,0,.28)',
   })
@@ -25,7 +30,8 @@ export function installTooltips(doc: Document = document) {
   // 否则浏览器会往上找到外层的 title 弹原生提示。离开时一起放回去
   let outer: [Element, string][] = []
 
-  place = (text: string, r: Rect) => {
+  place = (text: string, r: Rect, wide = false) => {
+    tip.style.maxWidth = `${wide ? MAX_W_WIDE : MAX_W}px`
     tip.textContent = text
     tip.style.left = '0px'; tip.style.top = '0px'   // 先放左上角再量：贴右边时 fixed 元素会被挤窄、量出来的宽度偏小
     tip.style.display = 'block'
@@ -36,7 +42,7 @@ export function installTooltips(doc: Document = document) {
     tip.style.left = `${left}px`; tip.style.top = `${top}px`
   }
   hide = () => { if (tip.style.display !== 'none') { tip.style.display = 'none'; lastHide = Date.now() } }
-  const show = () => { if (cur?.isConnected) place!(saved, cur.getBoundingClientRect()) }
+  const show = () => { if (cur?.isConnected) place!(saved, cur.getBoundingClientRect(), cur.hasAttribute('data-tip-wide')) }
   const leave = () => {
     clearTimeout(timer)
     if (cur && !cur.hasAttribute('title')) cur.setAttribute('title', saved)   // 悬停期间组件改过 title 就用新的

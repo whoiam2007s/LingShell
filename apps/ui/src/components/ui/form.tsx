@@ -25,7 +25,7 @@ export function HelpTip({ children, className }: { children: React.ReactNode; cl
       <CircleHelp className="h-3.5 w-3.5" />
       {pos && createPortal(
         <div role="tooltip" style={{ left: pos.x, top: pos.y, transform: `translate(-50%, ${pos.up ? '-100%' : '0'})` }}
-          className="pointer-events-none fixed z-[200] w-max max-w-[320px] whitespace-normal rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] px-2.5 py-2 text-[11.5px] font-normal leading-[1.6] text-[var(--color-text-secondary)] shadow-lg">
+          className="pointer-events-none fixed z-[200] w-max max-w-[600px] whitespace-normal rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] px-2.5 py-2 text-[11.5px] font-normal leading-[1.6] text-[var(--color-text-secondary)] shadow-lg">
           {children}
         </div>,
         document.body,
