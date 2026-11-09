@@ -62,5 +62,5 @@ describe('PasswordInput 打码：圆点数 ≠ 真实长度', () => {
     expect(all1).toEqual([1, 1, 2])
     expect(maskWeights([2, 1, 2], 5, () => 0).slice(0, 3)).toEqual([2, 1, 2])
     expect(maskWeights([2, 1, 2], 0)).toEqual([])
-  })
+  }, 20_000)   // 首次 import 这个组件要现场编译 + 30 次循环；全仓并行跑时容易顶到默认 5s 超时
 })
