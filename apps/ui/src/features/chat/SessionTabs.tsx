@@ -94,7 +94,7 @@ export function SessionSwitcher(p: SessionSwitcherProps) {
       {open && createPortal(
         <div ref={menuRef} data-session-switcher-menu role="menu"
           style={{ left: at?.left ?? -9999, top: at?.top ?? -9999 }}
-          className="fixed z-[1000] w-[300px] overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] shadow-xl">
+          className="fixed z-[1000] w-[300px] overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] shadow-2xl ring-1 ring-black/40">
           <div className="flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] text-[var(--color-text-muted)]">
             <span>{tr('最近的会话')}</span>{dot()}
           </div>

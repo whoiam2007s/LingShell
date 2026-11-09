@@ -14,6 +14,9 @@ const HOVER_DELAY_MS = 250
 
 export function Ball() {
   const [v, setV] = useState<BallView | null>(null)
+  // 窗口当前尺寸：主进程先把窗口放大、渲染层下一帧才拿到新方向/展开态，
+  // 中间那一帧球会按旧方向画在错误的角上。这一帧干脆不画球（只有 ~16ms，看不出来）。
+  const [win, setWin] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
   const [hover, setHover] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -41,6 +44,12 @@ export function Ball() {
       window.removeEventListener('pointercancel', cancel, true)
       window.removeEventListener('blur', cancel)
     }
+  }, [])
+
+  useEffect(() => {
+    const onSize = () => setWin({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', onSize)
+    return () => window.removeEventListener('resize', onSize)
   }, [])
 
   useEffect(() => {
@@ -134,7 +143,8 @@ export function Ball() {
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3 pt-1">{card}</div>
         </div>
       )}
-      {orb}
+      {/* 窗口比球大、卡片却还没显示 = 正处在放大后的那一帧，先不画球 */}
+      {!expanded && (win.w > BALL + 2 || win.h > BALL + 2) ? null : orb}
       {/* 量高度用（同卡片结构）：不可见、不占位。悬停期间一直挂着 —— 展开时不卸载，
           免得「卸载测量块 + 挂真卡片 + 窗口 resize」三件事挤在同一帧 */}
       {hover && (
