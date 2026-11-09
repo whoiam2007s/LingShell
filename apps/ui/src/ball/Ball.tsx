@@ -55,11 +55,18 @@ export function Ball() {
     return off
   }, [])
 
-  // 悬停：先在窗口外量出卡片高度，交给主进程放大窗口（主进程回推 expanded / 展开方向）。内容变了再量一次
-  const content = v ? JSON.stringify({ ...v, expanded: 0, side: 0, valign: 0 }) : ''
+  // 悬停：先在窗口外量出卡片高度，交给主进程放大窗口（主进程回推 expanded / 展开方向）。
+  // 只有「可能改变高度」的字段变了才重量；高度变化不到 2px 不发 —— 状态每秒推一次，
+  // 每次都发就会每秒把透明小窗 resize 一次，看起来就是卡。
+  const heightKey = v ? `${v.locked}|${v.approvals.length}|${v.sessions.length}|${v.transfers.active}|${v.watchdog.firing}|${v.error ? 1 : 0}` : ''
+  const measured = useRef(0)
   useLayoutEffect(() => {
-    if (hover && cardRef.current) api()?.send('ball:expand', cardRef.current.offsetHeight)
-  }, [hover, content])
+    if (!hover || v?.expanded || !cardRef.current) return
+    const h = cardRef.current.offsetHeight
+    if (Math.abs(h - measured.current) < 2) return
+    measured.current = h
+    api()?.send('ball:expand', h)
+  }, [hover, heightKey])
 
   const enter = () => {
     api()?.send('ball:enter')
@@ -118,8 +125,18 @@ export function Ball() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3 pt-1">{card}</div>
         </div>
-      ) : orb}
-      {/* 量高度用（同卡片结构）：不可见、不占位 */}
+      ) : (
+        // 未展开：主进程会先把窗口放大成卡片大小、再通知渲染层，
+        // 中间有一帧 expanded 还是 false。这一帧如果按左上角摆球，就会「球闪到左上角再弹回去」。
+        // 所以未展开时也按球将来要落的角（side / valign）摆好 —— 窗口变大的过程中球纹丝不动。
+        <div className={cn('flex h-full w-full',
+          v.side === 'left' ? 'justify-end' : 'justify-start',
+          v.valign === 'bottom' ? 'items-end' : 'items-start')}>
+          {orb}
+        </div>
+      )}
+      {/* 量高度用（同卡片结构）：不可见、不占位。悬停期间一直挂着 —— 展开时不卸载，
+          免得「卸载测量块 + 挂真卡片 + 窗口 resize」三件事挤在同一帧 */}
       {hover && (
         <div ref={cardRef} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 w-[280px] border">
           <div style={{ height: BALL }} /><div className="px-3 pb-3 pt-1">{card}</div>

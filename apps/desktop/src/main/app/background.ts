@@ -192,7 +192,9 @@ export function registerBackground(d: BackgroundDeps) {
     hideTimer = setTimeout(() => { if (!hovering && !dragFrom && !layout.expanded && !menuOpen) { hidden = true; placeBall() } }, delay)
   }
   const collapse = () => {
-    if (layout.expanded) { layout = { ...layout, expanded: false }; placeBall(); pushBall(true) }
+    // 顺序同展开反过来：先让渲染层收起卡片，再把窗口缩回球大小，
+    // 否则窗口先变小、卡片还铺在 52px 里，会看到一帧挤扁的卡片
+    if (layout.expanded) { layout = { ...layout, expanded: false }; pushBall(true); placeBall() }
   }
   const createBall = () => {
     pos = fixBall(cfg.ballPos, areas())
@@ -255,8 +257,13 @@ export function registerBackground(d: BackgroundDeps) {
     const a = areaOf(pos, areas())
     if (!a) return
     const r = expandBounds(pos, num(h), a)
-    layout = { expanded: true, side: r.side, valign: r.valign }
+    // 三步走，不能合成一步：先只把「球落在哪个角」告诉渲染层，让它把球摆好；
+    // 再放大窗口；最后才让它画卡片。合成一步的话，窗口先变大而渲染层还没拿到方向，
+    // 球会先闪到左上角再弹回原处。
+    layout = { expanded: false, side: r.side, valign: r.valign }
+    pushBall(true)
     place(r.bounds)
+    layout = { expanded: true, side: r.side, valign: r.valign }
     pushBall(true)
   }))
   // 拖动：主进程按系统光标位置跟随（每 8ms 一次），不靠渲染层逐帧发位移——小窗口追不上鼠标时会收不到 mousemove，球就停在原地
