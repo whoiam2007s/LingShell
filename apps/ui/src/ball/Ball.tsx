@@ -107,35 +107,34 @@ export function Ball() {
 
   if (!v) return null
   const expanded = v.expanded && hover
+  // 球的落点完全由 side / valign 决定（窗口位置主进程已经算好，保证球的屏幕坐标不变）：
+  // 卡片用绝对定位铺满窗口，球也用绝对定位贴在对应角上 —— 两者互不影响布局，
+  // 所以「窗口先变大、内容后渲染」的那一帧里球也不会跑到左上角去。
+  const orbAt = cn('absolute z-10', v.side === 'left' ? 'right-0' : 'left-0', v.valign === 'bottom' ? 'bottom-0' : 'top-0')
+  const origin = `${v.valign === 'bottom' ? 'bottom' : 'top'} ${v.side === 'left' ? 'right' : 'left'}`
   const orb = (
     <div data-ball-orb data-look={v.look} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onLostPointerCapture={onLost}
       onContextMenu={(e) => { e.preventDefault(); api()?.send('ball:menu') }}
-      className="relative flex shrink-0 cursor-pointer select-none items-center justify-center rounded-full" style={{ width: BALL, height: BALL }}>
+      className={cn('flex shrink-0 cursor-pointer select-none items-center justify-center rounded-full', orbAt)} style={{ width: BALL, height: BALL }}>
       <Orb v={v} />
     </div>
   )
   const card = <Card v={v} />
   return (
     <div data-ball-root className="relative h-screen w-screen overflow-hidden" onMouseEnter={enter} onMouseLeave={leave}>
-      {expanded ? (
-        <div data-ball-card className={cn('flex h-full w-full overflow-hidden rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]',
-          v.valign === 'top' ? 'flex-col' : 'flex-col-reverse')}>
-          <div className={cn('flex shrink-0 items-center', v.side === 'right' ? 'flex-row' : 'flex-row-reverse')}>
-            {orb}
+      {expanded && (
+        <div data-ball-card style={{ transformOrigin: origin }}
+          className={cn('animate-ball-in absolute inset-0 flex overflow-hidden rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]',
+            v.valign === 'top' ? 'flex-col' : 'flex-col-reverse')}>
+          {/* 第一行给球让位（球是绝对定位贴角的），标题跟球同一行 */}
+          <div className={cn('flex shrink-0 items-center', v.side === 'right' ? 'flex-row' : 'flex-row-reverse')} style={{ height: BALL }}>
+            <span className="shrink-0" style={{ width: BALL }} aria-hidden />
             <Head v={v} />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3 pt-1">{card}</div>
         </div>
-      ) : (
-        // 未展开：主进程会先把窗口放大成卡片大小、再通知渲染层，
-        // 中间有一帧 expanded 还是 false。这一帧如果按左上角摆球，就会「球闪到左上角再弹回去」。
-        // 所以未展开时也按球将来要落的角（side / valign）摆好 —— 窗口变大的过程中球纹丝不动。
-        <div className={cn('flex h-full w-full',
-          v.side === 'left' ? 'justify-end' : 'justify-start',
-          v.valign === 'bottom' ? 'items-end' : 'items-start')}>
-          {orb}
-        </div>
       )}
+      {orb}
       {/* 量高度用（同卡片结构）：不可见、不占位。悬停期间一直挂着 —— 展开时不卸载，
           免得「卸载测量块 + 挂真卡片 + 窗口 resize」三件事挤在同一帧 */}
       {hover && (
