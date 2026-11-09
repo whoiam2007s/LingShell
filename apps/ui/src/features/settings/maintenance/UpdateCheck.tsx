@@ -3,6 +3,9 @@ import { tr, type UpdateStatus } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { Section, Row, BTN2 } from '../ui.js'
 
+// 手动下载地址：发布页（更新源是自建 mirror 时这里仍指向官方发布页，作为最后的兜底）
+const RELEASE_PAGE = 'https://github.com/whoiam2007s/LingShell/releases/latest'
+
 const TEXT: Record<UpdateStatus['state'], (s: UpdateStatus) => string> = {
   disabled: () => tr('未配置更新源'),
   checking: () => tr('正在检查更新…'),
@@ -44,7 +47,14 @@ export function UpdateCheck() {
           </button>
         )}
         {st && st.state !== 'disabled' && st.state !== 'downloaded' && (
-          <button onClick={check} disabled={busy} className={BTN2}>{tr('检查更新')}</button>
+          <button onClick={check} disabled={busy} className={BTN2}>{st.state === 'error' ? tr('重试') : tr('检查更新')}</button>
+        )}
+        {/* 下载失败（网络/代理/签名校验）时不能只让人卡在这里：给一条自己下载安装的路 */}
+        {st?.state === 'error' && (
+          <button data-update-manual onClick={() => {
+            // 渲染层 window.open 会被主进程拦下、交给系统浏览器打开（见 desktop/index.ts 的 setWindowOpenHandler）
+            window.open(RELEASE_PAGE, '_blank', 'noopener')
+          }} title={tr('打开发布页，自己下载安装包手动安装')} className={BTN2}>{tr('手动下载')}</button>
         )}
       </Row>
       {installErr && <div className="px-3.5 pb-2 text-[11.5px] text-[var(--color-danger)]">{installErr}</div>}
