@@ -26,6 +26,7 @@ const SAMPLE: Record<ContextKind, { name: string; text: string }> = {
   fw: { name: 'prod-web-01', text: 'ufw 已启用 · 放行 22/80/443' },
   table: { name: '表格', text: '| id | name |\n| 1 | 张三 |' },
   probe: { name: '连通性探测', text: 'web01 → db01:3306 通 · web01 → api:443 超时' },
+  audit: { name: '执行记录 · 3', text: '共 3 条：file_delete 1、process_kill 1、read_allowed 1' },
 }
 
 describe('上下文类型守门测试', () => {

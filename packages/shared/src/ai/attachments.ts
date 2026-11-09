@@ -139,8 +139,8 @@ export const multimodalDefault = (_provider: string, model: string): boolean => 
 
 // ── 上下文标签（@ 引用终端 / 主机 / 历史会话、`!命令` 的终端块）────────────
 // 发给模型时追加在用户原话之后、路径块之前，形如 <context type="terminal" name="本地 1">…</context>；回放时解析回标签
-export type ContextKind = 'terminal' | 'host' | 'session' | 'shell' | 'git' | 'container' | 'history' | 'ports' | 'k8s' | 'alert' | 'check' | 'proc' | 'svc' | 'sql' | 'log' | 'disk' | 'fw' | 'table' | 'probe'
-export const CONTEXT_KINDS: ContextKind[] = ['terminal', 'host', 'session', 'shell', 'git', 'container', 'history', 'ports', 'k8s', 'alert', 'check', 'proc', 'svc', 'sql', 'log', 'disk', 'fw', 'table', 'probe']
+export type ContextKind = 'terminal' | 'host' | 'session' | 'shell' | 'git' | 'container' | 'history' | 'ports' | 'k8s' | 'alert' | 'check' | 'proc' | 'svc' | 'sql' | 'log' | 'disk' | 'fw' | 'table' | 'probe' | 'audit'
+export const CONTEXT_KINDS: ContextKind[] = ['terminal', 'host', 'session', 'shell', 'git', 'container', 'history', 'ports', 'k8s', 'alert', 'check', 'proc', 'svc', 'sql', 'log', 'disk', 'fw', 'table', 'probe', 'audit']
 export interface ContextAttachment { kind: 'context'; ctx: ContextKind; name: string; text: string }
 export const CONTEXT_MAX_CHARS = 12000
 

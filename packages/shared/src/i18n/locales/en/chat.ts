@@ -668,4 +668,13 @@ export const chat: Record<string, string> = {
   '这段输出说明什么？': 'What does this output tell me?',
   '这条命令的输出说明什么？有问题吗': 'What does this command output tell me? Is anything wrong',
   '共 {n} 字，发送时全文给 AI': '{n} characters in total; the full text is sent to the AI',
+  '全部会话': 'All sessions',
+  '本会话': 'This session',
+  '只看危险': 'Risky only',
+  '只看今天': 'Today only',
+  '所有主机': 'All hosts',
+  '当前筛选条件下没有记录': 'No records match the current filters',
+  '让 AI 复盘': 'Let AI review',
+  '把当前筛选出的执行记录汇总后挂到对话（不自动发送）': 'Summarize the filtered execution records as a context chip in the chat (not sent automatically)',
+  '帮我复盘：这些操作里有风险的吗？有没有该回滚 / 该补授权的': 'Review these operations for me: any risky ones, anything that should be rolled back or needs tighter authorization',
 }
