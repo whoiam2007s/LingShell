@@ -645,4 +645,12 @@ export const chat: Record<string, string> = {
   '最近的会话（{n} 条）': 'Recent sessions ({n})',
   '这个进程是干什么的？占这么多资源正常吗、要不要处理': 'What is this process doing? Is that much CPU/memory normal, and should I do anything about it',
   '这个服务为什么起不来 / 有哪些隐患？怎么查怎么修': 'Why does this service fail to start / what risks does it have? How do I diagnose and fix it',
+  '已挂到输入框上方': 'Added as a context chip above the input',
+  '日志统计': 'Log summary',
+  '这个日志模式通常意味着什么？怎么确认、怎么修': 'What does this log pattern usually mean? How do I confirm and fix it',
+  '这几行日志说明什么？最可能的原因和下一步怎么查': 'What do these log lines tell me? Most likely cause and what to check next',
+  '这条 SQL 在做什么？执行计划说明慢在哪、怎么优化': 'What does this SQL do? What does the plan say about why it is slow, and how can I optimize it',
+  '这段时间的日志有什么异常趋势？先看哪几条': 'Any abnormal trends in this time range? Which lines should I look at first',
+  '这段脚本有哪些风险？能直接执行吗，需要改什么': 'What are the risks in this script? Can I run it as is, and what needs changing',
+  '脚本': 'Script',
 }

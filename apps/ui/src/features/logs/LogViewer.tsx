@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as RMouseEvent } from 'react'
 import { ArrowDownToLine, BarChart3, Copy, Download, Eraser, Maximize2, Minimize2, Minus, MessageSquareQuote, Pause, Play, Plus, RotateCw, ScrollText, X, Layers } from 'lucide-react'
 import {
-  LOG_COMMON_PATHS, LogInsight, fmtLogClock, tr, dateLocale, logSourceLabel, logSupported, redactSecrets, mergeSearchResults, LOG_SEARCH_RAW_MAX,
+  LOG_COMMON_PATHS, LogInsight, fmtLogClock, tr, dateLocale, logSourceLabel, logSupported, mergeSearchResults, LOG_SEARCH_RAW_MAX,
   type LogSource, type TerminalInfo, type MultiLogTarget, type LogSearchQuery, type LogSearchHostResult, type MultiLogHostState,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { paletteSend } from '../../lib/paletteBus.js'
 import { Select } from '../../components/ui/Select.js'
 import { themeOf, useTermPrefs } from '../../lib/termPrefs.js'
@@ -315,11 +315,15 @@ function LogTab({ spec, host, hidden }: { spec: LogTabSpec; host: string; hidden
   const flash = (t: string) => { setNote(t); setTimeout(() => setNote(''), 2000) }
   const copySel = () => navigator.clipboard.writeText(selText()).then(() => flash(tr('已复制 {n} 行', { n: sel.size })), () => flash(tr('复制失败')))
   // 问 AI：选中行 + 来源放进对话输入框（不自动发）；「发给 AI 前脱敏」开着就先按样式脱敏
+  // 问 AI：选中的行挂成「日志」chip（不自动发送）
   const ask = async () => {
     const text = selText()
-    const s = await client.settings.get().catch(() => undefined)
-    quoteToChat(logQuote(logSourceLabel(spec.src), host, s?.system?.aiRedact === false ? text : redactSecrets(text)))
-    flash(tr('已放入对话输入框'))
+    void askAiChip({
+      ctx: 'log', name: `${logSourceLabel(spec.src)} · ${tr('{n} 行', { n: sel.size })}`,
+      text: logQuote(logSourceLabel(spec.src), host, text),
+      question: tr('这几行日志说明什么？最可能的原因和下一步怎么查'),
+    })
+    flash(tr('已挂到输入框上方'))
   }
   // 导出当前显示的内容（过滤「只看匹配行」时只导出匹配行）
   const exportTxt = () => {

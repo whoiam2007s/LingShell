@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Filter, MessageSquareQuote, Sparkles, X } from 'lucide-react'
 import { buildHistogram, buildLogDigest, fmtLogClock, fmtStep, patternQuote, redactSecrets, LEVEL_LABEL, tk, tr, dateLocale, type LogInsight, type LogLevel, type LogPattern } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
-import { sendToChat } from '../../lib/sendToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Select } from '../../components/ui/Select.js'
 
 // 日志「洞察」侧栏：同类归并 Top 模式 / 时间分布柱状图 / 「这段时间发生了什么」发给 AI。
@@ -53,13 +52,21 @@ export function LogInsightPanel({ insight, source, host, fp, onFp, range, onRang
     if (!r) return
     const red = await aiRedact()
     const inRange = metas.filter((m) => m.t >= r.from && m.t < r.to)
-    sendToChat(buildLogDigest({ source, host, from: r.from, to: r.to, metas: inRange, patterns: insight.top(1e9, r), redact: red }))
-    flash(tr('已把这段时间的统计发给 AI'))
+    void askAiChip({
+      ctx: 'log', name: `${source} · ${tr('日志统计')}`,
+      text: buildLogDigest({ source, host, from: r.from, to: r.to, metas: inRange, patterns: insight.top(1e9, r), redact: red }),
+      question: tr('这段时间的日志有什么异常趋势？先看哪几条'),
+    })
+    flash(tr('已挂到输入框上方'))
   }
   const ask = async (p: LogPattern) => {
     const red = await aiRedact()
-    quoteToChat(red(patternQuote(source, host, p, samples(p.fp))))
-    flash(tr('已放入对话输入框'))
+    void askAiChip({
+      ctx: 'log', name: (p.sample || p.fp).slice(0, 40),
+      text: red(patternQuote(source, host, p, samples(p.fp))),
+      question: tr('这个日志模式通常意味着什么？怎么确认、怎么修'),
+    })
+    flash(tr('已挂到输入框上方'))
   }
 
   return (

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { History, Loader2, MessageSquareQuote, Play, ScanSearch, Trash2 } from 'lucide-react'
-import { DB_PAGE_SIZE, dateLocale, explainPrompt, guessTableName, redactSecrets, tr, type DbConn, type DbExplainResult, type DbQueryResult } from '@lingshell/shared'
+import { DB_PAGE_SIZE, dateLocale, explainPrompt, guessTableName, tr, type DbConn, type DbExplainResult, type DbQueryResult } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { sendToChat } from '../../lib/sendToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { HlTextarea } from './HlTextarea.js'
 import { Select } from '../../components/ui/Select.js'
 import { BTN, MUTED, PRIMARY, errText } from '../../components/ui/drawer.js'
@@ -64,11 +64,11 @@ export function QueryPanel({ conn, db, version, sql, setSql, autoRun, onClose }:
     ran.current = autoRun.n
     if (autoRun.mode === 'explain') explain(); else run()
   }, [autoRun.n])
+  // 「让 AI 解读」：挂一个 SQL chip（SQL + 执行计划），问题预填在输入框，不自动发送
   const askAi = async () => {
     if (!plan) return
-    const s = await client.settings.get().catch(() => undefined)
     const text = explainPrompt({ kind: conn.kind, conn: conn.name, version, sql: plan.sql, plan: plan.text })
-    sendToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'sql', name: `${conn.name} · SQL`, text, question: tr('这条 SQL 在做什么？执行计划说明慢在哪、怎么优化') })
     onClose()
   }
   return (

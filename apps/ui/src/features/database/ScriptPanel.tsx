@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileUp, Info, Loader2, MessageSquareQuote, Play, ScanSearch, XCircle } from 'lucide-react'
-import { DB_KIND_LABEL, DB_SCRIPT_MAX, checkScript, guessTableName, parseScriptOutput, redactSecrets, scriptIsReadonly, scriptReviewPrompt, tk, tr, type DbConn, type DbScriptResult, type ScriptCheck, type ScriptFinding } from '@lingshell/shared'
+import { DB_KIND_LABEL, DB_SCRIPT_MAX, checkScript, guessTableName, parseScriptOutput, scriptIsReadonly, scriptReviewPrompt, tk, tr, type DbConn, type DbScriptResult, type ScriptCheck, type ScriptFinding } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { sendToChat } from '../../lib/sendToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Input } from '../../components/ui/Input.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
 import { ConfirmDialog } from '../common/index.js'
@@ -59,11 +59,11 @@ export function ScriptPanel({ conn, db, prod, version, onClose }: { conn: DbConn
     if (f.size > DB_SCRIPT_MAX) { setErr(tr('文件太大（{size}MB，上限 {max}MB）。大的导出文件请在终端里用客户端导入', { size: (f.size / 1024 / 1024).toFixed(1), max: DB_SCRIPT_MAX / 1024 / 1024 })); return }
     f.text().then((t) => { setSrc(t); setChk(undefined); setRes(undefined); setErr('') }, (e) => setErr(errText(e)))
   }
+  // 「让 AI 审查」：挂一个脚本 chip（脚本 + 规则检查结果），问题预填，不自动发送、不自动执行
   const askAi = async () => {
     if (!chk) return
-    const s = await client.settings.get().catch(() => undefined)
     const text = scriptReviewPrompt({ kind: conn.kind, conn: conn.name, version, script: chk.src, check: chk.r })
-    sendToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'sql', name: `${conn.name} · ${tr('脚本')}`, text, question: tr('这段脚本有哪些风险？能直接执行吗，需要改什么') })
     onClose()
   }
   // 每条都是只读语句（同「查询」页签的校验）：不是写操作，直接执行不弹确认
