@@ -5,7 +5,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import { Bot, Square, MessageSquareQuote, ChevronUp, ChevronDown, X, CaseSensitive, Zap, Sparkles, Loader2, AlertTriangle } from 'lucide-react'
+import { Bot, Square, MessageSquareQuote, ChevronUp, ChevronDown, X, CaseSensitive, Zap, Sparkles, Loader2, AlertTriangle, ArrowDown } from 'lucide-react'
 import '@xterm/xterm/css/xterm.css'
 import type { IMarker, IDecoration } from '@xterm/xterm'
 import type { AlertHit, CompletionMatch, PasteCheck, ShellCommand, TerminalInfo } from '@lingshell/shared'
@@ -108,6 +108,8 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
   const cwdRef = useRef<string | undefined>(undefined)
   const insertCmd = useRef<(cmd: string) => void>(() => {})
   const termRef = useRef<Terminal | null>(null)
+  // 内容往上翻了就浮一个「回到底部」按钮（和对话区一致）
+  const [atBottom, setAtBottom] = useState(true)
   const prefs = useTermPrefs()
   // AI 预测下一条命令：提示符后的灰色幽灵字（坐标相对终端区域，h = 行高）；ghostRef 供键盘回调同步读
   const [ghost, setGhost] = useState<{ x: number; y: number; h: number; text: string } | null>(null)
@@ -450,6 +452,10 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
       setQs(items)
     }
     const offQsScroll = term.onScroll(() => setQs(null))   // 内容滚动了，提示位置对不上
+    // 「回到底部」：viewportY 落后于 baseY 就说明用户往上翻着看
+    const syncBottom = () => { const b = term.buffer.active; setAtBottom(b.viewportY >= b.baseY) }
+    const offBottom = term.onScroll(syncBottom)
+    syncBottom()
     const posNow = (): Pos => ({ m: term.registerMarker(0), col: term.buffer.active.cursorX })
     const tracker = new ShellMarkTracker<Pos>({ onCommand: (c) => addCmd(c), onDrop: (p) => p.m.dispose() })
     const offProbe = registerPromptProbe(info.id, () => tracker.promptState().kind)   // 运维手册视图：没见过提示符时先补一个回车
@@ -772,7 +778,7 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
     // fit 改了行列 → 同步给后端 PTY（之前从没接上，PTY 一直停在 80x30）
     term.onResize(({ cols, rows }) => { client.terminal.resize(info.id, cols, rows).catch(() => {}) })
     return () => {
-      offReplay(); offRuler(); offLinks.dispose(); offQsScroll.dispose(); for (const d of alertMarks) d.dispose()
+      offReplay(); offRuler(); offLinks.dispose(); offQsScroll.dispose(); offBottom.dispose(); for (const d of alertMarks) d.dispose()
       clearTimeout(predTimer); aiOffs.forEach((f) => f())
       el.removeEventListener('mousemove', onSelMove); el.removeEventListener('mousedown', onSelDown, true); el.removeEventListener('mouseup', onSelUp, true)
       el.removeEventListener('dragstart', onDragStart); el.removeEventListener('dragend', onDragEnd)
@@ -878,6 +884,12 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
         <div className="h-full py-1.5 pl-4 pr-1.5" style={{ background: themeOf(prefs.theme).background }}>
           <div ref={ref} className="h-full w-full" />
         </div>
+        {!atBottom && (
+          <button data-term-bottom onClick={() => termRef.current?.scrollToBottom()} title={tr('回到底部')}
+            className="absolute bottom-3 right-4 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] text-[var(--color-text-secondary)] shadow-lg transition-colors hover:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)] hover:text-[var(--color-accent)]">
+            <ArrowDown className="h-4 w-4" />
+          </button>
+        )}
         {pasteAsk && (() => {
           const c = pasteAsk.check, multi = /[\r\n]/.test(pasteAsk.text)
           const msg = [
