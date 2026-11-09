@@ -1,7 +1,7 @@
 // 「用量统计」独立弹窗：左侧菜单（总览 / 按日趋势 / 按来源 / 按会话 / 按模型 / 单价设置），右侧内容，顶部时间范围 + 刷新。
 // 自挂载：App 里常驻 <UsageModal />，任何地方 openUsage(view) 打开（标题栏、命令面板、帮助链接、对话头部）。
 import { useEffect, useRef, useState } from 'react'
-import { X, RefreshCw, ChevronRight, LayoutDashboard, CalendarDays, ChartPie, MessagesSquare, Cpu, Coins } from 'lucide-react'
+import { X, RefreshCw, ChevronRight, LayoutDashboard, CalendarDays, ChartPie, MessagesSquare, Cpu, Coins, MessageSquareQuote } from 'lucide-react'
 import { USAGE_RANGES, PROVIDERS, cacheHitRate, fmtTokens, fmtCost, totalTokens, tr, type UsageRange, type UsageSummary, type UsageTotals } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
@@ -9,6 +9,8 @@ import { HelpTip, BTN2 } from '../../components/ui/form.js'
 import { USAGE_VIEWS, USAGE_OPEN_EVENT, SOURCES, fillDays, shares, type UsageView } from './usageData.js'
 import { DailyChart, Donut, BarList, SortTable, totalsCols, PALETTE, type Col } from './charts.js'
 import { PriceEditor, errText } from './PriceEditor.js'
+import { usageDigest } from '@lingshell/shared'
+import { askAiChip } from '../../lib/askAi.js'
 
 const ICONS: Record<UsageView, React.ComponentType<{ className?: string }>> = {
   overview: LayoutDashboard, daily: CalendarDays, source: ChartPie, session: MessagesSquare, model: Cpu, prices: Coins,
@@ -88,6 +90,19 @@ function UsageBody({ initial, onClose, onOpenSession }: { initial: UsageView; on
               </div>
             )}
             {view !== 'prices' && <button onClick={load} title={tr('刷新')} className={cn('flex items-center gap-1 py-1', BTN2)}><RefreshCw className="h-3.5 w-3.5" />{tr('刷新')}</button>}
+            {view !== 'prices' && sum && (
+              <button data-usage-ask onClick={() => {
+                // 「让 AI 看用量」：当前范围 / 当前视图的数字整理成一个 chip，问题预填，不自动发送
+                const note = `${tr(USAGE_RANGES.find((r) => r.id === range)?.label ?? '')}`
+                void askAiChip({
+                  ctx: 'usage', name: `${tr('用量')} · ${note}`,
+                  text: usageDigest({ sum, sessionTitle: (sid: string) => titles.get(sid) }),
+                  question: tr('这些用量正常吗？哪个会话 / 模型在烧钱，怎么省 token'),
+                })
+              }} title={tr('把当前范围的用量汇总挂到对话（不自动发送）')} className={cn('flex items-center gap-1 py-1', BTN2)}>
+                <MessageSquareQuote className="h-3.5 w-3.5" />{tr('让 AI 看用量')}
+              </button>
+            )}
             <button onClick={onClose} title={tr('关闭（Esc）')} className={cn('flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]', view === 'prices' && 'ml-auto')}><X className="h-4 w-4" /></button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">

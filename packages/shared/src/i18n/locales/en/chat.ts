@@ -677,4 +677,8 @@ export const chat: Record<string, string> = {
   '让 AI 复盘': 'Let AI review',
   '把当前筛选出的执行记录汇总后挂到对话（不自动发送）': 'Summarize the filtered execution records as a context chip in the chat (not sent automatically)',
   '帮我复盘：这些操作里有风险的吗？有没有该回滚 / 该补授权的': 'Review these operations for me: any risky ones, anything that should be rolled back or needs tighter authorization',
+  '用量': 'Usage',
+  '让 AI 看用量': 'Let AI review usage',
+  '把当前范围的用量汇总挂到对话（不自动发送）': 'Summarize the current range as a context chip in the chat (not sent automatically)',
+  '这些用量正常吗？哪个会话 / 模型在烧钱，怎么省 token': 'Is this usage normal? Which session or model burns the most, and how can I save tokens',
 }

@@ -27,6 +27,7 @@ const SAMPLE: Record<ContextKind, { name: string; text: string }> = {
   table: { name: '表格', text: '| id | name |\n| 1 | 张三 |' },
   probe: { name: '连通性探测', text: 'web01 → db01:3306 通 · web01 → api:443 超时' },
   audit: { name: '执行记录 · 3', text: '共 3 条：file_delete 1、process_kill 1、read_allowed 1' },
+  usage: { name: '用量 · 7 天', text: '共 10 次请求 · 7500 tokens · 缓存命中 85.7%' },
 }
 
 describe('上下文类型守门测试', () => {
