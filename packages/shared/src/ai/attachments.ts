@@ -144,6 +144,14 @@ export const CONTEXT_KINDS: ContextKind[] = ['terminal', 'host', 'session', 'she
 export interface ContextAttachment { kind: 'context'; ctx: ContextKind; name: string; text: string }
 export const CONTEXT_MAX_CHARS = 12000
 
+// 气泡里只预览前 400 字：一段 1 万多字的输出挂在 chip 上，悬停时会把整屏糊满。
+// 全文照常发给 AI（发送用的是 text 本体），这里只影响展示。
+export const CHIP_PREVIEW_CHARS = 400
+export function chipPreview(text: string): { preview: string; truncated: boolean; chars: number } {
+  const t = text ?? ''
+  return { preview: t.slice(0, CHIP_PREVIEW_CHARS), truncated: t.length > CHIP_PREVIEW_CHARS, chars: t.length }
+}
+
 const ctxName = (s: string) => s.replace(/["\r\n<>]/g, ' ').trim().slice(0, 120)
 const ctxBody = (s: string) => s.replace(/<\/context>/g, '</ context>')
 // 只匹配最后一块；类型白名单从 CONTEXT_KINDS 生成 —— 以前手写成 terminal|host|session|shell，

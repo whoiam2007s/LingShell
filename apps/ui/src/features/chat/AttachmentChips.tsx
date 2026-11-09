@@ -3,7 +3,7 @@
 // 点击打开：图片 → 应用内预览（可缩放、多张左右切换）；文件 → 系统默认程序打开；目录 → 系统资源管理器。
 import { useEffect, useState } from 'react'
 import { FileText, Folder, Image as ImageIcon, Info, X, TerminalSquare, Server, MessageSquare, SquareTerminal, GitBranch, Container, History, EthernetPort, Boxes, TriangleAlert, HeartPulse, Activity, ServerCog, Database, ScrollText, HardDrive, ShieldCheck, Table2, Network } from 'lucide-react'
-import { tr, tk, type MsgAttachment, type ContextKind } from '@lingshell/shared'
+import { chipPreview, tr, tk, type MsgAttachment, type ContextKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { imageSrc, isImageAtt, errMsg, PATH_ONLY_HINT, NO_IMAGE_HINT, type ChipView } from './attachments.js'
 import type { TermBlock } from '../../lib/termBlock.js'
@@ -55,7 +55,8 @@ const CTX_LABEL: Record<ContextKind, string> = {
 function CtxChip({ a, onRemove }: { a: MsgAttachment & { key?: string }; onRemove?: () => void }) {
   const ctx = a.ctx ?? 'terminal'
   const Icon = CTX_ICON[ctx]
-  const tip = (a.text ?? '').length > 1500 ? `${a.text!.slice(0, 1500)}…` : a.text ?? ''
+  const pv = chipPreview(a.text ?? '')
+  const tip = pv.truncated ? `${pv.preview}\n\n…${tr('共 {n} 字，发送时全文给 AI', { n: pv.chars })}` : pv.preview
   return (
     <span data-att-kind="context" data-ctx={ctx} title={`${tr('{label}：{name}', { label: tr(CTX_LABEL[ctx]), name: a.name })}\n\n${tip}`}
       className="group flex h-6 max-w-[260px] items-center gap-1 rounded-md border border-[color:color-mix(in_srgb,var(--color-accent)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_8%,transparent)] pl-1 pr-0.5 text-[11.5px] text-[var(--color-text-secondary)]">

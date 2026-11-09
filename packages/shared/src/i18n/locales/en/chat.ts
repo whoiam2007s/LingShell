@@ -667,4 +667,5 @@ export const chat: Record<string, string> = {
   '这几处配置差异会造成什么影响？哪边是对的、该怎么改': 'What do these config differences cause? Which side is correct, and what should change',
   '这段输出说明什么？': 'What does this output tell me?',
   '这条命令的输出说明什么？有问题吗': 'What does this command output tell me? Is anything wrong',
+  '共 {n} 字，发送时全文给 AI': '{n} characters in total; the full text is sent to the AI',
 }
