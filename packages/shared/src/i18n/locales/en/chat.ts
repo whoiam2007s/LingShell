@@ -653,4 +653,9 @@ export const chat: Record<string, string> = {
   '这段时间的日志有什么异常趋势？先看哪几条': 'Any abnormal trends in this time range? Which lines should I look at first',
   '这段脚本有哪些风险？能直接执行吗，需要改什么': 'What are the risks in this script? Can I run it as is, and what needs changing',
   '脚本': 'Script',
+  '声音提醒': 'Sound alerts',
+  '任务完成 / 等你确认时各响一种音': 'One chime for completion, another when it needs you',
+  '两种声音区分场景：任务跑完是两声上行；等你确认、等你审批计划、等你回答问题（授权卡 / 计划卡 / 提问卡）是三声短促。同一种音 2 秒内只响一次。关掉后完全静音，不影响系统通知。': 'Two different sounds: a rising two-note chime when a turn finishes; three short notes when it is waiting for you (approval card / plan card / question card). The same cue plays at most once every 2 seconds. Turning this off mutes the app entirely (system notifications still work).',
+  '系统提示': 'System notifications',
+  '任务完成、等你授权 / 审批计划 / 回答提问时弹系统通知（窗口在前台不打扰）。关掉后仍会闪任务栏，只是不弹通知；「AI 完成时通知」是它下面的更细开关。': 'Show system notifications when a turn finishes or when it is waiting for your approval / plan review / answer (nothing pops while the window is focused). Turning this off still flashes the taskbar, just without a notification; "Notify when AI finishes" below is the finer-grained switch for completion only.',
 }

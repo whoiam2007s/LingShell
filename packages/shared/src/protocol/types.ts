@@ -332,6 +332,10 @@ export interface SystemSettings {
   terminalFailHint?: boolean
   // AI 一轮跑完 / 出错且窗口不在前台时发系统通知（用户主动停止的不发）。缺省开
   aiDoneNotify?: boolean
+  // 声音提醒：任务完成 / 等待你确认或交互时各响一种提示音（默认开，可单独关掉）
+  notifySound?: boolean
+  // 系统提示：任务完成 / 等待你确认或交互时弹系统通知（默认开，可单独关掉）
+  notifyDesktop?: boolean
   // 命令放行 / 询问 / 禁止规则（AI 执行终端命令时先按它判定，先匹配先生效），见 commandRules.ts
   commandRules: import('../ai/index.js').CommandRule[]
   // AI 一轮里第一次对某台 Linux SSH 主机做改动前后各拍一次轻量快照，回合末显示「本轮主机变化」（见 hostProfile.ts）。缺省开

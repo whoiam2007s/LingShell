@@ -19,6 +19,7 @@ import type { TurnTimes, SessionMeta } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
 import { SessionTabs } from './SessionTabs.js'
 import { TABS_KEY, closeTab, cycleTab, openTab, restoreTabs } from './sessionTabsModel.js'
+import { cueOf, playCue } from '../../lib/sound.js'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
@@ -142,6 +143,33 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [tabs.join('|'), onOpenSession])
+
+  // ── 提示音：完成一种、等你处理一种（开关在设置里，见 lib/sound.ts）──────
+  const prevBusy = useRef(busy)
+  useEffect(() => {
+    const was = prevBusy.current
+    prevBusy.current = busy
+    if (!was || busy) return
+    // 这一轮里最后一条要是「失败」，就不算正常完成，不响
+    const last = items[items.length - 1]
+    const failed = !!last && last.status === 'failed'
+    const cue = cueOf({ turnEnded: !failed })
+    if (cue) void playCue(cue)
+  }, [busy])
+  // 新冒出来的授权卡 / 计划审批 / 提问卡：响「等你处理」；处理完的从集合里移除
+  const awaiting = useMemo(
+    () => items.filter((it) => (it.kind === 'auth_request' || it.kind === 'plan_request' || it.kind === 'ask_request') && it.status === 'in_progress').map((it) => it.itemId),
+    [items],
+  )
+  const seenAwait = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const now = new Set(awaiting)
+    let fresh = false
+    for (const id of now) if (!seenAwait.current.has(id)) { fresh = true; break }
+    for (const id of [...seenAwait.current]) if (!now.has(id)) seenAwait.current.delete(id)
+    for (const id of now) seenAwait.current.add(id)
+    if (fresh) void playCue('wait')
+  }, [awaiting.join('|')])
 
   // ── 只渲染尾部窗口 ────────────────────────────────────
   // 历史重放会一次灌进几千条 item（旧会话实测 60 万条事件），全量渲染 markdown 直接卡死。
