@@ -41,6 +41,11 @@ export function AiSecuritySettings() {
           tip={tr('任务完成、等你授权 / 审批计划 / 回答提问时弹系统通知（窗口在前台不打扰）。关掉后仍会闪任务栏，只是不弹通知；「AI 完成时通知」是它下面的更细开关。')}>
           <Switch checked={sys.notifyDesktop ?? true} onCheckedChange={(v) => set({ notifyDesktop: v })} />
         </Row>
+        <Row label={tr('单会话花费提醒')} hint={tr('元，0 = 不提醒')}
+          tip={tr('本会话累计花费超过这个金额时，聊天头部的花费数字标黄（到 80% 先变淡黄）——只提醒，不会中断任务，也不拦你继续发消息。花费按「设置 → 用量 → 单价」估算，没填单价时算不出来、也不提醒。')}>
+          <NumberInput className="w-24" value={sys.costWarnYuan ?? 0} min={0} max={10000} step={0.5}
+            onChange={(n) => set({ costWarnYuan: n })} />
+        </Row>
         <Row label={tr('AI 变更前后自动拍快照')} hint={tr('回合末显示「本轮主机变化」')}
           tip={tr('AI 在一轮里第一次对某台 Linux SSH 主机执行改动类命令 / 写文件前，先只读采一次端口、失败服务、容器和关键配置文件（限时 10 秒，失败不影响执行）；这一轮结束再采一次，有变化就在回复末尾显示「本轮主机变化」。只读命令（cat / ls / grep 等）不触发。快照也存进该主机的「主机体检」档案。')}>
           <Switch checked={sys.aiChangeSnapshot ?? true} onCheckedChange={(v) => set({ aiChangeSnapshot: v })} />

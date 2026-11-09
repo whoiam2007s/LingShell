@@ -336,6 +336,8 @@ export interface SystemSettings {
   notifySound?: boolean
   // 系统提示：任务完成 / 等待你确认或交互时弹系统通知（默认开，可单独关掉）
   notifyDesktop?: boolean
+  // 单会话花费提醒：本会话花费超过这个金额（元）时，聊天头部的花费标黄（只提示，不中断）。0 = 不提醒
+  costWarnYuan?: number
   // 命令放行 / 询问 / 禁止规则（AI 执行终端命令时先按它判定，先匹配先生效），见 commandRules.ts
   commandRules: import('../ai/index.js').CommandRule[]
   // AI 一轮里第一次对某台 Linux SSH 主机做改动前后各拍一次轻量快照，回合末显示「本轮主机变化」（见 hostProfile.ts）。缺省开

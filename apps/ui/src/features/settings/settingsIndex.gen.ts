@@ -297,6 +297,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "ai",
   "kind": "row",
+  "label": "单会话花费提醒",
+  "section": "AI 执行",
+  "hint": "元，0 = 不提醒",
+  "tip": "本会话累计花费超过这个金额时，聊天头部的花费数字标黄（到 80% 先变淡黄）——只提醒，不会中断任务，也不拦你继续发消息。花费按「设置 → 用量 → 单价」估算，没填单价时算不出来、也不提醒。"
+ },
+ {
+  "tab": "ai",
+  "kind": "row",
   "label": "AI 变更前后自动拍快照",
   "section": "AI 执行",
   "hint": "回合末显示「本轮主机变化」",

@@ -124,6 +124,13 @@ export function sessionUsage(records: UsageRecord[], prices: UsagePrices, sessio
   return t
 }
 
+/** 花费相对阈值的档位：没设阈值（<=0）恒为 ok；到 80% 算 warn，超过算 over */
+export const costLevel = (cost: number | undefined, threshold: number | undefined): 'ok' | 'warn' | 'over' => {
+  if (!threshold || threshold <= 0 || cost === undefined) return 'ok'
+  if (cost >= threshold) return 'over'
+  return cost >= threshold * 0.8 ? 'warn' : 'ok'
+}
+
 /** 12345 → 12.3k；1234567 → 1.23M */
 export function fmtTokens(n: number): string {
   if (n < 1000) return String(n)

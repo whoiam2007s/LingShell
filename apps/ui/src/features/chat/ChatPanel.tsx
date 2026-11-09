@@ -23,7 +23,7 @@ import { cueOf, playCue } from '../../lib/sound.js'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
-import { conversationToMarkdown, buildSessionReport, fmtTokens, fmtCost, totalTokens, cacheHitRate, USAGE_PRICES_EVENT, type UsageTotals, type UsageCurrency } from '@lingshell/shared'
+import { conversationToMarkdown, buildSessionReport, fmtTokens, fmtCost, totalTokens, cacheHitRate, costLevel, USAGE_PRICES_EVENT, type UsageTotals, type UsageCurrency } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { TemplatePicker } from './TemplatePicker.js'
 import { RunbookPicker } from '../runbooks/index.js'
@@ -1047,6 +1047,16 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
     const t = setTimeout(() => setNote(undefined), 5000)
     return () => clearTimeout(t)
   }, [note, compacting])
+  // 会话花费提醒阈值（设置里填的元；0=不提醒）。改设置后立刻生效
+  const [threshold, setThreshold] = useState(0)
+  useEffect(() => {
+    let alive = true
+    const load = () => client.settings.get().then((x) => { if (alive) setThreshold(x.system?.costWarnYuan ?? 0) }, () => {})
+    void load()
+    window.addEventListener(USAGE_PRICES_EVENT, load)
+    return () => { alive = false; window.removeEventListener(USAGE_PRICES_EVENT, load) }
+  }, [])
+  const lvl = costLevel(t?.cost, threshold)
   const tick = usage?.inputTokens ?? 0
   useEffect(() => {
     const on = () => setPriceTick((n) => n + 1)
@@ -1071,12 +1081,19 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
       n: t.requests, total: fmtTokens(totalTokens(t)), input: t.input.toLocaleString(), cache: t.cacheRead.toLocaleString(),
       rate: (cacheHitRate(t) * 100).toFixed(1), output: t.output.toLocaleString(), cost: fmtCost(t.cost, t.currency),
     }),
+    lvl !== 'ok' && t?.cost !== undefined ? tr('本会话已花 {cost}，超过你设的提醒阈值 {limit}（只提醒，不会中断任务；可在 设置 → AI 与安全 调整）', { cost: fmtCost(t.cost, t.currency), limit: `¥${threshold}` }) : '',
     tr('点击立即压缩上下文（把较早的对话压成摘要，最近一轮原文会保留）'),
   ].filter(Boolean).join('\n\n')
   return (
     <button data-usage-chip onClick={doCompact} disabled={compacting} title={tip}
       className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] tabular-nums text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-secondary)]">
       {t?.requests ? <span>{fmtTokens(totalTokens(t))}</span> : null}
+      {t?.cost !== undefined && (
+        <span data-usage-cost={lvl}
+          className={lvl === 'over' ? 'font-medium text-[var(--color-warn)]' : lvl === 'warn' ? 'text-[var(--color-warn)]' : ''}>
+          {fmtCost(t.cost, t.currency)}
+        </span>
+      )}
       {pct !== undefined && (
         <>
           {/* 圆弧：从 12 点钟顺时针走 pct% */}
