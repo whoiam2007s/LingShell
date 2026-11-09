@@ -15,8 +15,10 @@ import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
-import type { TurnTimes } from '@lingshell/shared'
+import type { TurnTimes, SessionMeta } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
+import { SessionTabs } from './SessionTabs.js'
+import { TABS_KEY, closeTab, cycleTab, openTab, restoreTabs } from './sessionTabsModel.js'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
@@ -55,9 +57,10 @@ import { usePreview, PreviewBanner, PreviewPlanCard, previewPlanOfTurn } from '.
 const log = logger.scope('chat')
 
 // 受控对话面板：会话生命周期（创建/重连/选择/phase）由 App 管，这里只按 activeSessionId 渲染对话流。
-export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession }: {
+export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession }: {
   onBack?: () => void          // 错误态「返回上一个会话」（没有可回的会话时不传）
   onOpenSession?: (id: string) => Promise<void>   // 切到某会话（分叉出的新会话：刷新列表并打开）
+  sessions?: SessionMeta[]     // 会话列表（标签栏「…」下拉里取最近 10 条）
   activeSessionId: string
   sessionPhase: SessionPhase
   sessionTitle?: string
@@ -88,6 +91,57 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDig
   const prevSidRef = useRef(activeSessionId)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  // ── 会话标签栏：多任务在几个会话间来回切 ────────────────────────────────
+  // tabs 只存 id（持久化到 localStorage），当前会话永远在里面；关闭标签不删会话。
+  const [tabs, setTabs] = useState<string[]>([])
+  const sessionIds = (sessions ?? []).map((s) => s.id)
+  // 会话列表到齐 / 变化后恢复一次（过滤已删除的会话）
+  useEffect(() => {
+    if (!sessionIds.length) return
+    let raw: unknown = []
+    try { raw = JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]') } catch { raw = [] }
+    setTabs((cur) => {
+      const base = cur.length ? cur : restoreTabs(raw, sessionIds, activeSessionId)
+      return openTab(base, activeSessionId, activeSessionId)
+    })
+  }, [sessionIds.join('|'), activeSessionId])
+  useEffect(() => {
+    if (!tabs.length) return
+    try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)) } catch { /* 存不进去不影响使用 */ }
+  }, [tabs])
+  // 切会话：把新会话加进标签栏，并恢复它上次的滚动位置
+  const scrollMem = useRef<Map<string, number>>(new Map())
+  useEffect(() => {
+    setTabs((cur) => openTab(cur, activeSessionId, activeSessionId))
+    const el = scrollRef.current
+    if (el) el.scrollTop = scrollMem.current.get(activeSessionId) ?? el.scrollTop
+  }, [activeSessionId])
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => { if (sidRef.current) scrollMem.current.set(sidRef.current, el.scrollTop) }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+  // 快捷键：Ctrl+Tab / Ctrl+Shift+Tab 在标签间轮转，Ctrl+1..9 直选
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey) return
+      if (e.key === 'Tab' && tabs.length > 1) {
+        const id = cycleTab(tabs, sidRef.current, e.shiftKey ? -1 : 1)
+        if (id && id !== sidRef.current) { e.preventDefault(); void onOpenSession?.(id) }
+        return
+      }
+      const n = Number(e.key)
+      if (Number.isInteger(n) && n >= 1 && n <= 9 && tabs[n - 1] && tabs[n - 1] !== sidRef.current) {
+        e.preventDefault()
+        void onOpenSession?.(tabs[n - 1])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tabs.join('|'), onOpenSession])
 
   // ── 只渲染尾部窗口 ────────────────────────────────────
   // 历史重放会一次灌进几千条 item（旧会话实测 60 万条事件），全量渲染 markdown 直接卡死。
@@ -550,6 +604,19 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDig
     <div ref={rootRef} tabIndex={-1} data-chat-root className="relative flex h-full flex-col bg-[var(--color-bg-panel)] outline-none">
       {/* 初始化覆盖层 */}
       {sessionPhase.phase !== 'ready' && <Overlay phase={sessionPhase} onOpenSettings={onOpenSettings} onRetry={onRetry} onNew={onNew} onBack={onBack} onOpenHistory={onOpenHistory} />}
+
+      {/* 会话标签栏：多任务切换；当前标签用主题色高亮，溢出收进「…」 */}
+      <SessionTabs
+        sessions={sessions ?? []}
+        activeId={activeSessionId}
+        tabs={tabs}
+        activeBusy={busy}
+        activeAttention={sessionPhase.phase === 'error' ? 'failed' : undefined}
+        onSwitch={(id: string) => { void onOpenSession?.(id) }}
+        onClose={(id: string) => setTabs((cur) => closeTab(cur, id, activeSessionId))}
+        onNew={onNew}
+        onOpenHistory={onOpenHistory}
+      />
 
       {/* 会话 header */}
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}

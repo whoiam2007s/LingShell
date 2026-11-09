@@ -638,4 +638,9 @@ export const chat: Record<string, string> = {
   '这份体检发现的问题（共 {n} 个）分别怎么排查：按严重程度给原因、验证方法和修复命令': 'How should I investigate the {n} problems found here? Give the cause, how to verify it, and the fix command, ordered by severity',
   '把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理': 'Attach the whole health report (redacted) as context and ask the AI what to do',
   '解读这份体检报告：按严重程度列出问题和处理建议；需要在主机上执行命令时先说明目的再执行': 'Interpret this health report: list the problems by severity with recommended actions; explain the purpose before running any command on the host',
+  '{n} 小时前': '{n} hour(s) ago',
+  '从标签栏移除（不会删除会话）': 'Remove from tab bar (does not delete the session)',
+  '全部会话…': 'All sessions…',
+  '最近的会话': 'Recent sessions',
+  '最近的会话（{n} 条）': 'Recent sessions ({n})',
 }

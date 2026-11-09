@@ -349,6 +349,7 @@ function AppShell() {
         <div className="relative h-full min-w-0 flex-1 overflow-hidden">
           <ChatPanel
             activeSessionId={activeId}
+            sessions={sessions}
             sessionPhase={phase}
             sessionTitle={activeTitle}
             seedDigest={activeSeed}
