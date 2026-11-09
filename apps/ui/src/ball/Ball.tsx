@@ -19,6 +19,30 @@ export function Ball() {
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null)
 
+  // 拖动结束的兜底：pointer capture 在窗口被移动时可能丢失，元素上的 pointerup 就收不到了
+  // （表现：松开鼠标后球还一直跟着光标）。这里在窗口级再挂一层，任何松开/取消/失焦都结束拖动。
+  useEffect(() => {
+    const end = (e: PointerEvent) => {
+      const d = drag.current
+      if (!d) return
+      drag.current = null
+      if (d.moved) api()?.send('ball:dragEnd', e.screenX - d.x, e.screenY - d.y)
+    }
+    const cancel = () => {
+      const d = drag.current
+      drag.current = null
+      if (d?.moved) api()?.send('ball:dragEnd', 0, 0)
+    }
+    window.addEventListener('pointerup', end, true)
+    window.addEventListener('pointercancel', cancel, true)
+    window.addEventListener('blur', cancel)
+    return () => {
+      window.removeEventListener('pointerup', end, true)
+      window.removeEventListener('pointercancel', cancel, true)
+      window.removeEventListener('blur', cancel)
+    }
+  }, [])
+
   useEffect(() => {
     const a = api()
     if (!a) return
@@ -52,7 +76,7 @@ export function Ball() {
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     drag.current = { x: e.screenX, y: e.screenY, moved: false }
-    e.currentTarget.setPointerCapture(e.pointerId)
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 拿不到捕获也没关系：窗口级监听兜底 */ }
   }
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current
