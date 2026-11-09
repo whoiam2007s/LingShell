@@ -11,7 +11,7 @@ import type { IMarker, IDecoration } from '@xterm/xterm'
 import type { AlertHit, CompletionMatch, PasteCheck, ShellCommand, TerminalInfo } from '@lingshell/shared'
 import { ShellMarkTracker, adjacentLine, bellAction, cleanOutput, commandQuote, completionInsert, createAlertScanner, createHighlightStream, dangerCheck, fmtDuration, isSecretPrompt, matchCompletions, nlErrorText, onShellMarks, pasteCheck, pasteCheckTitle, readBufferRange, redactSecrets, shouldComplete, stripHidden, termSafeLine, typedBeforeCursor } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
-import { quoteToChat } from '../../../lib/quoteToChat.js'
+import { askAiChip } from '../../../lib/askAi.js'
 import { sendToChat } from '../../../lib/sendToChat.js'
 import { dismissKey, failCommandLabel, shouldOfferFix } from './failHint.js'
 import { PasteConfirmDialog } from '../../../components/PasteConfirm.js'
@@ -980,7 +980,8 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
           <button
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
-              quoteToChat(formatQuote(info.title, ask.text))
+              // 选中输出：挂「终端块」chip，问题预填，不自动发送
+              void askAiChip({ ctx: 'shell', name: info.title, text: formatQuote(info.title, ask.text), question: tr('这段输出说明什么？') })
               termRef.current?.clearSelection(); setAsk(null)
             }}
             style={{ left: ask.x, top: ask.y }}
@@ -1028,7 +1029,11 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
                   }} className={MENU_BTN}>{tr('复制输出')}</button>
                   <button onClick={() => { openTable(c); setMenu(null) }} className={MENU_BTN}>{tr('表格查看')}</button>
                   <button disabled={!line || locked} title={!line ? tr('多行命令不支持重新执行') : undefined} onClick={rerun} className={MENU_BTN}>{tr('重新执行')}</button>
-                  <button onClick={() => { quoteToChat(cmdQuote(info.title, termRef.current, c)); setMenu(null) }} className={MENU_BTN}>{tr('问 AI')}</button>
+                  <button onClick={() => {
+                    // 单条命令：挂「终端块」chip（命令 + 输出），不自动发送
+                    void askAiChip({ ctx: 'shell', name: c.text ? c.text.split('\n')[0].slice(0, 40) : info.title, text: cmdQuote(info.title, termRef.current, c), question: tr('这条命令的输出说明什么？有问题吗') })
+                    setMenu(null)
+                  }} className={MENU_BTN}>{tr('问 AI')}</button>
                   <button data-attach-block title={tr('把这条命令（命令、退出码、目录、输出 ≤8KB）作为「终端块」附件放进对话输入框，可附多块')}
                     onClick={() => { void attachBlock(c); done() }} className={MENU_BTN}>{tr('附加到对话')}</button>
                   <button disabled={!c.text} onClick={() => { paletteSend({ type: 'quickAdd', command: c.text }); setMenu(null) }} className={MENU_BTN}>{tr('存为快速命令')}</button>

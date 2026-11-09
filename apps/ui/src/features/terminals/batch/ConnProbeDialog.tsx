@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2, MonitorDot, Radar, Server, X } from 'lucide-react'
 import {
-  batchGroups, toggleGroup, pickedTargets, parseProbeTargets, cellStatus, cellText, probeMarkdown, runPool, plannedChecks, redactSecrets,
+  batchGroups, toggleGroup, pickedTargets, parseProbeTargets, cellStatus, cellText, probeMarkdown, runPool, plannedChecks,
   PROBE_CHECKS, PROBE_CHECK_LABEL, PROBE_MAX_SOURCES, probeStatusText, tr,
   type BatchGroup, type BatchChoice, type ProbeCheck, type ProbeSourceResult, type ProbeStatus, type ProbeTarget,
 } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { onPalette } from '../../../lib/paletteBus.js'
-import { quoteToChat } from '../../../lib/quoteToChat.js'
+import { askAiChip } from '../../../lib/askAi.js'
 import { cn } from '../../../lib/cn.js'
 import { Checkbox } from '../../../components/ui/Checkbox.js'
 import { HelpTip } from '../../../components/ui/form.js'
@@ -88,9 +88,9 @@ function Body({ preset, onClose }: { preset?: string; onClose: () => void }) {
   const copy = () => navigator.clipboard?.writeText(md()).then(() => note(tr('已复制 Markdown')), () => note(tr('复制失败')))
   // 与其它「问 AI」入口一致：按「发给 AI 前脱敏」处理（URL 里的 ?token= 之类）
   const ask = async () => {
-    const q = `请根据这张连通性探测结果分析哪里不通、可能的原因（防火墙 / 安全组 / DNS / 服务没起），并给出只读的排查步骤：\n\n${md()}`   // i18n-ignore 发给 AI 的话
-    const s = await client.settings.get().catch(() => undefined)
-    quoteToChat(s?.system?.aiRedact === false ? q : redactSecrets(q)); note(tr('已放入对话输入框'))
+    // 问 AI：挂「连通性」chip，问题预填，不自动发送
+    void askAiChip({ ctx: 'probe', name: tr('连通性探测'), text: md(), question: tr('哪里不通？可能的原因（防火墙 / 安全组 / DNS / 服务没起）是什么，给出只读排查步骤') })
+    note(tr('已挂到输入框上方'))
   }
   const toggleCheck = (c: ProbeCheck) => setChecks((cs) => (cs.includes(c) ? cs.filter((x) => x !== c) : PROBE_CHECKS.filter((x) => x === c || cs.includes(x))))
   const selRow = sel && run ? rows[sel.s] : undefined

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Braces, ChevronDown, ChevronRight, Columns3, Copy, MessageSquareQuote, Table2, X } from 'lucide-react'
 import {
-  analyzeOutput, cellNumber, filterRows, isDurationColumn, jsonPath, jsonSearch, redactSecrets, sortRows, tableQuote, toCsv, toMarkdown,
+  analyzeOutput, cellNumber, filterRows, isDurationColumn, jsonPath, jsonSearch, sortRows, tableQuote, toCsv, toMarkdown,
   tr, tk, type OutTable, type TableMode,
 } from '@lingshell/shared'
-import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Input } from '../../components/ui/Input.js'
 import { Select } from '../../components/ui/Select.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
@@ -46,9 +45,9 @@ function TableDialog({ src, onClose }: { src: TableSource; onClose: () => void }
   }, [onClose])
   const flash = (t: string) => { setNote(t); setTimeout(() => setNote((n) => (n === t ? '' : n)), 2000) }
   const copy = (text: string, what: string) => navigator.clipboard.writeText(text).then(() => flash(tr('已复制 {what}', { what })), () => flash(tr('复制失败')))
+  // 问 AI：挂「表格」chip，不自动发送
   const ask = async (text: string) => {
-    const s = await client.settings.get().catch(() => undefined)
-    quoteToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'table', name: tr('表格'), text, question: tr('这张表里有什么值得注意的？') })
     onClose()
   }
   const isJson = view.kind === 'json'

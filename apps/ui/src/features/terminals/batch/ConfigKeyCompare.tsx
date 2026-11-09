@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Eye, EyeOff, Loader2, MessageSquareQuote } from 'lucide-react'
 import {
-  CONFIG_FORMATS, DIFF_STATUS_LABEL, MASK, configDiffQuote, detectConfigFormat, diffConfigs, diffCounts, redactSecrets, tr, tryFlatten,
+  CONFIG_FORMATS, DIFF_STATUS_LABEL, MASK, configDiffQuote, detectConfigFormat, diffConfigs, diffCounts, tr, tryFlatten,
   type CompareChoice, type ConfigDiffRow, type ConfigFormat, type DiffStatus,
 } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
-import { quoteToChat } from '../../../lib/quoteToChat.js'
+import { askAiChip } from '../../../lib/askAi.js'
 import { Select } from '../../../components/ui/Select.js'
 import { Input } from '../../../components/ui/Input.js'
 import { Checkbox } from '../../../components/ui/Checkbox.js'
@@ -62,11 +62,11 @@ export function ConfigKeyCompare({ choices, onClose }: { choices: CompareChoice[
 
   const counts = res && diffCounts(res.rows)
   const rows = useMemo(() => (res?.rows ?? []).filter((r) => (!onlyDiff || r.status !== 'same') && (!q || r.key.toLowerCase().includes(q.toLowerCase()))), [res, onlyDiff, q])
+  // 问 AI：挂「主机」chip（两端配置差异），问题预填，不自动发送
   const ask = async () => {
     if (!res) return
-    const s = await client.settings.get().catch(() => undefined)
     const t = configDiffQuote(res.rows, res.a, res.b)
-    quoteToChat(s?.system?.aiRedact === false ? t : redactSecrets(t))
+    void askAiChip({ ctx: 'host', name: `${res.a} ↔ ${res.b}`, text: t, question: tr('这几处配置差异会造成什么影响？哪边是对的、该怎么改') })
     onClose()
   }
   const val = (r: ConfigDiffRow, v: string | undefined) => {

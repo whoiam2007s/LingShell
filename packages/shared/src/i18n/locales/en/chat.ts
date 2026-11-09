@@ -658,4 +658,13 @@ export const chat: Record<string, string> = {
   '两种声音区分场景：任务跑完是两声上行；等你确认、等你审批计划、等你回答问题（授权卡 / 计划卡 / 提问卡）是三声短促。同一种音 2 秒内只响一次。关掉后完全静音，不影响系统通知。': 'Two different sounds: a rising two-note chime when a turn finishes; three short notes when it is waiting for you (approval card / plan card / question card). The same cue plays at most once every 2 seconds. Turning this off mutes the app entirely (system notifications still work).',
   '系统提示': 'System notifications',
   '任务完成、等你授权 / 审批计划 / 回答提问时弹系统通知（窗口在前台不打扰）。关掉后仍会闪任务栏，只是不弹通知；「AI 完成时通知」是它下面的更细开关。': 'Show system notifications when a turn finishes or when it is waiting for your approval / plan review / answer (nothing pops while the window is focused). Turning this off still flashes the taskbar, just without a notification; "Notify when AI finishes" below is the finer-grained switch for completion only.',
+  '连通性': 'Connectivity',
+  '磁盘空间都去哪了？哪些能安全清理': 'Where did the disk space go, and what can I safely clean up',
+  '这些防火墙规则有问题吗？端口该开的开了、该关的关了吗': 'Are these firewall rules OK? Are the right ports open and the rest closed',
+  '这张表里有什么值得注意的？': 'Anything noteworthy in this table?',
+  '哪里不通？可能的原因（防火墙 / 安全组 / DNS / 服务没起）是什么，给出只读排查步骤': 'Which hop fails? What are the likely causes (firewall / security group / DNS / service not running), and give me read-only troubleshooting steps',
+  '这条告警说明什么问题？怎么查、怎么修': 'What does this alert indicate? How do I diagnose and fix it',
+  '这几处配置差异会造成什么影响？哪边是对的、该怎么改': 'What do these config differences cause? Which side is correct, and what should change',
+  '这段输出说明什么？': 'What does this output tell me?',
+  '这条命令的输出说明什么？有问题吗': 'What does this command output tell me? Is anything wrong',
 }

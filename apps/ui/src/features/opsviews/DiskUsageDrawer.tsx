@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowUp, File as FileIcon, Folder, FolderOpen, HardDrive, MessageSquareQuote } from 'lucide-react'
 import {
-  bashPath, diskLinuxOnly, diskQuote, diskSupported, formatSize, redactSecrets, tk, tr,
+  bashPath, diskLinuxOnly, diskQuote, diskSupported, formatSize, tk, tr,
   type DiskBigFiles, type DiskCommon, type DiskDeleted, type DiskLevel, type FsScope, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Input } from '../../components/ui/Input.js'
 import { HelpTip } from '../../components/ui/form.js'
 import { getTermCwd } from '../../lib/termCwd.js'
@@ -73,10 +73,10 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
   }
   const go = (p: string) => { setPath(p); setDraft(p); setTab('dirs') }
 
+  // 问 AI：挂「磁盘」chip，问题预填，不自动发送
   const ask = async () => {
-    const s = await client.settings.get().catch(() => undefined)
     const text = diskQuote({ host: term?.title ?? '', level, big, common, deleted, fmt: formatSize })
-    quoteToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'disk', name: term?.title ?? tr('磁盘'), text, question: tr('磁盘空间都去哪了？哪些能安全清理') })
     onClose()
   }
 
