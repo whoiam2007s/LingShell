@@ -643,4 +643,6 @@ export const chat: Record<string, string> = {
   '全部会话…': 'All sessions…',
   '最近的会话': 'Recent sessions',
   '最近的会话（{n} 条）': 'Recent sessions ({n})',
+  '这个进程是干什么的？占这么多资源正常吗、要不要处理': 'What is this process doing? Is that much CPU/memory normal, and should I do anything about it',
+  '这个服务为什么起不来 / 有哪些隐患？怎么查怎么修': 'Why does this service fail to start / what risks does it have? How do I diagnose and fix it',
 }

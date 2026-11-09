@@ -126,6 +126,20 @@ export function svcQuote(host: string, r: SvcRow, status: string): string {
   return `终端「${host}」所在主机上的 systemd 服务 ${r.name}${r.description ? `（${r.description}）` : ''}：\n${facts}\nsystemctl status 与最近日志：\n${fence}\n${status.trim().slice(-8000)}\n${fence}\n`   // i18n-ignore 发给 AI 的话
 }
 
+/** 「问 AI」的上下文 chip：名字 = 服务名，全文 = 状态字段 + status 尾部 */
+export function svcChip(host: string, r: SvcRow, status: string): { name: string; text: string } {
+  const auto = svcAutostart(r)
+  const facts = [`运行状态 ${r.active}${r.sub ? `（${r.sub}）` : ''}`, r.load ? `加载 ${r.load}` : '', r.enabled ? `开机自启 ${r.enabled}${auto === undefined ? '' : auto ? '（是）' : '（否）'}` : ''].filter(Boolean).join(' · ')   // i18n-ignore 发给 AI 的话
+  const text = [
+    '【服务】',   // i18n-ignore 发给 AI 的话
+    `终端「${host}」所在主机上的 systemd 服务 ${r.name}${r.description ? `（${r.description}）` : ''}：`,   // i18n-ignore 发给 AI 的话
+    facts,
+    `systemctl status 与最近日志：\n\`\`\`\n${status.trim().slice(-8000)}\n\`\`\``,   // i18n-ignore 发给 AI 的话
+    '说明：这是服务面板里的信息，不是命令输出。',   // i18n-ignore 发给 AI 的话
+  ].join('\n')
+  return { name: r.name, text }
+}
+
 /** 操作失败的错误文本：sudo 要密码等给个白话说明，原文附后 */
 export function svcActionError(text: string, rc?: number): string {
   const raw = text.trim().slice(0, 2000)
