@@ -89,7 +89,7 @@ function UsageBody({ initial, onClose, onOpenSession }: { initial: UsageView; on
                 ))}
               </div>
             )}
-            {view !== 'prices' && <button onClick={load} title={tr('刷新')} className={cn('flex items-center gap-1 py-1', BTN2)}><RefreshCw className="h-3.5 w-3.5" />{tr('刷新')}</button>}
+            {view !== 'prices' && <button onClick={load} title={tr('刷新')} className={cn('flex items-center gap-1 py-1', BTN2)}><RefreshCw className="h-3.5 w-3.5" /></button>}
             {view !== 'prices' && sum && (
               <button data-usage-ask onClick={() => {
                 // 「让 AI 看用量」：当前范围 / 当前视图的数字整理成一个 chip，问题预填，不自动发送
@@ -99,8 +99,9 @@ function UsageBody({ initial, onClose, onOpenSession }: { initial: UsageView; on
                   text: usageDigest({ sum, sessionTitle: (sid: string) => titles.get(sid) }),
                   question: tr('这些用量正常吗？哪个会话 / 模型在烧钱，怎么省 token'),
                 })
-              }} title={tr('把当前范围的用量汇总挂到对话（不自动发送）')} className={cn('flex items-center gap-1 py-1', BTN2)}>
-                <MessageSquareQuote className="h-3.5 w-3.5" />{tr('让 AI 看用量')}
+              }} title={tr('让 AI 看用量（把当前范围的用量汇总挂到对话，不自动发送）')}
+                className={cn('flex items-center gap-1 py-1', BTN2)}>
+                <MessageSquareQuote className="h-3.5 w-3.5" />
               </button>
             )}
             <button onClick={onClose} title={tr('关闭（Esc）')} className={cn('flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]', view === 'prices' && 'ml-auto')}><X className="h-4 w-4" /></button>

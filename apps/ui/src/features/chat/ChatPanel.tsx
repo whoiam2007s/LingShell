@@ -17,8 +17,8 @@ import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
 import type { TurnTimes, SessionMeta } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
-import { SessionTabs } from './SessionTabs.js'
-import { TABS_KEY, closeTab, cycleTab, openTab, restoreTabs } from './sessionTabsModel.js'
+import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
+import { TABS_KEY, cycleTab, openTab, restoreTabs } from './sessionTabsModel.js'
 import { cueOf, playCue } from '../../lib/sound.js'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
@@ -633,24 +633,20 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       {/* 初始化覆盖层 */}
       {sessionPhase.phase !== 'ready' && <Overlay phase={sessionPhase} onOpenSettings={onOpenSettings} onRetry={onRetry} onNew={onNew} onBack={onBack} onOpenHistory={onOpenHistory} />}
 
-      {/* 会话标签栏：多任务切换；当前标签用主题色高亮，溢出收进「…」 */}
-      <SessionTabs
-        sessions={sessions ?? []}
-        activeId={activeSessionId}
-        tabs={tabs}
-        activeBusy={busy}
-        activeAttention={sessionPhase.phase === 'error' ? 'failed' : undefined}
-        onSwitch={(id: string) => { void onOpenSession?.(id) }}
-        onClose={(id: string) => setTabs((cur) => closeTab(cur, id, activeSessionId))}
-        onNew={onNew}
-        onOpenHistory={onOpenHistory}
-      />
-
       {/* 会话 header */}
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
         postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
         preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
-        thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode} />
+        thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode}
+        switcher={sessions?.length ? {
+          sessions,
+          activeId: activeSessionId,
+          activeBusy: busy,
+          activeAttention: sessionPhase.phase === 'error' ? 'failed' as const : undefined,
+          onSwitch: (id: string) => { void onOpenSession?.(id) },
+          onNew,
+          onOpenHistory,
+        } : undefined} />
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -1194,7 +1190,9 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
   )
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode, switcher }: {
+  /** 标题后的会话切换箭头（hover 出最近会话列表） */
+  switcher?: Omit<SessionSwitcherProps, 'sessions'> & { sessions: SessionMeta[] }
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
   thinking?: ThinkingLevel                          // 会话级思考深度（低/中/高）
   onPickThinking?: (lv: ThinkingLevel | undefined) => void   // undefined = 恢复为跟随模型配置
@@ -1237,6 +1235,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
               <Pencil className="h-3 w-3" />
             </button>
           )}
+          {switcher && <SessionSwitcher {...switcher} />}
           {onExport && <ExportMenu onExport={onExport} postmortem={postmortem} />}
         </div>
       )}

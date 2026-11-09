@@ -687,4 +687,6 @@ export const chat: Record<string, string> = {
   '本会话已花 {cost}，超过你设的提醒阈值 {limit}（只提醒，不会中断任务；可在 设置 → AI 与安全 调整）': 'This session has cost {cost}, above your alert threshold of {limit} (a warning only — the turn is not interrupted; change it in Settings → AI & Security)',
   '这个模型不支持思考档位': 'This model does not support thinking levels',
   '这个模型没有这一档': 'This model has no such level',
+  '切换会话（最近 {n} 条）': 'Switch session (last {n})',
+  '让 AI 看用量（把当前范围的用量汇总挂到对话，不自动发送）': 'Let AI review usage (adds a context chip for the current range; not sent automatically)',
 }

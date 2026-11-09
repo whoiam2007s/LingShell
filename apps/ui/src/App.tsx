@@ -370,7 +370,7 @@ function AppShell() {
             onOpenSession={async (id) => { await refreshSessions(); await selectSession(id) }}
           />
           {/* 右滑抽屉（历史/授权）：绝对定位浮层，覆盖会话面板右侧，不占布局 */}
-          <SessionDrawer open={drawer !== null} onClose={() => setDrawer(null)} widthClass={drawer === 'explorer' && explorerWide ? 'w-[520px]' : undefined}>
+          <SessionDrawer open={drawer !== null} onClose={() => setDrawer(null)} widthClass={drawer === 'explorer' ? (explorerWide ? 'w-[520px]' : undefined) : 'w-[440px]'}>
             {drawer === 'history' && (
               <HistoryDrawer
                 sessions={sessions}
