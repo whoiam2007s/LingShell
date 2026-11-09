@@ -1213,7 +1213,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   const [draft, setDraft] = useState('')
   const commit = () => { onRename?.(draft.trim() || title); setEditing(false) }
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 pl-3">
+    <div className="relative z-30 flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 pl-3">
       {/* 无会话：标题区显示占位，仅保留 新建/历史 入口（其余按钮依赖会话，隐藏） */}
       {!hasSession ? (
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium text-[var(--color-text-muted)]">
@@ -1229,13 +1229,13 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
           <span className="truncate" title={titleOf(title)}>{titleOf(title)}</span>
           {/* 只有点铅笔图标才进入编辑，点标题文字不触发（避免误触） */}
+          {switcher && <SessionSwitcher {...switcher} />}
           {onRename && (
             <button onClick={() => { setDraft(title); setEditing(true) }} title={tr('重命名')}
               className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-muted)] opacity-0 transition-opacity hover:text-[var(--color-accent)] group-hover:opacity-100">
               <Pencil className="h-3 w-3" />
             </button>
           )}
-          {switcher && <SessionSwitcher {...switcher} />}
           {onExport && <ExportMenu onExport={onExport} postmortem={postmortem} />}
         </div>
       )}

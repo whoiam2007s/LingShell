@@ -76,6 +76,7 @@ export function Ball() {
   const leave = () => {
     clearTimeout(hoverTimer.current)
     if (drag.current) return
+    measured.current = 0   // 下次悬停要重新量一次，否则「高度没变」会被当成已经展开过、不再发 expand
     setHover(false)
     api()?.send('ball:leave')
   }

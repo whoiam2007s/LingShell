@@ -74,7 +74,7 @@ export function SessionSwitcher(p: SessionSwitcherProps) {
       </button>
       {open && (
         <div data-session-switcher-menu role="menu"
-          className="absolute left-0 top-full z-50 mt-1 w-[300px] overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] shadow-xl">
+          className="absolute left-0 top-full z-[80] mt-1 w-[300px] overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] shadow-xl">
           <div className="flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] text-[var(--color-text-muted)]">
             <span>{tr('最近的会话')}</span>{dot()}
           </div>
