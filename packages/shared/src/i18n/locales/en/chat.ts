@@ -685,4 +685,6 @@ export const chat: Record<string, string> = {
   '元，0 = 不提醒': 'In CNY; 0 = off',
   '本会话累计花费超过这个金额时，聊天头部的花费数字标黄（到 80% 先变淡黄）——只提醒，不会中断任务，也不拦你继续发消息。花费按「设置 → 用量 → 单价」估算，没填单价时算不出来、也不提醒。': 'When this session costs more than this amount, the cost figure in the chat header turns amber (light amber from 80%). It only warns: the turn is not interrupted and you can keep sending messages. Costs are estimated from Settings → Usage → Prices; requests without a price cannot be computed and never trigger the alert.',
   '本会话已花 {cost}，超过你设的提醒阈值 {limit}（只提醒，不会中断任务；可在 设置 → AI 与安全 调整）': 'This session has cost {cost}, above your alert threshold of {limit} (a warning only — the turn is not interrupted; change it in Settings → AI & Security)',
+  '这个模型不支持思考档位': 'This model does not support thinking levels',
+  '这个模型没有这一档': 'This model has no such level',
 }

@@ -28,7 +28,7 @@ import { StaticWorkingDirectory } from './workingDirectory.js'
 import { imageToolDef } from './imageTool.js'
 import * as deepseek from '@deepseek-ai/dsh-llm-deepseek'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
-import { contextWindowOf, providerMeta, IMAGE_MAX_PER_MESSAGE, IMAGE_MAX_TOTAL_BYTES, base64Bytes, thinkingWireOf, tr } from '@lingshell/shared'
+import { contextWindowOf, providerMeta, IMAGE_MAX_PER_MESSAGE, IMAGE_MAX_TOTAL_BYTES, base64Bytes, thinkingWireOfModel, tr } from '@lingshell/shared'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
@@ -395,7 +395,7 @@ export class DshController {
     // 线上值从 shared 的 THINKING_WIRE 取，不在这里写第二份；没设过档位 = 一个都不传，沿用适配器默认。
     const thinkOpts = (lv?: ThinkingLevel) => {
       if (lv === undefined) return {}
-      const wire = thinkingWireOf('deepseek', lv)
+      const wire = thinkingWireOfModel('deepseek', holder.model, lv)
       if (wire === undefined) return {}
       if (wire === null) return { thinking: 'disabled' as const }
       return { thinking: 'enabled' as const, reasoningEffort: wire as 'low' | 'high' | 'max' }
