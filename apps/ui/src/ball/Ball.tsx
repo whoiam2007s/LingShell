@@ -77,6 +77,13 @@ export function Ball() {
     api()?.send('ball:expand', h)
   }, [hover, heightKey])
 
+  // 主进程推来新的 side/valign 后，这一帧的布局已经落地（球在正确的角上）—— 回它一句，
+  // 它才会去放大窗口。这就是「先摆好球、再放大」的握手。
+  useLayoutEffect(() => {
+    if (!v || v.expanded) return
+    api()?.send('ball:layoutReady')
+  }, [v?.side, v?.valign, v?.expanded])
+
   const enter = () => {
     api()?.send('ball:enter')
     clearTimeout(hoverTimer.current)

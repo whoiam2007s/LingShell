@@ -173,6 +173,10 @@ export function registerBackground(d: BackgroundDeps) {
   let hovering = false
   let hidden = false                // 当前是否半隐藏在边上
   let layout: Pick<BallView, 'expanded' | 'side' | 'valign'> = { expanded: false, side: 'right', valign: 'top' }
+  // 展开要分两拍，中间等渲染层回话：窗口放大是即时的，而渲染层拿到新的 side/valign 要晚一帧 ——
+  // 少了这个握手，那一帧球会按旧方向画在左上角（就是肉眼看到的「闪一下再弹回去」）。
+  let pendingExpand: { bounds: Rect; side: BallView['side']; valign: BallView['valign'] } | null = null
+  let expandTimer: NodeJS.Timeout | undefined
   let dragFrom: { x: number; y: number } | null = null
   let hideTimer: ReturnType<typeof setTimeout> | undefined
   let menuOpen = false              // 球右键菜单开着时不要自动半隐藏（鼠标在菜单上，球已经收不到 hover）
@@ -192,6 +196,8 @@ export function registerBackground(d: BackgroundDeps) {
     hideTimer = setTimeout(() => { if (!hovering && !dragFrom && !layout.expanded && !menuOpen) { hidden = true; placeBall() } }, delay)
   }
   const collapse = () => {
+    pendingExpand = null
+    clearTimeout(expandTimer)
     // 顺序同展开反过来：先让渲染层收起卡片，再把窗口缩回球大小，
     // 否则窗口先变小、卡片还铺在 52px 里，会看到一帧挤扁的卡片
     if (layout.expanded) { layout = { ...layout, expanded: false }; pushBall(true); placeBall() }
@@ -252,20 +258,28 @@ export function registerBackground(d: BackgroundDeps) {
     collapse()
     maybeHide()
   }))
+  const finishExpand = () => {
+    if (!pendingExpand) return
+    const p = pendingExpand
+    pendingExpand = null
+    clearTimeout(expandTimer)
+    place(p.bounds)
+    layout = { expanded: true, side: p.side, valign: p.valign }
+    pushBall(true)
+  }
   ipcMain.on('ball:expand', fromBall((h) => {
     if (!hovering || dragFrom) return
     const a = areaOf(pos, areas())
     if (!a) return
     const r = expandBounds(pos, num(h), a)
-    // 三步走，不能合成一步：先只把「球落在哪个角」告诉渲染层，让它把球摆好；
-    // 再放大窗口；最后才让它画卡片。合成一步的话，窗口先变大而渲染层还没拿到方向，
-    // 球会先闪到左上角再弹回原处。
+    pendingExpand = { bounds: r.bounds, side: r.side, valign: r.valign }
     layout = { expanded: false, side: r.side, valign: r.valign }
-    pushBall(true)
-    place(r.bounds)
-    layout = { expanded: true, side: r.side, valign: r.valign }
-    pushBall(true)
+    pushBall(true)                                   // 1. 先把方向告诉渲染层
+    clearTimeout(expandTimer)
+    expandTimer = setTimeout(finishExpand, 80)        // 兜底：渲染层没回话也照常展开
   }))
+  // 2. 渲染层已经把球按新方向摆好 → 3. 放大窗口 + 4. 画卡片
+  ipcMain.on('ball:layoutReady', fromBall(() => finishExpand()))
   // 拖动：主进程按系统光标位置跟随（每 8ms 一次），不靠渲染层逐帧发位移——小窗口追不上鼠标时会收不到 mousemove，球就停在原地
   let dragOff: { x: number; y: number } | null = null
   let dragTimer: ReturnType<typeof setInterval> | undefined
