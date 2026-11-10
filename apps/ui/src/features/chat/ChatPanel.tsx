@@ -94,15 +94,10 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
-  // ── 输入框高度：默认随内容长高（最多 35% 窗口高）；也可以在框上沿往上拖固定一个高度，
-  // 双击那道边恢复自动。贴了一大段日志 / 多段上下文时，不用在一条高的行里滚来滚去。
-  const INPUT_H_KEY = 'lingshell.chat.inputH'
-  const [inputH, setInputH] = useState<number | null>(() => {
-    const v = Number(localStorage.getItem(INPUT_H_KEY))
-    return Number.isFinite(v) && v >= 44 ? v : null
-  })
+  // ── 输入框高度：**默认一行，不记忆**。只在需要时把框上沿往上拖临时拉高，
+  // 双击那道边回到一行；下次启动还是默认一行。
+  const [inputH, setInputH] = useState<number | null>(null)
   const dragH = useRef<{ y: number; h: number } | null>(null)
-  const inputHRef = useRef<number | null>(inputH); inputHRef.current = inputH
   const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     const box = e.currentTarget.parentElement?.querySelector<HTMLElement>('[data-compose-box]')
@@ -124,8 +119,6 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       dragH.current = null
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
-      const h = inputHRef.current
-      if (h) localStorage.setItem(INPUT_H_KEY, String(h))
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -136,7 +129,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       window.removeEventListener('pointercancel', up)
     }
   }, [])
-  const resetInputH = () => { localStorage.removeItem(INPUT_H_KEY); setInputH(null) }
+  const resetInputH = () => setInputH(null)
 
   // ── 会话标签栏：多任务在几个会话间来回切 ────────────────────────────────
   // tabs 只存 id（持久化到 localStorage），当前会话永远在里面；关闭标签不删会话。
