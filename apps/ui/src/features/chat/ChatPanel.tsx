@@ -137,16 +137,6 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     }
   }, [])
   const resetInputH = () => { localStorage.removeItem(INPUT_H_KEY); setInputH(null) }
-  // 高度：自动模式按内容算（换行 / 粘贴都重算，上限 35% 窗口高）；
-  // 固定模式让文字区和外框一起长（框有 py-1.5 共 12px 内边距，超出部分内部滚动）
-  useLayoutEffect(() => {
-    const ta = taRef.current
-    if (!ta) return
-    if (inputH) { ta.style.height = `${Math.max(22, inputH - 12)}px`; return }
-    ta.style.height = 'auto'
-    const max = Math.round(window.innerHeight * 0.35)
-    ta.style.height = `${Math.max(22, Math.min(ta.scrollHeight, max))}px`
-  }, [input, inputH])
 
   // ── 会话标签栏：多任务在几个会话间来回切 ────────────────────────────────
   // tabs 只存 id（持久化到 localStorage），当前会话永远在里面；关闭标签不删会话。
@@ -346,16 +336,8 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     el.scrollTop = el.scrollHeight
   }
 
-  // textarea 自适应高度：默认 1 行，随内容长高，最多 3 行（66px + 上下 3px 内边距），超出滚动。
-  // 单行时高 28px 与两侧 28px 按钮等高，文字和「+」/发送按钮垂直居中对齐。
-  // 先重置 height 再按 scrollHeight 设，钳在 max。input 变化（含清空/填入建议）时重算。
-  const MAX_TA = 72
-  useEffect(() => {
-    const ta = taRef.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    ta.style.height = `${Math.min(ta.scrollHeight, MAX_TA)}px`
-  }, [input])
+  // textarea 高度：不再跟着内容自动长（改成手拖外框，见上面的 data-chat-resize + inputH）。
+  // 拖高后文字区用 CSS 的 self-stretch 填满外框，内部滚动；没拖过就是正常一行高。
 
   // 导出当前会话：仅对话 / 完整报告（+执行记录、文件改动、授权记录），可选 HTML；文件名去掉 Windows 不允许的字符
   const exportSession = async (mode: ExportMode, redact: boolean) => {
@@ -804,9 +786,9 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         <AttachmentChips items={att.items} onRemove={att.remove} onError={att.setHint} noImage={!models.current?.multimodal} className="mb-1.5 pt-1.5" />
         {att.hint && <div data-attach-hint className="mb-1.5 text-[11.5px] text-[var(--color-warn)]">{att.hint}</div>}
         {shellBusy && <div data-shell-busy className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-text-muted)]"><Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />{tr('正在终端「{title}」执行…', { title: shellBusy })}</div>}
-        {/* 输入框高度：往上拖变高（双击恢复「随内容自动长高」）；固定高度按用户拖的来，记在 localStorage */}
+        {/* 输入框高度：往上拖变高（双击恢复默认一行）；拖过的高度记在 localStorage */}
         <div data-chat-resize
-          title={tr('拖动调整输入框高度（双击恢复自动）')}
+          title={tr('拖动调整输入框高度（双击恢复默认）')}
           onPointerDown={onResizeDown} onDoubleClick={resetInputH}
           className="group/resize relative -mt-0.5 flex h-2 shrink-0 cursor-row-resize items-center justify-center">
           <span className="h-[4px] w-12 rounded-full bg-[var(--color-border-default)] transition-all group-hover/resize:h-[5px] group-hover/resize:bg-[var(--color-ask)]" />
@@ -846,7 +828,7 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
             disabled={!canChat}
             rows={1}
             placeholder={canChat ? (busy ? tr('追问…（Enter 在下一步前插入，Alt+Enter 本轮结束后再发）') : tr('跟 AI 对话…（Enter 发送，@ 引用，! 开头跑命令）')) : tr('等待引擎就绪…')}
-            className="flex-1 resize-none overflow-y-auto bg-transparent py-[3px] text-[13px] leading-[22px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] disabled:opacity-50"
+            className="flex-1 resize-none self-stretch overflow-y-auto bg-transparent py-[3px] text-[13px] leading-[22px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] disabled:opacity-50"
           />
           {/* 跑着的时候也留发送按钮（有内容才出现）：补发的消息排队，本轮结束自动送出 */}
           {busy && (

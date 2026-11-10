@@ -1,7 +1,7 @@
 // 英文译文：键 = 中文原文（见 ../../i18n.ts）。只放这一块负责的文件里用到的文案（features/chat、auth、runbooks）
 export const chat: Record<string, string> = {
   // ChatPanel.tsx：输入框高度拖拽条
-  '拖动调整输入框高度（双击恢复自动）': 'Drag to resize the input box (double-click to fit content again)',
+  '拖动调整输入框高度（双击恢复默认）': 'Drag to resize the input box (double-click to reset)',
   // AskRequestItem.tsx
   '其他：{text}': 'Other: {text}',
   '已选：{picked}': 'Selected: {picked}',
