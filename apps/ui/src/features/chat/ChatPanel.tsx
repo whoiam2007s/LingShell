@@ -102,29 +102,47 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     return Number.isFinite(v) && v >= 44 ? v : null
   })
   const dragH = useRef<{ y: number; h: number } | null>(null)
+  const inputHRef = useRef<number | null>(inputH); inputHRef.current = inputH
   const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     const box = e.currentTarget.parentElement?.querySelector<HTMLElement>('[data-compose-box]')
     dragH.current = { y: e.clientY, h: inputH ?? box?.getBoundingClientRect().height ?? 60 }
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // 拖动期间禁止选中文字 / 恢复光标：否则鼠标划出那条细边就会开始选文字，手感发涩
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'row-resize'
   }
-  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = dragH.current
-    if (!d) return
-    const max = Math.round(window.innerHeight * 0.7)
-    setInputH(Math.max(44, Math.min(max, d.h - (e.clientY - d.y))))   // 往上拖变高
-  }
-  const onResizeUp = () => {
-    if (!dragH.current) return
-    dragH.current = null
-    if (inputH) localStorage.setItem(INPUT_H_KEY, String(inputH))
-  }
+  // 拖动监听挂在 window 上（不用 pointer capture）：鼠标划出细边、窗口缩放都继续跟手
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const d = dragH.current
+      if (!d) return
+      const max = Math.round(window.innerHeight * 0.7)
+      setInputH(Math.max(44, Math.min(max, Math.round(d.h - (e.clientY - d.y)))))   // 往上拖变高
+    }
+    const up = () => {
+      if (!dragH.current) return
+      dragH.current = null
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      const h = inputHRef.current
+      if (h) localStorage.setItem(INPUT_H_KEY, String(h))
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [])
   const resetInputH = () => { localStorage.removeItem(INPUT_H_KEY); setInputH(null) }
-  // 自动模式：按内容算高度（换行 / 粘贴都会重新算）；固定模式下交给外面的盒子
+  // 高度：自动模式按内容算（换行 / 粘贴都重算，上限 35% 窗口高）；
+  // 固定模式让文字区和外框一起长（框有 py-1.5 共 12px 内边距，超出部分内部滚动）
   useLayoutEffect(() => {
     const ta = taRef.current
     if (!ta) return
-    if (inputH) { ta.style.height = ''; return }
+    if (inputH) { ta.style.height = `${Math.max(22, inputH - 12)}px`; return }
     ta.style.height = 'auto'
     const max = Math.round(window.innerHeight * 0.35)
     ta.style.height = `${Math.max(22, Math.min(ta.scrollHeight, max))}px`
@@ -789,9 +807,9 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         {/* 输入框高度：往上拖变高（双击恢复「随内容自动长高」）；固定高度按用户拖的来，记在 localStorage */}
         <div data-chat-resize
           title={tr('拖动调整输入框高度（双击恢复自动）')}
-          onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeUp} onDoubleClick={resetInputH}
-          className="group/resize -mb-0.5 flex h-1.5 shrink-0 cursor-row-resize items-center justify-center">
-          <span className="h-[3px] w-10 rounded-full bg-[var(--color-border-default)] transition-colors group-hover/resize:bg-[var(--color-accent)]" />
+          onPointerDown={onResizeDown} onDoubleClick={resetInputH}
+          className="group/resize relative -mt-0.5 flex h-2 shrink-0 cursor-row-resize items-center justify-center">
+          <span className="h-[4px] w-12 rounded-full bg-[var(--color-border-default)] transition-all group-hover/resize:h-[5px] group-hover/resize:bg-[var(--color-ask)]" />
         </div>
         <div {...att.dropProps} data-compose-box style={inputH ? { height: inputH } : undefined} className={`relative flex items-end gap-1.5 rounded-lg border bg-[var(--color-bg-base)] px-2.5 py-1.5 transition-colors ${bang !== null ? 'border-[color:color-mix(in_srgb,var(--color-warn)_60%,transparent)]' : 'border-[var(--color-border-default)] focus-within:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'}`}>
           <AtMenuPopup m={atMenu} />

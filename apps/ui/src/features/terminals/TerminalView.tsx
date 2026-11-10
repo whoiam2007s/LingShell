@@ -570,19 +570,6 @@ export function TerminalView() {
   }, [tabListOpen])
   return (
     <div className="flex h-full">
-    {/* 左侧活动栏：文件（资源管理器 / 双栏 / 命令历史 / 表格查看 / Git）+ 这台机器的视图（体检 / 进程 / 服务 / 容器 / 端口 / 更多） */}
-    <ActivityBar side="left">
-      {terms.length > 0 && (
-        <>
-          <ActBtn title={tr('资源管理器')} {...dBtn('explorer')}><FolderTree className="h-4 w-4" /></ActBtn>
-          {activeTerm?.type === 'ssh' && <ActBtn title={tr('双栏文件管理\n左边本机、右边这台服务器，拖过去就上传 / 下载')} onClick={() => openDual(activeId)}><Columns2 className="h-4 w-4" /></ActBtn>}
-          <ActBtn title={tr('命令历史')} {...dBtn('history')}><History className="h-4 w-4" /></ActBtn>
-          <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON / 命令输出）按表格看')} onClick={() => void openTableFile()}><Table2 className="h-4 w-4" /></ActBtn>
-          {!(activeTerm?.type === 'ssh' && activeTerm.os === 'windows') && <ActBtn title={tr('Git（改动 / 分支 / 历史 / 储藏 / 同步）')} {...dBtn('git')}><GitBranch className="h-4 w-4" /></ActBtn>}
-          {hostViews.length > 0 && <><ActSep />{hostViews}</>}
-        </>
-      )}
-    </ActivityBar>
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-[var(--color-bg-base)]">
       <div className="flex h-10 shrink-0 items-center border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-1.5">
         {/* tab 列表：横向滚动，隐藏滚动条；tab 不压缩 */}
@@ -889,11 +876,19 @@ export function TerminalView() {
           onKill={() => { closeTerm(tmuxAsk.id, 'kill'); setTmuxAsk(null) }} onKeep={() => { closeTerm(tmuxAsk.id, 'keep'); setTmuxAsk(null) }} />
       )}
     </div>
-    {/* 右侧活动栏：告警与记录 + 多机工具（文件 / 这台机器相关的按钮挪到了左边的活动栏）；依赖活动终端的无终端时隐藏。
-        分两组：告警与记录（告警 / 日志 / 会话日志 / 即时回放）→ 多机工具（连通性探测 / 批量执行 / 文件比对 / 运维手册 / 部署评审 / 接口调试）；传输固定在最下 */}
+    {/* 右侧活动栏：打开侧边面板（抽屉从活动栏左侧滑出）+ 终端工具；依赖活动终端的无终端时隐藏。
+        分四组：文件（资源管理器 / 命令历史 / 表格查看 / Git）→ 主机视图（体检 / 进程 / 服务 / 容器 / 端口 / 更多，仅支持的主机）
+        → 告警与记录（告警 / 日志 / 会话日志 / 即时回放）→ 多机工具（连通性探测 / 批量执行 / 文件比对 / 运维手册 / 部署评审 / 接口调试）；传输固定在最下 */}
     <ActivityBar side="right" bottom={<TransferButton />}>
       {terms.length > 0 && (
         <>
+          <ActBtn title={tr('资源管理器')} {...dBtn('explorer')}><FolderTree className="h-4 w-4" /></ActBtn>
+          {activeTerm?.type === 'ssh' && <ActBtn title={tr('双栏文件管理\n左边本机、右边这台服务器，拖过去就上传 / 下载')} onClick={() => openDual(activeId)}><Columns2 className="h-4 w-4" /></ActBtn>}
+          <ActBtn title={tr('命令历史')} {...dBtn('history')}><History className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON / 命令输出）按表格看')} onClick={() => void openTableFile()}><Table2 className="h-4 w-4" /></ActBtn>
+          {!(activeTerm?.type === 'ssh' && activeTerm.os === 'windows') && <ActBtn title={tr('Git（改动 / 分支 / 历史 / 储藏 / 同步）')} {...dBtn('git')}><GitBranch className="h-4 w-4" /></ActBtn>}
+          {hostViews.length > 0 && <><ActSep />{hostViews}</>}
+          <ActSep />
             <ActBtn title={alertUnread ? tr('告警（{n} 条未读）', { n: alertUnread }) : tr('告警：关键字告警命中的行')} {...dBtn('alerts')}>
               <Siren className="h-4 w-4" />
               {alertUnread > 0 && <span data-alert-unread className="absolute -right-0.5 -top-0.5 min-w-[14px] rounded-full bg-[var(--color-warn)] px-1 text-center text-[9px] font-semibold leading-[14px] text-[var(--color-bg-base)]">{alertUnread > 99 ? '99+' : alertUnread}</span>}
