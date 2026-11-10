@@ -532,8 +532,8 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const autoAsk = useRef('')
   useEffect(() => onChatContext((p) => {
     for (const c of p.chips) att.addContext(c.ctx, c.name, c.text)
-    // 预填的问题只是「初稿」：输入框空着、或还停在上一次自动预填的那句（没动过）就换成这次的；
-    // 用户已经自己打了字 → 不覆盖（面板点 ✨ 不该冲掉正在写的内容）。规则见 askPrefill.ts
+    // 预填的问题只是「初稿」：输入框空着、或末尾还停在上一次自动预填的那句（没动过）就换成这次的；
+    // 用户已经自己写了字 → 换行补在下面（不冲掉用户写的内容，但问题一定带进去）。规则见 askPrefill.ts
     const q = p.text
     if (q !== undefined) {
       setInput((prev) => {
