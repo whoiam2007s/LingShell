@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Boxes, CalendarClock, Database, HardDrive, LayoutGrid, Network, ShieldCheck } from 'lucide-react'
+import { Boxes, CalendarClock, HardDrive, LayoutGrid, Network, ShieldCheck } from 'lucide-react'
 import { diskSupported, k8sSupported, portsSupported, tk, tr, type TerminalInfo } from '@lingshell/shared'
 import { ActBtn } from '../../components/ActivityBar.js'
 import { client } from '../../client/index.js'
@@ -12,7 +12,6 @@ export const OPS_VIEWS: { id: OpsView; label: string; desc: string; icon: typeof
   { id: 'firewall', label: tk('防火墙'), desc: tk('firewalld / ufw / nftables / iptables 规则可读化（只读）'), icon: ShieldCheck, ok: (t) => portsSupported(t.type, t.os) },
   { id: 'topology', label: tk('服务拓扑'), desc: tk('进程 / 容器之间谁连谁（按 ss 与 docker 网络推导）'), icon: Network, ok: (t) => portsSupported(t.type, t.os) },
   { id: 'k8s', label: 'Kubernetes', desc: tk('Pod / Deployment / Service / 事件，日志、进入容器、转发、滚动重启、集群体检'), icon: Boxes, ok: (t) => k8sSupported(t.type, t.os) },
-  { id: 'database', label: tk('数据库'), desc: tk('MySQL / PostgreSQL / Redis / MongoDB：会话、慢查询、只读查询、表结构、Redis Key'), icon: Database, ok: (t) => t.type === 'local' || portsSupported(t.type, t.os) },
 ]
 export const isOpsView = (v: unknown): v is OpsView => OPS_VIEWS.some((x) => x.id === v)
 /** 当前终端能用的视图（一个都没有就不显示按钮） */

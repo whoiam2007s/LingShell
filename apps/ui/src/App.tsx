@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FolderTree, History, ShieldCheck } from 'lucide-react'
-import { ActivityBar, ActBtn } from './components/ActivityBar.js'
+import { FolderTree, History, ShieldCheck, GitBranch, Database, Table2, Code2, ClipboardCheck } from 'lucide-react'
+import { ActivityBar, ActBtn, ActSep } from './components/ActivityBar.js'
 import { ChatPanel, errToPhase, logSessionFailure, needsApiKeySetup } from './features/chat/index.js'
 import { SessionDrawer } from './features/sessions/index.js'
 import { HistoryDrawer } from './features/sessions/index.js'
@@ -28,7 +28,7 @@ import { isAction, loadKeybindings } from './lib/keybindings.js'
 import { closePalette, paletteCtx, paletteSend } from './lib/paletteBus.js'
 import { onSendToChat, onSendToNewChat, takeNewChatSend, sendToChat } from './lib/sendToChat.js'
 import type { SessionPhase } from './features/chat/index.js'
-import { tr, type SessionMeta } from '@lingshell/shared'
+import { tr, type SessionMeta, type TerminalInfo } from '@lingshell/shared'
 import { client } from './client/index.js'
 import { noteSessionEvent } from './lib/sessionStates.js'
 import { logger } from './lib/logger.js'
@@ -39,7 +39,12 @@ import { DashboardModal } from './features/dashboard/index.js'
 import { closeDashboard, openDashboard } from './features/dashboard/index.js'
 import { RunbookViewModal } from './features/runbooks/index.js'
 import { ComplianceBatchModal } from './features/hostcheck/index.js'
-import { DeployReviewModal } from './features/deployReview/index.js'
+import { DeployReviewModal, openDeployReview } from './features/deployReview/index.js'
+import { GitDrawer } from './features/git/index.js'
+import { DatabaseDrawer } from './features/database/index.js'
+import { pickAndOpenTable } from './features/table/index.js'
+import { onLeftDrawer } from './lib/leftDrawerBus.js'
+import { getActiveTerminal } from './lib/activeTerminal.js'
 import { RUNBOOK_VIEW_EVENT } from './features/runbooks/index.js'
 import { COMPLIANCE_BATCH_EVENT } from './features/hostcheck/index.js'
 import { TrayBridge } from './features/shell/index.js'
@@ -71,7 +76,10 @@ function AppShell() {
   const activeRef = useRef('');
   const [activeId, setActiveIdState] = useState('')
   const [phase, setPhase] = useState<SessionPhase>({ phase: 'starting' })
-  const [drawer, setDrawer] = useState<'history' | 'auth' | 'explorer' | null>(null)
+  const [drawer, setDrawer] = useState<'history' | 'auth' | 'explorer' | 'git' | 'database' | null>(null)
+  // 左边活动栏的 Git 抽屉：进去时带哪个终端 + 起始目录（本地终端默认用对话工作目录）
+  const [leftGit, setLeftGit] = useState<{ term?: TerminalInfo; dir?: string }>({})
+  const [dbHostKey, setDbHostKey] = useState('local')   // 数据库抽屉按 hostKey 分连接：随当前终端走，没有就本地
   const [explorerWide, setExplorerWide] = useState(false)   // 资源管理器开着详细信息列时抽屉加宽
   const [delTarget, setDelTarget] = useState<{ id: string; title: string } | null>(null)
   const [historyQuery, setHistoryQuery] = useState<string>()   // 命令面板「搜索历史会话内容」带进历史抽屉的词
@@ -86,6 +94,28 @@ function AppShell() {
   const activeSeed = sessions.find((s) => s.id === activeId)?.contextDigest
   // 资源管理器：这个对话上次停在的目录，没有就用工作目录（每次打开 / 切对话时取一次）
   const explorerRoot = useMemo(() => (drawer === 'explorer' ? getLastDir(`session:${activeId}`) ?? activeWorkDir : undefined), [drawer, activeId, activeWorkDir])
+
+  // 左边活动栏的 Git / 数据库：跟「这个项目 / 这台机器」有关，但不依赖终端区停在哪。
+  // Git 默认以**对话工作目录**为仓库目录（同一个项目，省得每次再选一次）；只有 SSH 终端时用它自己的 cwd。
+  const pickTerm = async (): Promise<TerminalInfo | undefined> => {
+    const id = getActiveTerminal()?.id
+    const terms = await client.terminal.list().catch(() => [])
+    return terms.find((t) => t.id === id) ?? terms.find((t) => t.type === 'local')
+  }
+  const openGit = async () => {
+    if (drawer === 'git') { setDrawer(null); return }
+    const term = await pickTerm()
+    setLeftGit({ term, dir: term?.type === 'local' ? activeWorkDir : undefined })
+    setDrawer('git')
+  }
+  const openDb = async () => {
+    if (drawer === 'database') { setDrawer(null); return }
+    const term = await pickTerm()
+    setDbHostKey(term?.type === 'ssh' ? (term.hostId ?? term.id) : 'local')
+    setDrawer('database')
+  }
+  // 命令面板（Ctrl+K）里的「Git 助手 / 数据库快查」也走这里，保证入口行为一致
+  useEffect(() => onLeftDrawer((k) => { void (k === 'git' ? openGit() : openDb()) }), [drawer, activeWorkDir])
 
   // 会话面板 ↔ 终端 可拖拽分割。宽度从持久化恢复（chatWidth），拖动松手后回存。
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -345,6 +375,13 @@ function AppShell() {
           <ActBtn title={tr('历史会话')} active={drawer === 'history'} onClick={() => setDrawer((d) => (d === 'history' ? null : 'history'))}><History className="h-4 w-4" /></ActBtn>
           {activeId && <ActBtn title={tr('会话授权 / 执行记录')} active={drawer === 'auth'} onClick={() => setDrawer((d) => (d === 'auth' ? null : 'auth'))}><ShieldCheck className="h-4 w-4" /></ActBtn>}
           <ActBtn title={tr('知识库（主机 / 分组 / 全局知识卡）')} onClick={() => openKnowledge()}><BookMarked className="h-4 w-4" /></ActBtn>
+          <ActSep />
+          {/* 工具：跟「这个项目 / 这台机器」有关，但不依赖终端区停在哪，所以从终端那条活动栏挪到这边 */}
+          <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON）按表格看')} onClick={() => void pickAndOpenTable().catch((e) => log.warn('table pick failed', e))}><Table2 className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('Git：这个对话的工作目录（改动 / 分支 / 历史 / 储藏 / 同步）')} active={drawer === 'git'} onClick={() => void openGit()}><GitBranch className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('数据库：MySQL / PostgreSQL / Redis / MongoDB 查询、表结构、慢查询')} active={drawer === 'database'} onClick={() => void openDb()}><Database className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('接口调试：从本机或某台主机发 HTTP 请求')} onClick={() => paletteSend({ type: 'apiDebug' })}><Code2 className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('部署评审：解读部署文档、找风险、目标主机预检、出评审报告')} onClick={() => openDeployReview()}><ClipboardCheck className="h-4 w-4" /></ActBtn>
         </ActivityBar>
         <div className="relative h-full min-w-0 flex-1 overflow-hidden">
           <ChatPanel
@@ -370,7 +407,8 @@ function AppShell() {
             onOpenSession={async (id) => { await refreshSessions(); await selectSession(id) }}
           />
           {/* 右滑抽屉（历史/授权）：绝对定位浮层，覆盖会话面板右侧，不占布局 */}
-          <SessionDrawer open={drawer !== null} onClose={() => setDrawer(null)} widthClass={drawer === 'explorer' ? (explorerWide ? 'w-[520px]' : undefined) : 'w-[440px]'}>
+          <SessionDrawer open={drawer !== null} onClose={() => setDrawer(null)}
+            widthClass={drawer === 'explorer' ? (explorerWide ? 'w-[520px]' : undefined) : drawer === 'database' ? 'w-[680px] max-w-full' : drawer === 'git' ? 'w-[600px] max-w-full' : 'w-[440px]'}>
             {drawer === 'history' && (
               <HistoryDrawer
                 sessions={sessions}
@@ -383,6 +421,8 @@ function AppShell() {
               />
             )}
             {drawer === 'auth' && <AuthDrawer onClose={() => setDrawer(null)} />}
+            {drawer === 'git' && <GitDrawer key={leftGit.term?.id ?? 'none'} term={leftGit.term} initialDir={leftGit.dir} onClose={() => setDrawer(null)} />}
+            {drawer === 'database' && <DatabaseDrawer hostKey={dbHostKey} onClose={() => setDrawer(null)} />}
             {drawer === 'explorer' && (
               <ExplorerDrawer scope="local" rootPath={explorerRoot} memKey={`session:${activeId}`} onWide={setExplorerWide} onUpload={setUploadPaths} onClose={() => setDrawer(null)} />
             )}
