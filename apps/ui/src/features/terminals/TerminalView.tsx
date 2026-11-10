@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { TerminalSquare, Plus, X, Server, MonitorDot, RotateCw, History, FolderTree, AlertTriangle, Columns2, Columns3, Rows2, Grid2x2, Radio, Circle, Square } from 'lucide-react'
-import { FileText, Container, Pin, BellRing, Cpu, EthernetPort } from 'lucide-react'
+import { FileText, Container, Pin, BellRing, Cpu, EthernetPort, Table2, Radar } from 'lucide-react'
 import { ActivityBar, ActBtn, ActSep } from '../../components/ActivityBar.js'
 import { ConfirmDialog } from '../common/index.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
@@ -15,7 +15,7 @@ import { ProcessDrawer } from './drawers/ProcessDrawer.js'
 import { ServiceDrawer } from './drawers/ServiceDrawer.js'
 import { ServerCog } from 'lucide-react'
 import { systemdSupported, cdCommand } from '@lingshell/shared'
-import { TableViewerHost } from '../table/index.js'
+import { TableViewerHost, openTableView } from '../table/index.js'
 import type { AppLayout, TerminalInfo, HostSummary, TabMeta, SplitMode } from '@lingshell/shared'
 import { ComposeBar, ComposeToggle, toggleCompose } from './ComposeBar.js'
 import { shellKind, moveTab, pinFirst, clampTabDrop, pinnedLabel, termEnvLabel, statsSummary, tabAccent, toLayoutItem, EMPTY_VIEW, activate, assign, dropTerm, setMode, restoreView, toSplitLayout, neighborPane, paneCell, paneCount, splitTracks, dividerAxis, clampDivider, defaultSizes, focusedId, type PaneView } from '@lingshell/shared'
@@ -36,7 +36,7 @@ import { loadTermPrefs, useTermPrefs, useTermBadges, BADGE_CLS } from '../../lib
 import { copyBuffer, saveBuffer } from './pane/BufferExport.js'
 import { useTerminalShortcuts } from './useTerminalShortcuts.js'
 import { QuickCommandBar } from './quick/QuickCommandBar.js'
-import { onPalette, type PaletteCmd } from '../../lib/paletteBus.js'
+import { onPalette, paletteSend, type PaletteCmd } from '../../lib/paletteBus.js'
 import { TransferButton, TransferPanel } from '../transfer/index.js'
 import { HostStatsTags, useHostStats, useWatchStats } from './HostStatsStrip.js'
 import { LocalShellItems } from './LocalShellItems.js'
@@ -523,6 +523,17 @@ export function TerminalView() {
     : activeTerm.detail ? tr('{name}（{detail}）', { name: activeTerm.title, detail: activeTerm.detail }) : activeTerm.title
 
   const dBtn = (k: NonNullable<typeof drawer>) => ({ active: drawer === k, onClick: () => setDrawer((d) => d === k ? null : k) })
+  // 「表格查看」：选一个文件（本机，或当前 SSH 终端那台主机）按表格 / JSON 树看。
+  // 命令输出来源还在终端里：命令块红点菜单「表格查看」、输出像表格时行上的 ⊞ 小按钮
+  const openTableFile = async () => {
+    const [p] = await client.attachments.pickFiles().catch(() => [])
+    if (!p) return
+    try {
+      const scope = activeTerm?.type === 'ssh' ? { terminalId: activeId } : 'local' as const
+      const text = await client.fs.readText(scope, p)
+      openTableView({ title: p.split(/[\\/]/).pop() || p, command: p, output: text.length > 2_000_000 ? text.slice(0, 2_000_000) : text })
+    } catch (e) { setTermError(tr('读取文件失败：{msg}', { msg: errText(e) })) }
+  }
   return (
     <div className="flex h-full">
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-[var(--color-bg-base)]">
@@ -719,7 +730,7 @@ export function TerminalView() {
       <ComposeBar terms={terms} activeId={activeId} bcast={bcast} />
       <QuickCommandBar terms={terms} activeId={activeId} bcast={bcast} lead={<ComposeToggle />} trailing={<HostStatsTags active={activeTerm} />} />
       <SshConnectDialog open={sshOpen} onClose={() => setSshOpen(false)} onConnected={onSshConnected} />
-      <TerminalDrawer open={drawer !== null} onClose={() => setDrawer(null)} xwide={drawer === 'database' || drawer === 'k8s'} widthClass={drawer === 'git' ? 'w-[600px] max-w-full' : drawer === 'explorer' && explorerWide ? 'w-[560px] max-w-full' : undefined} wide={drawer === 'docker' || drawer === 'processes' || drawer === 'ports' || drawer === 'hostcheck' || drawer === 'systemd' || drawer === 'git' || drawer === 'history' || !!opsView}>
+      <TerminalDrawer open={drawer !== null} onClose={() => setDrawer(null)} xwide={drawer === 'database' || drawer === 'k8s'} widthClass={drawer === 'git' ? 'w-[600px] max-w-full' : drawer === 'explorer' && explorerWide ? 'w-[560px] max-w-full' : undefined} wide={drawer === 'docker' || drawer === 'processes' || drawer === 'ports' || drawer === 'hostcheck' || drawer === 'systemd' || drawer === 'git' || drawer === 'history' || drawer === 'alerts' || !!opsView}>
         {drawer === 'git' && <GitDrawer key={activeId} term={activeTerm} onClose={() => setDrawer(null)} />}
         {drawer === 'hostcheck' && <HostCheckDrawer key={activeId} term={activeTerm} onClose={() => setDrawer(null)} />}
         {drawer === 'cron' && <CronDrawer key={activeId} term={activeTerm} onClose={() => setDrawer(null)} />}
@@ -823,6 +834,7 @@ export function TerminalView() {
             <ActBtn title={tr('资源管理器')} {...dBtn('explorer')}><FolderTree className="h-4 w-4" /></ActBtn>
             {activeTerm?.type === 'ssh' && <ActBtn title={tr('双栏文件管理\n左边本机、右边这台服务器，拖过去就上传 / 下载')} onClick={() => openDual(activeId)}><Columns2 className="h-4 w-4" /></ActBtn>}
             <ActBtn title={tr('命令历史')} {...dBtn('history')}><History className="h-4 w-4" /></ActBtn>
+            <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON / 命令输出）按表格看')} onClick={() => void openTableFile()}><Table2 className="h-4 w-4" /></ActBtn>
             {!(activeTerm?.type === 'ssh' && activeTerm.os === 'windows') && <ActBtn title={tr('Git（改动 / 分支 / 历史 / 储藏 / 同步）')} {...dBtn('git')}><GitBranch className="h-4 w-4" /></ActBtn>}
             {views.length > 0 && <><ActSep />{views}</>}
             <ActSep />
@@ -836,6 +848,7 @@ export function TerminalView() {
             )}
             {activeTerm && <ReplayButton id={activeTerm.id} />}
             <ActSep />
+            <ActBtn title={tr('连通性探测：多台源主机 × 多个目标，测 DNS / TCP / HTTP')} onClick={() => paletteSend({ type: 'connProbe', source: activeTerm?.hostId ? `host:${activeTerm.hostId}` : `term:${activeId}` })}><Radar className="h-4 w-4" /></ActBtn>
             <BatchExecButton />
             <FileCompareButton />
             <ActBtn title={tr('运维手册（逐条执行到当前终端）')} onClick={() => openRunbookView()}><BookOpenText className="h-4 w-4" /></ActBtn>

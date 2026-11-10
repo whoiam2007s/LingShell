@@ -74,12 +74,3 @@ export function splitTabs(ids: readonly string[], max = MAX_TABS): { shown: stri
   // 留一格给「…」按钮本身
   return { shown: ids.slice(0, max - 1), overflow: ids.length - (max - 1) }
 }
-
-/** 轮转：从当前会话切到「下一个/上一个」标签（到边界绕回） */
-export function cycleTab(ids: readonly string[], activeId: string, step: 1 | -1): string | undefined {
-  if (!ids.length) return undefined
-  const at = ids.indexOf(activeId)
-  if (at < 0) return ids[0]
-  const next = (at + step + ids.length) % ids.length
-  return ids[next]
-}

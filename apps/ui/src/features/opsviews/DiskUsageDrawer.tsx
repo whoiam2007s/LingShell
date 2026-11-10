@@ -136,7 +136,7 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
           {level.entries.length === 0 && <div className={`px-3 py-2 ${MUTED}`}>{tr('空目录')}</div>}
           {level.entries.map((e) => (
             <div key={e.path} data-disk-entry={e.name} onClick={e.dir ? () => go(e.path) : undefined} title={e.path}
-              className={`group relative flex items-center gap-1.5 px-3 py-[3px] hover:bg-[var(--color-bg-hover)] ${e.dir ? 'cursor-pointer' : ''}`}>
+              className={`group relative flex h-6 items-center gap-1.5 px-3 hover:bg-[var(--color-bg-hover)] ${e.dir ? 'cursor-pointer' : ''}`}>
               <div className="pointer-events-none absolute inset-y-[3px] left-3 rounded-sm bg-[color:color-mix(in_srgb,var(--color-accent)_16%,transparent)]" style={{ width: `calc(${(e.kb / max) * 100}% - 24px)` }} />
               {e.dir ? <Folder className="relative h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" /> : <FileIcon className="relative h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />}
               <span className="relative min-w-0 flex-1 truncate text-[var(--color-text-primary)]">{e.name}</span>
@@ -150,7 +150,7 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
           <div className={`px-3 py-1 text-[10.5px] ${MUTED}`}>{tr('{dir} 下大于 {mb}MB 的文件（同一分区）', { dir: big.dir, mb: big.minMb })}{big.truncated && <span className="ml-1 text-[var(--color-warn)]">{tr('超时，只找了一部分')}</span>}</div>
           {big.files.length === 0 && <div className={`px-3 py-2 ${MUTED}`}>{tr('没有大于 {mb}MB 的文件', { mb: big.minMb })}</div>}
           {big.files.map((f) => (
-            <div key={f.path} data-disk-big className="group flex items-center gap-1.5 px-3 py-[3px] hover:bg-[var(--color-bg-hover)]" title={f.path}>
+            <div key={f.path} data-disk-big className="group flex h-6 items-center gap-1.5 px-3 hover:bg-[var(--color-bg-hover)]" title={f.path}>
               <FileIcon className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
               <span className="min-w-0 flex-1 truncate font-mono text-[var(--color-text-primary)]">{f.path}</span>
               {onReveal && <button title={tr('在资源管理器打开所在目录')} onClick={() => onReveal(parentOf(f.path) ?? '/')} className={`${IB} hidden group-hover:flex`}><FolderOpen className="h-3 w-3" /></button>}
@@ -180,7 +180,7 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
           </div>
           {deleted.items.length === 0 && <div className={`px-3 py-2 ${MUTED}`}>{tr('没有发现已删除但仍被占用的文件')}</div>}
           {deleted.items.map((d) => (
-            <div key={`${d.pid}:${d.path}`} data-disk-deleted className="flex items-center gap-1.5 px-3 py-[3px] hover:bg-[var(--color-bg-hover)]" title={`${d.fd ? tr('{cmd}（pid {pid}，fd {fd}）', { cmd: d.command, pid: d.pid, fd: d.fd }) : tr('{cmd}（pid {pid}）', { cmd: d.command, pid: d.pid })}\n${d.path}`}>
+            <div key={`${d.pid}:${d.path}`} data-disk-deleted className="flex h-6 items-center gap-1.5 px-3 hover:bg-[var(--color-bg-hover)]" title={`${d.fd ? tr('{cmd}（pid {pid}，fd {fd}）', { cmd: d.command, pid: d.pid, fd: d.fd }) : tr('{cmd}（pid {pid}）', { cmd: d.command, pid: d.pid })}\n${d.path}`}>
               <span className="w-24 shrink-0 truncate text-[var(--color-text-primary)]">{d.command}<span className={`ml-1 text-[10px] ${MUTED}`}>{d.pid}</span></span>
               <span className="min-w-0 flex-1 truncate font-mono text-[var(--color-text-secondary)]">{d.path}</span>
               <span className="w-16 shrink-0 text-right font-mono text-[var(--color-text-secondary)]">{formatSize(d.bytes)}</span>

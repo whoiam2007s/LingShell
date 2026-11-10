@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { SessionMeta } from '@lingshell/shared'
 import {
-  MAX_TABS, RECENT_N, TAB_TITLE_MAX, closeTab, cycleTab, openTab, recentSessions, restoreTabs, splitTabs, tabTitle,
+  MAX_TABS, RECENT_N, TAB_TITLE_MAX, closeTab, openTab, recentSessions, restoreTabs, splitTabs, tabTitle,
 } from './sessionTabsModel.js'
 
 const s = (id: string, at: string, title = id): SessionMeta => ({ id, title, threadId: id, createdAt: at, lastActiveAt: at })
@@ -69,19 +69,12 @@ describe('持久化恢复', () => {
   })
 })
 
-describe('溢出与轮转', () => {
+describe('溢出', () => {
   it('不超过上限时全显示；超了留一格给「…」', () => {
     expect(splitTabs(['a', 'b'])).toEqual({ shown: ['a', 'b'], overflow: 0 })
     const many = Array.from({ length: MAX_TABS + 2 }, (_, i) => `t${i}`)
     const r = splitTabs(many)
     expect(r.shown).toHaveLength(MAX_TABS - 1)
     expect(r.overflow).toBe(3)
-  })
-
-  it('Ctrl+Tab 轮转：往下一条、到末尾绕回', () => {
-    expect(cycleTab(['a', 'b', 'c'], 'a', 1)).toBe('b')
-    expect(cycleTab(['a', 'b', 'c'], 'c', 1)).toBe('a')
-    expect(cycleTab(['a', 'b', 'c'], 'a', -1)).toBe('c')
-    expect(cycleTab([], 'a', 1)).toBeUndefined()
   })
 })

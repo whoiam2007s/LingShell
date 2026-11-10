@@ -109,31 +109,34 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
     const note = [all ? tr('全部会话') : tr('本会话'), onlyToday ? tr('今天') : '', onlyRisky ? tr('只看危险') : '', hostFilter ? host(hostFilter) : ''].filter(Boolean).join(' · ')
     void askAiChip({ ctx: 'audit', name: `${tr('执行记录')} · ${shown.length}`, text: auditDigest({ rows: shown, hostLabel: host, scopeNote: note }), question: tr('帮我复盘：这些操作里有风险的吗？有没有该回滚 / 该补授权的') })
   }
+  // 筛选条：一行放不下就整块换行，但每个标签 / 按钮自己不许断行（原来文字被挤成两行）
+  const nowrap = 'flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] text-[var(--color-text-muted)]'
   const scope = (
-    <div className="mb-2 flex items-center">
-      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
+    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <label className={`${nowrap} cursor-pointer`}>
         <Checkbox checked={all} onCheckedChange={setAll} />
         {tr('显示全部会话')}
       </label>
-      <label className="ml-3 flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
+      <label className={`${nowrap} cursor-pointer`}>
         <Checkbox checked={onlyRisky} onCheckedChange={setOnlyRisky} />
         {tr('只看危险')}
       </label>
-      <label className="ml-2 flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
+      <label className={`${nowrap} cursor-pointer`}>
         <Checkbox checked={onlyToday} onCheckedChange={setOnlyToday} />
         {tr('只看今天')}
       </label>
       {hostKeys.length > 1 && (
-        <Select size="sm" className="ml-2 w-[110px]" value={hostFilter} onValueChange={setHostFilter}
+        <Select size="sm" className="w-[110px] shrink-0" value={hostFilter} onValueChange={setHostFilter}
           options={[{ value: '', label: tr('所有主机') }, ...hostKeys.map((k) => ({ value: k, label: host(k) }))]} />
       )}
+      <span className="ml-auto" />
       <button onClick={review} disabled={!shown.length} title={tr('把当前筛选出的执行记录汇总后挂到对话（不自动发送）')}
-        className="ml-auto flex items-center gap-1 rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50">
+        className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50">
         <MessageSquareQuote className="h-3 w-3" />{tr('让 AI 复盘')}
       </button>
       {canSave && (
         <button onClick={() => setSaving(true)} title={tr('把本会话执行成功的命令保存为可重复执行的运维手册')}
-          className="ml-1 flex items-center gap-1 rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">
+          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">
           <BookPlus className="h-3 w-3" />{tr('保存为手册')}
         </button>
       )}

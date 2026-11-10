@@ -18,7 +18,8 @@ import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
 import type { TurnTimes, SessionMeta } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
 import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
-import { TABS_KEY, cycleTab, openTab, restoreTabs } from './sessionTabsModel.js'
+import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
+import { prefillAsk } from './askPrefill.js'
 import { cueOf, playCue } from '../../lib/sound.js'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
@@ -125,25 +126,6 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
   }, [])
-  // 快捷键：Ctrl+Tab / Ctrl+Shift+Tab 在标签间轮转，Ctrl+1..9 直选
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || e.altKey || e.metaKey) return
-      if (e.key === 'Tab' && tabs.length > 1) {
-        const id = cycleTab(tabs, sidRef.current, e.shiftKey ? -1 : 1)
-        if (id && id !== sidRef.current) { e.preventDefault(); void onOpenSession?.(id) }
-        return
-      }
-      const n = Number(e.key)
-      if (Number.isInteger(n) && n >= 1 && n <= 9 && tabs[n - 1] && tabs[n - 1] !== sidRef.current) {
-        e.preventDefault()
-        void onOpenSession?.(tabs[n - 1])
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [tabs.join('|'), onOpenSession])
-
   // ── 提示音：完成一种、等你处理一种（开关在设置里，见 lib/sound.ts）──────
   const prevBusy = useRef(busy)
   useEffect(() => {
@@ -546,12 +528,27 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
 
   // 跨会话搜索「问 AI」：检索片段作为上下文标签附上（send = 直接发出）
   const autoSend = useRef(false)
+  // 上一次由面板「问 AI」自动预填的那句问题：用户没改过的话，下次点别的面板就换成新问题
+  const autoAsk = useRef('')
   useEffect(() => onChatContext((p) => {
     for (const c of p.chips) att.addContext(c.ctx, c.name, c.text)
-    // 预填的问题是「初稿」：用户已经打了字就别覆盖（面板点 ✨ 时不该冲掉正在写的内容）
-    if (p.text !== undefined) setInput((prev) => (prev.trim() ? prev : p.text!))
+    // 预填的问题只是「初稿」：输入框空着、或还停在上一次自动预填的那句（没动过）就换成这次的；
+    // 用户已经自己打了字 → 不覆盖（面板点 ✨ 不该冲掉正在写的内容）。规则见 askPrefill.ts
+    const q = p.text
+    if (q !== undefined) {
+      setInput((prev) => {
+        const next = prefillAsk(prev, q, autoAsk.current)
+        if (next !== prev) autoAsk.current = q
+        return next
+      })
+    }
     if (p.send) autoSend.current = true
-    else requestAnimationFrame(() => taRef.current?.focus())
+    // 光标放到末尾：用户一眼能看到预填的问题，直接接着改
+    else requestAnimationFrame(() => {
+      const ta = taRef.current
+      if (!ta) return
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.scrollTop = ta.scrollHeight
+    })
   }), [])
   useEffect(() => { if (autoSend.current && canChat && att.items.length) { autoSend.current = false; submit() } })
 
