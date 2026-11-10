@@ -283,6 +283,10 @@ html[data-theme="lavender"] {
 
 /* 原生控件残留部分（滚动条、日期等）随主题深浅渲染；Chromium 自动填充不出现白 / 黄底。
    深浅类型挂在 html[data-kind]（lib/appearance.ts 与 index.html 首帧脚本写入），浅色专属规则都挂到 [data-kind="light"] */
+/* 「问 AI」统一配色：问号气泡一律这个蓝，不跟各主题的 accent（青绿 / 紫 / 黄）走，否则同一件事看着像不同功能。
+   浅色主题用深一点的蓝。注意别写进 :root —— themes.test 会要求每个主题块都重复一份 :root 的全部变量。 */
+html { --color-ask: #58a6ff; }
+html[data-kind="light"] { --color-ask: #0969da; }
 :root { color-scheme: dark; }
 html[data-kind="light"] { color-scheme: light; }
 /* 高对比：键盘焦点在按钮 / 链接上画亮黄框（输入框自带焦点样式，不叠加） */

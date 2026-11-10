@@ -1,6 +1,7 @@
 // 告警汇总抽屉（右侧活动栏「告警」）：关键字告警命中的行，新的在上。点一条 → 切到该终端并滚到那一行；「问 AI」把该行前后 20 行放进对话输入框
 import { useEffect, useState } from 'react'
-import { X, Trash2, Sparkles } from 'lucide-react'
+import { X, Trash2 } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
 import { tr } from '@lingshell/shared'
 import { askAiChip } from '../../../lib/askAi.js'
 import { HelpTip } from '../../../components/ui/form.js'
@@ -42,7 +43,7 @@ export function AlertsDrawer({ onClose }: { onClose: () => void }) {
               <div className="mt-0.5 line-clamp-2 break-all font-mono text-[11.5px] text-[var(--color-text-primary)]">{e.line}</div>
             </button>
             <div className="mt-0.5 flex items-center gap-2">
-              <button onClick={() => void ask(e)} className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] hover:underline"><Sparkles className="h-3 w-3" />{tr('问 AI')}</button>
+              <button onClick={() => void ask(e)} className="flex items-center gap-1 text-[11px] text-[var(--color-ask)] hover:underline"><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
               {note?.id === e.id && <span className="text-[10.5px] text-[var(--color-warn)]">{note.text}</span>}
             </div>
           </div>

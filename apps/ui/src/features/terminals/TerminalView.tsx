@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { TerminalSquare, Plus, X, Server, MonitorDot, RotateCw, History, FolderTree, AlertTriangle, Columns2, Columns3, Rows2, Grid2x2, Radio, Circle, Square } from 'lucide-react'
-import { FileText, Container, Pin, BellRing, Cpu, EthernetPort, Table2, Radar } from 'lucide-react'
+import { FileText, Container, Pin, BellRing, Cpu, EthernetPort, Table2, Radar, MoreHorizontal } from 'lucide-react'
 import { ActivityBar, ActBtn, ActSep } from '../../components/ActivityBar.js'
 import { ConfirmDialog } from '../common/index.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
@@ -534,13 +534,60 @@ export function TerminalView() {
       openTableView({ title: p.split(/[\\/]/).pop() || p, command: p, output: text.length > 2_000_000 ? text.slice(0, 2_000_000) : text })
     } catch (e) { setTermError(tr('读取文件失败：{msg}', { msg: errText(e) })) }
   }
+  // 活动栏从一列拆成两列：左边放「文件 / 这台机器」相关的（资源管理器、双栏、命令历史、表格、Git、主机视图），
+  // 右边只留「告警与记录」和「多机工具」，一列不再挤成一条长龙（图标太多时找东西全靠悬停猜）。
+  const sup = (f: (type: TerminalInfo['type'], os: TerminalInfo['os']) => boolean) => !!activeTerm && f(activeTerm.type, activeTerm.os)
+  const loc = activeTerm?.type === 'local'   // 本机视图：本地终端也有进程 / 容器 / 端口（看的是本机）
+  const hostViews = [
+    sup(hostCheckSupported) && <ActBtn key="hc" title={tr('主机体检')} {...dBtn('hostcheck')}><Stethoscope className="h-4 w-4" /></ActBtn>,
+    (loc || sup(processSupported)) && <ActBtn key="ps" title={loc ? tr('进程（本机）') : tr('进程')} {...dBtn('processes')}><Cpu className="h-4 w-4" /></ActBtn>,
+    sup(systemdSupported) && <ActBtn key="sd" title={tr('服务（systemd）')} {...dBtn('systemd')}><ServerCog className="h-4 w-4" /></ActBtn>,
+    (loc || sup(dockerSupported)) && <ActBtn key="dk" title={loc ? tr('容器视图（本机 Docker）') : tr('容器视图（Docker）')} {...dBtn('docker')}><Container className="h-4 w-4" /></ActBtn>,
+    (loc || sup(portsSupported)) && <ActBtn key="pt" title={loc ? tr('监听端口（本机：谁占了端口）') : tr('监听端口（转发到本机）')} {...dBtn('ports')}><EthernetPort className="h-4 w-4" /></ActBtn>,
+    opsViewsFor(activeTerm).length > 0 && <MoreViewsButton key="more" term={activeTerm} active={opsView} onPick={(v) => { if (v === 'disk') setDiskPath(undefined); setDrawer(v) }} />,
+  ].filter(Boolean)
+  // tab 溢出检测：「…」按钮只在真放不下时出现（用 DOM 的 scrollWidth 判断，标题长短变化也算）
+  const tabStripRef = useRef<HTMLDivElement>(null)
+  const [tabsOverflow, setTabsOverflow] = useState(false)
+  const [tabListOpen, setTabListOpen] = useState(false)
+  const tabListRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = tabStripRef.current
+    if (!el) return
+    const check = () => setTabsOverflow(el.scrollWidth > el.clientWidth + 2)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [terms, tabMeta])
+  useEffect(() => {
+    if (!tabListOpen) return
+    const onDown = (e: MouseEvent) => { if (!tabListRef.current?.contains(e.target as Node)) setTabListOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setTabListOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey) }
+  }, [tabListOpen])
   return (
     <div className="flex h-full">
+    {/* 左侧活动栏：文件（资源管理器 / 双栏 / 命令历史 / 表格查看 / Git）+ 这台机器的视图（体检 / 进程 / 服务 / 容器 / 端口 / 更多） */}
+    <ActivityBar side="left">
+      {terms.length > 0 && (
+        <>
+          <ActBtn title={tr('资源管理器')} {...dBtn('explorer')}><FolderTree className="h-4 w-4" /></ActBtn>
+          {activeTerm?.type === 'ssh' && <ActBtn title={tr('双栏文件管理\n左边本机、右边这台服务器，拖过去就上传 / 下载')} onClick={() => openDual(activeId)}><Columns2 className="h-4 w-4" /></ActBtn>}
+          <ActBtn title={tr('命令历史')} {...dBtn('history')}><History className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON / 命令输出）按表格看')} onClick={() => void openTableFile()}><Table2 className="h-4 w-4" /></ActBtn>
+          {!(activeTerm?.type === 'ssh' && activeTerm.os === 'windows') && <ActBtn title={tr('Git（改动 / 分支 / 历史 / 储藏 / 同步）')} {...dBtn('git')}><GitBranch className="h-4 w-4" /></ActBtn>}
+          {hostViews.length > 0 && <><ActSep />{hostViews}</>}
+        </>
+      )}
+    </ActivityBar>
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-[var(--color-bg-base)]">
       <div className="flex h-10 shrink-0 items-center border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-1.5">
         {/* tab 列表：横向滚动，隐藏滚动条；tab 不压缩 */}
         {/* 拖标签排序：标签上按左右半边定插入位，标签后的空白处 = 末尾；松开时按插入位重排（顺序随布局持久化） */}
-        <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 self-stretch overflow-x-auto"
+        <div ref={tabStripRef} className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 self-stretch overflow-x-auto"
           onDragOver={(e) => { if (!isTabDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (e.target === e.currentTarget) setDropAt(tabs.length) }}
           onDrop={(e) => {
             if (!isTabDrag(e)) return
@@ -598,7 +645,35 @@ export function TerminalView() {
             )
           })}
         </div>
-        {/* 右侧图标区顺序：+号(带下拉) → 资源管理器 → 命令历史 */}
+        {/* tab 放不下时（横向滚动体验差）：最右边出一个「…」，点开是全部终端的列表，选一个就切过去 */}
+        {tabsOverflow && (
+          <div ref={tabListRef} className="relative shrink-0">
+            <button title={tr('全部终端（{n} 个）', { n: tabs.length })} onClick={() => setTabListOpen((o) => !o)}
+              className={`flex h-6 w-6 items-center justify-center rounded-md hover:bg-[var(--color-bg-hover)] ${tabListOpen ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}`}>
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+            {tabListOpen && (
+              <div data-tab-list className="absolute right-0 top-7 z-30 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1 text-[12px] shadow-2xl">
+                <div className="px-2 py-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('共 {n} 个终端', { n: tabs.length })}</div>
+                {tabs.map((t) => {
+                  const label = tabMeta[t.id]?.title || termLabel(t)
+                  return (
+                    <button key={t.id} data-tab-item={t.id} onClick={() => { setTabListOpen(false); selectTerm(t.id) }}
+                      title={[t.detail ?? t.title, termEnvLabel(t)].filter(Boolean).join('\n')}
+                      className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-[var(--color-bg-hover)] ${t.id === activeId ? 'bg-[var(--color-accent-bg)] text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]'}`}>
+                      {isPinned(t.id) && <Pin className="h-3 w-3 shrink-0 -rotate-45 opacity-70" />}
+                      {t.type === 'ssh' ? <Server className="h-3.5 w-3.5 shrink-0 opacity-80" /> : <TerminalSquare className="h-3.5 w-3.5 shrink-0 opacity-80" />}
+                      <span className={`min-w-0 flex-1 truncate ${t.status === 'disconnected' ? 'text-[var(--color-text-muted)] line-through' : ''}`}>{label}</span>
+                      {t.env === 'prod' && <ProdBadge />}
+                      {t.status === 'disconnected' && <span className="shrink-0 text-[10px] text-[var(--color-warn)]">{tr('已断开')}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+        {/* 右侧图标区顺序：+号(带下拉) → 录制 / 广播 / 分屏 等 */}
         {/* +号菜单向左下展开（right-0），右侧还有两个按钮+内边距，不会超窗口右缘 */}
         <div ref={menuRef} className="relative shrink-0">
           <button title={tr('新建终端：本地 / SSH / 已保存主机{key}', { key: keyHint('tab.new') })} onClick={() => { setMenuOpen((o) => !o); client.hosts.list().then(setHosts).catch(() => {}) }} className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><Plus className="h-3.5 w-3.5" /></button>
@@ -814,30 +889,11 @@ export function TerminalView() {
           onKill={() => { closeTerm(tmuxAsk.id, 'kill'); setTmuxAsk(null) }} onKeep={() => { closeTerm(tmuxAsk.id, 'keep'); setTmuxAsk(null) }} />
       )}
     </div>
-    {/* 右侧活动栏：打开侧边面板（抽屉从活动栏左侧滑出）+ 终端工具；依赖活动终端的无终端时隐藏。
-        分四组：文件（资源管理器 / 命令历史）→ 主机视图（体检 / 进程 / 服务 / 容器 / 端口 / 更多，仅支持的主机）
-        → 告警与记录（告警 / 日志 / 会话日志 / 即时回放）→ 多机工具（批量执行 / 文件比对 / 运维手册）；传输固定在最下 */}
+    {/* 右侧活动栏：告警与记录 + 多机工具（文件 / 这台机器相关的按钮挪到了左边的活动栏）；依赖活动终端的无终端时隐藏。
+        分两组：告警与记录（告警 / 日志 / 会话日志 / 即时回放）→ 多机工具（连通性探测 / 批量执行 / 文件比对 / 运维手册 / 部署评审 / 接口调试）；传输固定在最下 */}
     <ActivityBar side="right" bottom={<TransferButton />}>
-      {terms.length > 0 && (() => {
-        const sup = (f: (type: TerminalInfo['type'], os: TerminalInfo['os']) => boolean) => !!activeTerm && f(activeTerm.type, activeTerm.os)
-        const loc = activeTerm?.type === 'local'   // 本机视图：本地终端也有进程 / 容器 / 端口（看的是本机）
-        const views = [
-          sup(hostCheckSupported) && <ActBtn key="hc" title={tr('主机体检')} {...dBtn('hostcheck')}><Stethoscope className="h-4 w-4" /></ActBtn>,
-          (loc || sup(processSupported)) && <ActBtn key="ps" title={loc ? tr('进程（本机）') : tr('进程')} {...dBtn('processes')}><Cpu className="h-4 w-4" /></ActBtn>,
-          sup(systemdSupported) && <ActBtn key="sd" title={tr('服务（systemd）')} {...dBtn('systemd')}><ServerCog className="h-4 w-4" /></ActBtn>,
-          (loc || sup(dockerSupported)) && <ActBtn key="dk" title={loc ? tr('容器视图（本机 Docker）') : tr('容器视图（Docker）')} {...dBtn('docker')}><Container className="h-4 w-4" /></ActBtn>,
-          (loc || sup(portsSupported)) && <ActBtn key="pt" title={loc ? tr('监听端口（本机：谁占了端口）') : tr('监听端口（转发到本机）')} {...dBtn('ports')}><EthernetPort className="h-4 w-4" /></ActBtn>,
-          opsViewsFor(activeTerm).length > 0 && <MoreViewsButton key="more" term={activeTerm} active={opsView} onPick={(v) => { if (v === 'disk') setDiskPath(undefined); setDrawer(v) }} />,
-        ].filter(Boolean)
-        return (
-          <>
-            <ActBtn title={tr('资源管理器')} {...dBtn('explorer')}><FolderTree className="h-4 w-4" /></ActBtn>
-            {activeTerm?.type === 'ssh' && <ActBtn title={tr('双栏文件管理\n左边本机、右边这台服务器，拖过去就上传 / 下载')} onClick={() => openDual(activeId)}><Columns2 className="h-4 w-4" /></ActBtn>}
-            <ActBtn title={tr('命令历史')} {...dBtn('history')}><History className="h-4 w-4" /></ActBtn>
-            <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON / 命令输出）按表格看')} onClick={() => void openTableFile()}><Table2 className="h-4 w-4" /></ActBtn>
-            {!(activeTerm?.type === 'ssh' && activeTerm.os === 'windows') && <ActBtn title={tr('Git（改动 / 分支 / 历史 / 储藏 / 同步）')} {...dBtn('git')}><GitBranch className="h-4 w-4" /></ActBtn>}
-            {views.length > 0 && <><ActSep />{views}</>}
-            <ActSep />
+      {terms.length > 0 && (
+        <>
             <ActBtn title={alertUnread ? tr('告警（{n} 条未读）', { n: alertUnread }) : tr('告警：关键字告警命中的行')} {...dBtn('alerts')}>
               <Siren className="h-4 w-4" />
               {alertUnread > 0 && <span data-alert-unread className="absolute -right-0.5 -top-0.5 min-w-[14px] rounded-full bg-[var(--color-warn)] px-1 text-center text-[9px] font-semibold leading-[14px] text-[var(--color-bg-base)]">{alertUnread > 99 ? '99+' : alertUnread}</span>}
@@ -854,9 +910,8 @@ export function TerminalView() {
             <ActBtn title={tr('运维手册（逐条执行到当前终端）')} onClick={() => openRunbookView()}><BookOpenText className="h-4 w-4" /></ActBtn>
             <ActBtn title={tr('部署评审：解读部署文档、找风险、目标主机预检、出评审报告')} onClick={() => openDeployReview()}><ClipboardCheck className="h-4 w-4" /></ActBtn>
             <ApiDebugButton />
-          </>
-        )
-      })()}
+        </>
+      )}
     </ActivityBar>
     </div>
   )

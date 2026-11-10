@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { AlertTriangle, Bot, CheckCircle2, HardDrive, Loader2, Play, Stethoscope, X, Sparkles } from 'lucide-react'
+import { AlertTriangle, Bot, CheckCircle2, HardDrive, Loader2, Play, Stethoscope, X } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import { paletteSend } from '../../lib/paletteBus.js'
 import {
   certDaysLeft, diffIsEmpty, diffProfiles, findIssues, hostCheckSupported, profileReportText, summarizeDiff,
@@ -212,7 +213,7 @@ export function HostCheckDrawer({ term, onClose }: { term?: TerminalInfo; onClos
           {p.type === 'check' && (
             <Card title={tr('发现的问题（{n}）', { n: issues.length })} extra={issues.length > 0 && (
               <button data-hostcheck-ai disabled={!cur} onClick={triage} title={tr('把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理')}
-                className="flex items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"><Sparkles className="h-3 w-3" />{tr('用 AI 排查')}</button>
+                className="flex items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-ask)] hover:bg-[var(--color-bg-hover)]"><AskAiIcon className="h-3 w-3" />{tr('用 AI 排查')}</button>
             )}>
               <div data-hostcheck-issues>
                 {issues.length === 0 ? <span className="flex items-center gap-1 text-[var(--color-success)]"><CheckCircle2 className="h-3 w-3" />{tr('没有发现问题')}</span>

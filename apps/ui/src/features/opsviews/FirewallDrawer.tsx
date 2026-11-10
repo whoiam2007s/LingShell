@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FileCode2, MessageSquareQuote, Radar, ShieldCheck } from 'lucide-react'
+import { FileCode2, Radar, ShieldCheck } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import { paletteSend } from '../../lib/paletteBus.js'
 import {
   FW_ACTION_LABEL, FW_DIR_LABEL, FW_TOOL_LABEL, firewallQuote, listenLines, portsSupported, questionPort, ruleMatchesPort, tr,
@@ -62,7 +63,7 @@ export function FirewallDrawer({ term, onClose }: { term?: TerminalInfo; onClose
           <Input data-fw-ask size="sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void ask() }}
             placeholder={tr('问 AI：为什么 8080 端口外部访问不了')} />
           <button data-fw-ask-btn disabled={!list} onClick={() => void ask()} title={tr('把问题、防火墙规则和该端口的监听情况放进对话输入框（按设置脱敏，不自动发送）')}
-            className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI')}</button>
+            className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
           <button data-fw-probe onClick={() => paletteSend({ type: 'connProbe', source: term?.hostId ? `host:${term.hostId}` : `term:${tid}` })} title={tr('从这台主机（可再加别的源）测到其他服务的 DNS / TCP / HTTP 连通性')}
             className={`${BTN} text-[var(--color-text-secondary)]`}><Radar className="h-3 w-3" />{tr('测连通')}</button>
         </div>

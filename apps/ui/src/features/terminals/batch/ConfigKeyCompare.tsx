@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Eye, EyeOff, Loader2, MessageSquareQuote } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
 import {
   CONFIG_FORMATS, DIFF_STATUS_LABEL, MASK, configDiffQuote, detectConfigFormat, diffConfigs, diffCounts, tr, tryFlatten,
   type CompareChoice, type ConfigDiffRow, type ConfigFormat, type DiffStatus,
@@ -100,7 +101,7 @@ export function ConfigKeyCompare({ choices, onClose }: { choices: CompareChoice[
         {error && <span data-keycmp-error className="min-w-0 flex-1 truncate text-[var(--color-danger)]" title={error}>{error}</span>}
         <div className="ml-auto flex items-center gap-2">
           {res && <button data-keycmp-ask onClick={() => void ask()} title={tr('把差异表（敏感值已遮挡）放进对话输入框，让 AI 解释可能的影响（不自动发送）')}
-            className="flex items-center gap-1 rounded-md border border-[var(--color-border-default)] px-2.5 py-1.5 text-[12px] text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"><MessageSquareQuote className="h-3.5 w-3.5" />{tr('让 AI 解释差异')}</button>}
+            className="flex items-center gap-1 rounded-md border border-[var(--color-border-default)] px-2.5 py-1.5 text-[12px] text-[var(--color-ask)] hover:bg-[var(--color-bg-hover)]"><AskAiIcon />{tr('让 AI 解释差异')}</button>}
           <button data-keycmp-run disabled={!canRun} onClick={() => void run()}
             className="flex items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-4 py-1.5 text-[12px] font-medium text-[var(--color-bg-base)] hover:bg-[var(--color-accent-dim)] disabled:opacity-40">
             {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{busy ? tr('读取中…') : res ? tr('重新对比') : tr('开始对比')}

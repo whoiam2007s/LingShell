@@ -10,7 +10,7 @@ import { SaveRunbookDialog } from '../runbooks/index.js'
 import { REVIEW_DECISION, SUDO_LEASE_RULE } from '@lingshell/shared'
 import { ReviewBadge } from './SafetyBits.js'
 import { auditDigest, isRisky, isToday } from '@lingshell/shared'
-import { MessageSquareQuote } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import { askAiChip } from '../../lib/askAi.js'
 import { Select } from '../../components/ui/Select.js'
 
@@ -131,8 +131,8 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
       )}
       <span className="ml-auto" />
       <button onClick={review} disabled={!shown.length} title={tr('把当前筛选出的执行记录汇总后挂到对话（不自动发送）')}
-        className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50">
-        <MessageSquareQuote className="h-3 w-3" />{tr('让 AI 复盘')}
+        className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-ask)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50">
+        <AskAiIcon className="h-3 w-3" />{tr('让 AI 复盘')}
       </button>
       {canSave && (
         <button onClick={() => setSaving(true)} title={tr('把本会话执行成功的命令保存为可重复执行的运维手册')}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Copy, Cpu, ListTree, MessageSquareQuote, Pause, Play, RefreshCw, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, Cpu, ListTree, Pause, Play, RefreshCw, X } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
 import {
   PROC_SIGNALS, PROC_SIGNAL_LABEL, buildProcTree, compareProcs, filterProcs, fmtPct, fmtRss, procChip, processSupported, tk, tr,
   type ProcList, type ProcRow, type ProcSignal, type ProcSortKey, type TerminalInfo,
@@ -165,7 +166,7 @@ export function ProcessDrawer({ term, onClose }: { term?: TerminalInfo; onClose:
                 className={`${BTN} ${s === 'HUP' ? 'text-[var(--color-warn)]' : 'text-[var(--color-danger)]'}`}>{sigLabel(s)}</button>
             ))}
             <button onClick={() => copy(selRow)} className={`${BTN} text-[var(--color-text-secondary)]`}><Copy className="h-3 w-3" />{tr('复制命令行')}</button>
-            <button onClick={() => askAi(selRow)} className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI')}</button>
+            <button onClick={() => askAi(selRow)} className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
             {flash && <span className="text-[11px] text-[var(--color-success)]">{flash}</span>}
           </div>
         </div>

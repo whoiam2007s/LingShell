@@ -5,7 +5,8 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import { Bot, Square, MessageSquareQuote, ChevronUp, ChevronDown, X, CaseSensitive, Zap, Sparkles, Loader2, AlertTriangle, ArrowDown } from 'lucide-react'
+import { Bot, Square, ChevronUp, ChevronDown, X, CaseSensitive, Zap, Sparkles, Loader2, AlertTriangle, ArrowDown } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
 import '@xterm/xterm/css/xterm.css'
 import type { IMarker, IDecoration } from '@xterm/xterm'
 import type { AlertHit, CompletionMatch, PasteCheck, ShellCommand, TerminalInfo } from '@lingshell/shared'
@@ -987,7 +988,7 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
             style={{ left: ask.x, top: ask.y }}
             className="absolute z-10 flex items-center gap-1 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] px-2 py-1 text-[12px] text-[var(--color-text-primary)] shadow-lg transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
           >
-            <MessageSquareQuote className="h-3.5 w-3.5" />{tr('问 AI')}
+            <AskAiIcon />{tr('问 AI')}
           </button>
         )}
         {tblBtn && !menu && (

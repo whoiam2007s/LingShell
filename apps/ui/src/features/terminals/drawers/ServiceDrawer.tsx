@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowUpToLine, Loader2, MessageSquareQuote, RefreshCw, ScrollText, ServerCog, X } from 'lucide-react'
+import { AlertTriangle, ArrowUpToLine, Loader2, RefreshCw, ScrollText, ServerCog, X } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
 import {
   SVC_ACTIONS, SVC_ACTION_LABEL, filterSvcs, sortSvcs, svcAutostart, svcFailed, svcChip, systemdSupported, tr,
   type SvcAction, type SvcList, type SvcRow, type TerminalInfo,
@@ -174,7 +175,7 @@ export function ServiceDrawer({ term, onClose }: { term?: TerminalInfo; onClose:
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <button title={tr('在日志面板里打开 journalctl -u {name} -f', { name: selRow.name })} onClick={() => viewLog(selRow)} className={`${BTN} text-[var(--color-text-secondary)]`}><ScrollText className="h-3 w-3" />{tr('查看日志')}</button>
-            <button title={tr('把服务状态和最近日志放进对话输入框（按设置脱敏，不自动发送）')} onClick={() => void askAi(selRow)} className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI')}</button>
+            <button title={tr('把服务状态和最近日志放进对话输入框（按设置脱敏，不自动发送）')} onClick={() => void askAi(selRow)} className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
             {flash && <span className="text-[11px] text-[var(--color-success)]">{flash}</span>}
           </div>
         </div>

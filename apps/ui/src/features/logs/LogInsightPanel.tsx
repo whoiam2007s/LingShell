@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Filter, MessageSquareQuote, Sparkles, X } from 'lucide-react'
+import { Filter, Sparkles, X } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import { buildHistogram, buildLogDigest, fmtLogClock, fmtStep, patternQuote, redactSecrets, LEVEL_LABEL, tk, tr, dateLocale, type LogInsight, type LogLevel, type LogPattern } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { askAiChip } from '../../lib/askAi.js'
@@ -113,7 +114,7 @@ export function LogInsightPanel({ insight, source, host, fp, onFp, range, onRang
                 <button title={fp === p.fp ? tr('取消只看这类') : tr('原始视图只看这类日志')} onClick={(e) => { e.stopPropagation(); onFp(fp === p.fp ? undefined : p.fp) }}
                   className={`shrink-0 rounded p-0.5 hover:text-[var(--color-accent)] ${fp === p.fp ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100'}`}><Filter className="h-3 w-3" /></button>
                 <button data-insight-ask title={tr('问 AI：这类日志的模式、次数和几条示例放进对话输入框（按设置脱敏，不自动发送）')} onClick={(e) => { e.stopPropagation(); void ask(p) }}
-                  className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] opacity-0 hover:text-[var(--color-accent)] group-hover:opacity-100"><MessageSquareQuote className="h-3 w-3" /></button>
+                  className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] opacity-0 hover:text-[var(--color-ask)] group-hover:opacity-100"><AskAiIcon className="h-3 w-3" /></button>
               </div>
               <div data-fp className="mt-0.5 line-clamp-2 break-all pl-[50px] font-mono text-[11px] leading-[15px] text-[var(--color-text-secondary)]">{p.fp}</div>
             </div>

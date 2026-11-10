@@ -94,6 +94,42 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
+  // ── 输入框高度：默认随内容长高（最多 35% 窗口高）；也可以在框上沿往上拖固定一个高度，
+  // 双击那道边恢复自动。贴了一大段日志 / 多段上下文时，不用在一条高的行里滚来滚去。
+  const INPUT_H_KEY = 'lingshell.chat.inputH'
+  const [inputH, setInputH] = useState<number | null>(() => {
+    const v = Number(localStorage.getItem(INPUT_H_KEY))
+    return Number.isFinite(v) && v >= 44 ? v : null
+  })
+  const dragH = useRef<{ y: number; h: number } | null>(null)
+  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const box = e.currentTarget.parentElement?.querySelector<HTMLElement>('[data-compose-box]')
+    dragH.current = { y: e.clientY, h: inputH ?? box?.getBoundingClientRect().height ?? 60 }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragH.current
+    if (!d) return
+    const max = Math.round(window.innerHeight * 0.7)
+    setInputH(Math.max(44, Math.min(max, d.h - (e.clientY - d.y))))   // 往上拖变高
+  }
+  const onResizeUp = () => {
+    if (!dragH.current) return
+    dragH.current = null
+    if (inputH) localStorage.setItem(INPUT_H_KEY, String(inputH))
+  }
+  const resetInputH = () => { localStorage.removeItem(INPUT_H_KEY); setInputH(null) }
+  // 自动模式：按内容算高度（换行 / 粘贴都会重新算）；固定模式下交给外面的盒子
+  useLayoutEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    if (inputH) { ta.style.height = ''; return }
+    ta.style.height = 'auto'
+    const max = Math.round(window.innerHeight * 0.35)
+    ta.style.height = `${Math.max(22, Math.min(ta.scrollHeight, max))}px`
+  }, [input, inputH])
+
   // ── 会话标签栏：多任务在几个会话间来回切 ────────────────────────────────
   // tabs 只存 id（持久化到 localStorage），当前会话永远在里面；关闭标签不删会话。
   const [tabs, setTabs] = useState<string[]>([])
@@ -750,7 +786,14 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         <AttachmentChips items={att.items} onRemove={att.remove} onError={att.setHint} noImage={!models.current?.multimodal} className="mb-1.5 pt-1.5" />
         {att.hint && <div data-attach-hint className="mb-1.5 text-[11.5px] text-[var(--color-warn)]">{att.hint}</div>}
         {shellBusy && <div data-shell-busy className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-text-muted)]"><Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />{tr('正在终端「{title}」执行…', { title: shellBusy })}</div>}
-        <div {...att.dropProps} className={`relative flex items-end gap-1.5 rounded-lg border bg-[var(--color-bg-base)] px-2.5 py-1.5 transition-colors ${bang !== null ? 'border-[color:color-mix(in_srgb,var(--color-warn)_60%,transparent)]' : 'border-[var(--color-border-default)] focus-within:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'}`}>
+        {/* 输入框高度：往上拖变高（双击恢复「随内容自动长高」）；固定高度按用户拖的来，记在 localStorage */}
+        <div data-chat-resize
+          title={tr('拖动调整输入框高度（双击恢复自动）')}
+          onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeUp} onDoubleClick={resetInputH}
+          className="group/resize -mb-0.5 flex h-1.5 shrink-0 cursor-row-resize items-center justify-center">
+          <span className="h-[3px] w-10 rounded-full bg-[var(--color-border-default)] transition-colors group-hover/resize:bg-[var(--color-accent)]" />
+        </div>
+        <div {...att.dropProps} data-compose-box style={inputH ? { height: inputH } : undefined} className={`relative flex items-end gap-1.5 rounded-lg border bg-[var(--color-bg-base)] px-2.5 py-1.5 transition-colors ${bang !== null ? 'border-[color:color-mix(in_srgb,var(--color-warn)_60%,transparent)]' : 'border-[var(--color-border-default)] focus-within:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'}`}>
           <AtMenuPopup m={atMenu} />
           {/* 「+」菜单：工作目录（会话绑定，本地终端 cwd / AI 默认工作区）/ Skills ▸ / 常用任务 ▸ / 运维手册 ▸。
               二级菜单选中后交给后面两个 picker（不显示自己的按钮，经 preset 打开）：模板填入输入框不自动发送；手册填参数 + 选终端后发出。

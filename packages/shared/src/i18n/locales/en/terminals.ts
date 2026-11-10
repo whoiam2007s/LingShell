@@ -1,6 +1,9 @@
 // 英文译文：键 = 中文原文（见 ../../i18n.ts）。只放这一块负责的文件里用到的文案
 // terminals：ui features/terminals、features/transfer
 export const terminals: Record<string, string> = {
+  // TerminalView.tsx：tab 放不下时的「…」列表
+  '全部终端（{n} 个）': 'All terminals ({n})',
+  '共 {n} 个终端': '{n} terminals',
   // transfer/TransferPanel.tsx
   '传输队列': 'Transfer queue',
   '同时进行的任务数、限速在「设置 → 通用 → 文件传输」里改。不加密的上传和资源管理器下载是逐个文件直传：可暂停，「继续」从断点接着传、保留修改时间；加密上传失败只能从头重传。排队中的可「优先传输」或上下移动。已结束的任务重启后还在（标「历史」）。':

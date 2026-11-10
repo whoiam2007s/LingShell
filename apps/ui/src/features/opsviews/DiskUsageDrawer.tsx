@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, File as FileIcon, Folder, FolderOpen, HardDrive, MessageSquareQuote } from 'lucide-react'
+import { ArrowUp, File as FileIcon, Folder, FolderOpen, HardDrive } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import {
   bashPath, diskLinuxOnly, diskQuote, diskSupported, formatSize, tk, tr,
   type DiskBigFiles, type DiskCommon, type DiskDeleted, type DiskLevel, type FsScope, type TerminalInfo,
@@ -83,7 +84,7 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
   const header = <DrawerHeader icon={<HardDrive className="h-3.5 w-3.5" />} title={tr('磁盘占用')} loading={!!loading} onRefresh={ok ? () => load(tab, path) : undefined} onClose={onClose}
     extra={ok ? <>
       <button data-disk-ask disabled={!level && !big && !common && !deleted} onClick={() => void ask()} title={tr('把已统计的结果放进对话输入框，问 AI 哪些能安全清理（按设置脱敏，不自动发送）')}
-        className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI 怎么清理')}</button>
+        className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI 怎么清理')}</button>
       <HelpTip>{tr('只读：只用 du / find / df / lsof 统计，不删除任何东西（要清理请在终端或资源管理器里操作，或问 AI）。只统计同一分区（du -x），每次最多算 25 秒，超时显示已统计的部分。没有 root 时读不了别人的目录，结果会偏小。本地终端用 Git Bash 统计。')}</HelpTip>
     </> : undefined} />
   if (!ok) return <div className="flex h-full flex-col">{header}<div className={`px-3 py-3 text-[12px] ${MUTED}`}>{tr('磁盘空间分析支持本地终端和 Linux / macOS 的 SSH 终端。')}</div></div>

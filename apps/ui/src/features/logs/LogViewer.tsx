@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as RMouseEvent } from 'react'
-import { ArrowDownToLine, BarChart3, Copy, Download, Eraser, Maximize2, Minimize2, Minus, MessageSquareQuote, Pause, Play, Plus, RotateCw, ScrollText, X, Layers } from 'lucide-react'
+import { ArrowDownToLine, BarChart3, Copy, Download, Eraser, Maximize2, Minimize2, Minus, Pause, Play, Plus, RotateCw, ScrollText, X, Layers } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import {
   LOG_COMMON_PATHS, LogInsight, fmtLogClock, tr, dateLocale, logSourceLabel, logSupported, mergeSearchResults, LOG_SEARCH_RAW_MAX,
   type LogSource, type TerminalInfo, type MultiLogTarget, type LogSearchQuery, type LogSearchHostResult, type MultiLogHostState,
@@ -391,7 +392,7 @@ function LogTab({ spec, host, hidden }: { spec: LogTabSpec; host: string; hidden
         <button title={tr('导出当前内容为 .txt')} disabled={!visible.length} onClick={exportTxt} className={IB}><Download className="h-3.5 w-3.5" /></button>
         <button title={tr('选中当前显示的所有行')} disabled={!visible.length} onClick={() => setSel(new Set(visible.map((l) => l.n)))} className={IB}>{tr('全选')}</button>
         <button title={tr('复制选中行')} disabled={!sel.size} onClick={copySel} className={IB}><Copy className="h-3.5 w-3.5" /></button>
-        <button title={tr('把选中行和文件路径放进对话输入框（按设置脱敏，不自动发送）')} disabled={!sel.size} onClick={() => void ask()} className={IB}><MessageSquareQuote className="h-3.5 w-3.5" />{sel.size ? tr('问 AI（{n} 行）', { n: sel.size }) : tr('问 AI')}</button>
+        <button title={tr('把选中行和文件路径放进对话输入框（按设置脱敏，不自动发送）')} disabled={!sel.size} onClick={() => void ask()} className={`${IB} ${sel.size ? 'text-[var(--color-ask)]' : ''}`}><AskAiIcon />{sel.size ? tr('问 AI（{n} 行）', { n: sel.size }) : tr('问 AI')}</button>
       </div>
       {multi && (
         <div data-log-hosts className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[var(--color-border-subtle)] px-2 py-1 text-[11px]">

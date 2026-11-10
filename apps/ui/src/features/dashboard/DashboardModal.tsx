@@ -3,7 +3,8 @@
 // 数据：主进程 dashboard:*（见 desktop/main/ops/hostDashboard.ts），打开期间每 2 秒拉一次快照；关闭时停掉未连接主机的采样。
 // 自挂载：App 里常驻 <DashboardModal />，openDashboard() 打开。不能点遮罩关闭（按钮 / Esc）
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, LayoutDashboard, Search, MoreHorizontal, Stethoscope, Cog, EthernetPort, BookMarked, Network, Sparkles, AlertTriangle } from 'lucide-react'
+import { X, LayoutDashboard, Search, MoreHorizontal, Stethoscope, Cog, EthernetPort, BookMarked, Network, AlertTriangle } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import {
   DASH_INTERVALS, DASH_LIMITS, dashAskText, dashOnline, dashProblems, dashSummary, latestOf, sortDashCards, sparkPoints, tk, tr,
   type DashLatest, type DashOnline, type DashPoint, type DashSnapshot, type HostSummary, type Watchdog, type WatchdogState,
@@ -267,7 +268,7 @@ function DashboardBody({ onClose }: { onClose: () => void }) {
             <Network className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{menu.card.h.group ? tr('跨主机提问（{group}）', { group: menu.card.h.group }) : tr('跨主机提问')}
           </button>
           <button onClick={act(() => sendToChat(dashAskText(menu.card.h, menu.card.latest, { problems: menu.card.problems, alerts: menu.card.alerts.slice(0, 3).map((a) => `${hm(a.at)} ${a.text}`), lastCheck: menu.card.lastCheck ? { at: hm(Date.parse(menu.card.lastCheck.at)), issues: menu.card.lastCheck.issues } : undefined })))} className={ITEM}>
-            <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />{tr('问 AI')}
+            <AskAiIcon />{tr('问 AI')}
           </button>
         </div>
       )}
@@ -355,7 +356,7 @@ function HostCard({ c, onOpen, onSampling, onMenu, onAskAi }: { c: Card; onOpen:
       {c.problems.length > 0 && (
         <div data-dash-problems className="flex items-start gap-1 text-[11px] text-[var(--color-danger)]"><AlertTriangle className="mt-px h-3 w-3 shrink-0" /><span className="min-w-0 flex-1">{c.problems.join(' · ')}</span>
           <button data-dash-ai onClick={(e) => { e.stopPropagation(); onAskAi() }} title={tr('新开一个会话，把异常和当前指标发给 AI 排查原因')}
-            className="flex shrink-0 items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"><Sparkles className="h-3 w-3" />{tr('用 AI 排查')}</button>
+            className="flex shrink-0 items-center gap-0.5 rounded px-1 text-[10.5px] text-[var(--color-ask)] hover:bg-[var(--color-bg-hover)]"><AskAiIcon className="h-3 w-3" />{tr('用 AI 排查')}</button>
         </div>
       )}
       {c.alerts[0] && (
