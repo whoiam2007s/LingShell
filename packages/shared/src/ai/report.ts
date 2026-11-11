@@ -214,6 +214,14 @@ export function buildSessionReport(input: SessionReportInput): string {
     }).join('\n')
     : tr('report|无')
 
+  // 6. 回滚方案：AI 给了回滚命令的记录（写操作 / 命令），每步怎么退回一次列全
+  const rollbacks = audit.filter((a) => a.rollback)
+  const rollbackMd = rollbacks.length
+    ? rollbacks.map((a) => [
+      `- ${fmtTime(a.at)} · ${cell(where(a))}${a.command ? ` — \`${cell(a.command)}\`` : ''}`,
+      `  - ${tr('回滚：{cmd}', { cmd: `\`${a.rollback ?? ''}\`` })}${a.rollbackNote ? tr('（{note}）', { note: a.rollbackNote }) : ''}`,
+    ].join('\n')).join('\n')
+    : tr('report|无')
   const conv = conversationParts(items, 3)
   const md = [
     `# ${tr('会话报告：{title}', { title })}`, stamp(input.now ?? new Date()),
@@ -222,6 +230,7 @@ export function buildSessionReport(input: SessionReportInput): string {
     `## 3. ${tr('执行记录')}\n\n${auditMd}`,
     `## 4. ${tr('文件改动')}\n\n${filesMd}`,
     `## 5. ${tr('授权记录')}\n\n${authMd}`,
+    `## 6. ${tr('回滚方案')}\n\n${rollbackMd}`,
   ].join('\n\n') + '\n'
   return input.redact ? redactSecrets(md) : md
 }

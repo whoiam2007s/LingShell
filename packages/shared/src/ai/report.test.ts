@@ -70,7 +70,7 @@ describe('完整报告', () => {
   it('空会话各节显示「无」', () => {
     const e = buildSessionReport({ title: 'x', items: [], audit: [], hosts: [] })
     expect(e).toContain('—（无执行记录）')
-    expect(e.match(/\n无\n/g)?.length).toBe(4)
+    expect(e.match(/\n无\n/g)?.length).toBe(5)
   })
 
   it('redact 开启时脱敏', () => {
