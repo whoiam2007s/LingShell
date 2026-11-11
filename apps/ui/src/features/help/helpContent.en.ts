@@ -59,7 +59,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
   {
     id: 'chat', title: 'AI chat and permissions', icon: MessageSquare,
     blocks: [
-      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hover for "Rename" and "Export session"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Knowledge base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
+      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hovering shows the session name and its bound working directory, then "Rename" and "Export session" appear; unbound ones say "No working directory bound (using the default workspace)"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Knowledge base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
       { h: 'Status dots in session history', p: 'Each session in "Session history" has a small dot before its title showing the result of **the last turn** of that session: running = blue (breathing), waiting for your approval / plan = orange, failed = red.', tips: [
         'Opening the drawer or the session does not clear it; the red dot goes away only after that session\'s **next turn succeeds**.',
         'It reflects the last turn only, not historical failures; no dot = the last turn finished normally.',
@@ -138,7 +138,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       ] },
       { h: 'Send terminal content to the AI', p: 'Selecting text in a terminal shows an "Ask AI" button; clicking it quotes the selection into the input box (not sent automatically). The red dot of a failed command also has a one-click "Ask AI".' },
       { h: 'Upload / download', p: 'The AI can upload local files to an SSH host, or download remote files to `~/Downloads/LingShell/` on this machine; each one shows a permission card to confirm. For transferring files manually, see "Files".' },
-      { h: 'Export session report', p: '"Export session" next to the session title offers: "Chat only (Markdown)", "Full report (Markdown)", and "Full report (HTML)". The full report includes a summary, chat and steps, execution log, file changes, and permission records.', tips: [
+      { h: 'Export session report', p: '"Export session" next to the session title offers: "Chat only (Markdown)", "Full report (Markdown)", and "Full report (HTML)". The full report includes a summary, chat and steps, execution log, file changes, permission records, and a "Rollback plan" section listing the rollback command and note for each step; the HTML version also has a "Contents" box at the top that jumps to each section.', tips: [
         '"Redact sensitive info" is checked by default: passwords, tokens, private keys, and keys starting with sk- / AKIA are replaced with "[redacted]".',
         'When command output contains code fences like ```, a longer fence is used to wrap it automatically so the rest of the report doesn\'t render incorrectly.',
       ] },
@@ -807,7 +807,11 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       ] },
       { h: 'Diagnostic bundle', p: 'When you need to report a problem, click "Export diagnostic bundle" in "Settings → Backup & diagnostics → Diagnostic bundle". It contains version and environment info, the last 3 run logs, and redacted settings / host list / layout / inspection schedules. It doesn\'t include API keys, passwords, private keys, chat content, commands run by AI, or command history.', tips: ['Host notes, local notes, and custom rules are exported as-is; review them before sharing.'] },
       { h: 'Data folder', p: '"Settings → Backup & diagnostics → Data folder" shows where the data folder and run logs are; "Open data folder" and "Open log folder" open them in the file manager.' },
-      { h: 'Updates', p: 'Click "Check for updates" on the "Settings → About" page; when the download finishes, click "Restart to update", or it installs automatically the next time you quit.' },
+      { h: 'Updates', p: 'Clicking "Check for updates" in "Settings → About" starts the download by itself when a new version exists (no need to click the update icon in the top bar); a progress bar appears on the settings page. When the download finishes, click "Restart to update", or it installs automatically the next time you quit.', tips: [
+        'To stay on this version, click "Skip this version": the top bar stops showing it (Settings can still check manually). Newer versions are announced again, and "Show update notices again" cancels the skip.',
+        'Check or download failures show the original error plus a hint classified as network/proxy, signature, disk space, or other; "Manual download" is the last resort.',
+        'Background checks (10 seconds after launch and hourly) only check, never download.',
+      ] },
     ],
   },
   {
@@ -1473,7 +1477,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         '"Safe" never auto-approves on its own. The card is skipped only when "Auto-approve if review passes" is on, the host isn\'t production, the session trust level is "Confirm", and the command isn\'t dangerous (the execution log notes "Passed AI review").',
         'Review results are written to the execution log (session permissions drawer → "Execution log").',
       ] },
-      { h: 'Execution modes (four levels, per session)', p: 'Pick one with the "Execution mode" button in the chat header; it applies to the current session only. The default "Confirm each" is exactly how things worked before:', steps: [
+      { h: 'Execution modes (four levels, per session)', p: 'Pick one with the "Execution mode" button in the chat header; it applies to the current session only. The default "Confirm each" is exactly how things worked before. The shield "Session permissions" page shows the current level and lists all four with one line each (the current one is highlighted); switching still happens in the header button:', steps: [
         'Dry run: read-only investigation still works, but write commands, file writes, uploads and external tools are all blocked, and the AI writes a plan instead (see the next block).',
         'Confirm each (default): permissions are remembered per host, so approving once on a host is enough; deletes and dangerous commands always ask.',
         'Confirm once: permissions are remembered by tool plus scope, so approving one operation of a kind stops the asking, even on other hosts. Writes outside the working directory are remembered per target directory (only after that directory is approved); deletes and dangerous commands still ask.',
