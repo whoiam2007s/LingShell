@@ -18,7 +18,7 @@ describe('AuthRegistry.decide', () => {
     expect(reg.getTrust('s1')).toBe('confirm')
     expect(reg.decide('s1', 't1', 'write', 'echo hi')).toMatchObject({ kind: 'prompt' })
     reg.grant('s1', 't1', 'write')
-    expect(reg.decide('s1', 't1', 'write', 'echo hi')).toMatchObject({ kind: 'prompt', reason: 'elevation' })
+    expect(reg.decide('s1', 't1', 'write', 'echo hi')).toMatchObject({ kind: 'prompt', reason: 'mode_confirm' })
     // 第二条、第三条一样要问
     expect(reg.decide('s1', 't1', 'write', 'echo hi 2')).toMatchObject({ kind: 'prompt' })
     expect(reg.decide('s1', 't1', 'read').kind).toBe('allow')
@@ -54,7 +54,7 @@ describe('AuthRegistry.decide', () => {
   it('生产主机：确认一次档已有 write 仍逐条确认；危险命令无视开关；read 不问；只读档仍拒绝', () => {
     reg.setExecMode('s1', 'auto')
     reg.grant('s1', 't1', 'write')
-    expect(reg.decide('s1', 't1', 'write', 'ls', true, true)).toMatchObject({ kind: 'prompt', reason: 'elevation' })
+    expect(reg.decide('s1', 't1', 'write', 'ls', true, true)).toMatchObject({ kind: 'prompt', reason: 'mode_confirm' })
     expect(reg.decide('s1', 't1', 'write', 'rm -rf /tmp/x', false, true)).toMatchObject({ kind: 'prompt', reason: 'dangerous_command' })
     expect(reg.decide('s1', 't1', 'read', undefined, true, true)).toEqual({ kind: 'allow' })
     // 非生产对照：同样条件直接放行

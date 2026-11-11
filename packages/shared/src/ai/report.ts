@@ -40,7 +40,7 @@ export function fmtTime(iso: string): string {
 export { REDACTED, redactSecrets } from './redact.js'
 
 // ── 执行记录 decision → 中文 ─────────────────────────
-const ALLOW_REASON: Record<string, string> = { first_access: tk('首次授权'), elevation: tk('提升为写入'), dangerous_command: tk('危险命令确认'), user: tk('批准'), plan: tk('计划内') }
+const ALLOW_REASON: Record<string, string> = { first_access: tk('首次授权'), elevation: tk('提升为写入'), mode_confirm: tk('逐条确认'), dangerous_command: tk('危险命令确认'), user: tk('批准'), plan: tk('计划内') }
 export function auditDecisionLabel(d: string): string {
   const fixed: Record<string, string> = {
     exec_allowed: tk('audit|执行'), 'exec_allowed:edited': tk('改后执行'), read_allowed: tk('audit|读取'), upload_allowed: tk('上传'),
@@ -138,7 +138,7 @@ const cell = (s: string, max = 200) => {
   const t = s.replace(/\\/g, '\\\\').replace(/\r?\n/g, ' ⏎ ').replace(/\|/g, '\\|')
   return t.length > max ? `${t.slice(0, max)}…` : t
 }
-const AUTH_REASON: Record<string, string> = { first_access: tk('首次访问'), elevation: tk('提升为写入'), dangerous_command: tk('危险命令') }
+const AUTH_REASON: Record<string, string> = { first_access: tk('首次访问'), elevation: tk('提升为写入'), mode_confirm: tk('逐条确认'), dangerous_command: tk('危险命令') }
 const VERDICT: Record<Verdict, string> = { allow: tk('允许'), deny: tk('拒绝'), timeout: tk('超时'), cancelled: tk('未处理') }
 
 interface FileChange { path: string; source: string; diff?: string; backup?: string }

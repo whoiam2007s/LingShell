@@ -13,10 +13,19 @@
 //   2. 危险命令永远问（preview 下直接拒）
 //   3. 读操作永远放行
 import type { RiskLevel, TrustLevel } from '../protocol/index.js'
+import { tk } from '../i18n/i18n.js'
 
 export type ExecMode = 'preview' | 'confirm' | 'auto' | 'trust'
 export const EXEC_MODES: ExecMode[] = ['preview', 'confirm', 'auto', 'trust']
 export const DEFAULT_EXEC_MODE: ExecMode = 'confirm'
+
+/** 四档各一句话：「这条会不会问」。授权抽屉逐条列出（当前档高亮），聊天头顶的模式按钮也用同一套说法。 */
+export const EXEC_MODE_BRIEF: Record<ExecMode, string> = {
+  preview: tk('只读排查，写操作只列方案不执行'),
+  confirm: tk('每条写操作都要你确认'),
+  auto: tk('批过一次就不再问；目录外写和危险命令仍问'),
+  trust: tk('工作目录内的写直接放行；危险命令仍问'),
+}
 
 export type OpDecision = 'allow' | 'ask' | 'deny'
 
