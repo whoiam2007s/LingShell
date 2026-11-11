@@ -1,6 +1,12 @@
 @import "tailwindcss";
-/* 兼容模式：继续用 tailwind.config.js 里的主题 / keyframes / animation（Tailwind 4 的 @config 指令） */
-@config "../tailwind.config.js";
+
+/* 字体：原 tailwind.config.js 的 fontFamily.extend。
+   颜色 token 项目里全部走任意值（bg-[var(--color-…)]，5100 处），没有用到嵌套类名，故不再迁；
+   animate-* 与 @keyframes 见本文件下方的 ai-* 手写定义，也无需放进 @theme。 */
+@theme {
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
 
 /* ─────────────────────────────────────────────────────────
    灵壳 LingShell 设计系统 — Operator Console（深色专业工具美学）
