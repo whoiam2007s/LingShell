@@ -814,6 +814,13 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     id: 'shortcuts', title: 'Keyboard shortcuts', icon: Keyboard, settings: 'shortcuts',
     blocks: [
       { p: 'The tables below come from the same source as the actual key handling and show the keys currently in effect (including any you changed). Any key combo not listed here is passed through to the shell and terminal programs.' },
+      { h: 'Permission card (when the AI asks for access)', keys: [
+        ['Enter', 'Allow. Dangerous commands need two presses: the first only warns, a second within 3 seconds runs it'],
+        ['Esc', 'Deny'],
+      ], tips: [
+        'Only the newest pending card responds; not while focus is in an input box or the terminal (Enter means newline / send to shell there).',
+        'Not while the card is covered by a drawer or dialog; while editing the command or writing a deny reason, Enter goes to that input.',
+      ] },
       { h: 'Customize shortcuts', steps: [
         'Open "Settings → Keyboard shortcuts". You can search by action name or by key.',
         'Click the key on the right of an item and press a new combo; it takes effect and is saved immediately. While recording, Esc cancels and Backspace sets it to unassigned.',
