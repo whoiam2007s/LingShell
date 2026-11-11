@@ -15,12 +15,16 @@ import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
-import type { TurnTimes } from '@lingshell/shared'
+import type { TurnTimes, SessionMeta } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
+import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
+import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
+import { prefillAsk } from './askPrefill.js'
+import { cueOf, playCue } from '../../lib/sound.js'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
-import { conversationToMarkdown, buildSessionReport, fmtTokens, fmtCost, totalTokens, cacheHitRate, USAGE_PRICES_EVENT, type UsageTotals, type UsageCurrency } from '@lingshell/shared'
+import { conversationToMarkdown, buildSessionReport, fmtTokens, fmtCost, totalTokens, cacheHitRate, costLevel, USAGE_PRICES_EVENT, type UsageTotals, type UsageCurrency } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { TemplatePicker } from './TemplatePicker.js'
 import { RunbookPicker } from '../runbooks/index.js'
@@ -55,9 +59,10 @@ import { usePreview, PreviewBanner, PreviewPlanCard, previewPlanOfTurn } from '.
 const log = logger.scope('chat')
 
 // 受控对话面板：会话生命周期（创建/重连/选择/phase）由 App 管，这里只按 activeSessionId 渲染对话流。
-export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession }: {
+export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession }: {
   onBack?: () => void          // 错误态「返回上一个会话」（没有可回的会话时不传）
   onOpenSession?: (id: string) => Promise<void>   // 切到某会话（分叉出的新会话：刷新列表并打开）
+  sessions?: SessionMeta[]     // 会话列表（标签栏「…」下拉里取最近 10 条）
   activeSessionId: string
   sessionPhase: SessionPhase
   sessionTitle?: string
@@ -88,6 +93,102 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDig
   const prevSidRef = useRef(activeSessionId)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  // ── 输入框高度：**默认一行，不记忆**。只在需要时把框上沿往上拖临时拉高，
+  // 双击那道边回到一行；下次启动还是默认一行。
+  const [inputH, setInputH] = useState<number | null>(null)
+  const dragH = useRef<{ y: number; h: number } | null>(null)
+  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const box = e.currentTarget.parentElement?.querySelector<HTMLElement>('[data-compose-box]')
+    dragH.current = { y: e.clientY, h: inputH ?? box?.getBoundingClientRect().height ?? 60 }
+    // 拖动期间禁止选中文字 / 恢复光标：否则鼠标划出那条细边就会开始选文字，手感发涩
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'row-resize'
+  }
+  // 拖动监听挂在 window 上（不用 pointer capture）：鼠标划出细边、窗口缩放都继续跟手
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const d = dragH.current
+      if (!d) return
+      const max = Math.round(window.innerHeight * 0.7)
+      setInputH(Math.max(44, Math.min(max, Math.round(d.h - (e.clientY - d.y)))))   // 往上拖变高
+    }
+    const up = () => {
+      if (!dragH.current) return
+      dragH.current = null
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [])
+  const resetInputH = () => setInputH(null)
+
+  // ── 会话标签栏：多任务在几个会话间来回切 ────────────────────────────────
+  // tabs 只存 id（持久化到 localStorage），当前会话永远在里面；关闭标签不删会话。
+  const [tabs, setTabs] = useState<string[]>([])
+  const sessionIds = (sessions ?? []).map((s) => s.id)
+  // 会话列表到齐 / 变化后恢复一次（过滤已删除的会话）
+  useEffect(() => {
+    if (!sessionIds.length) return
+    let raw: unknown = []
+    try { raw = JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]') } catch { raw = [] }
+    setTabs((cur) => {
+      const base = cur.length ? cur : restoreTabs(raw, sessionIds, activeSessionId)
+      return openTab(base, activeSessionId, activeSessionId)
+    })
+  }, [sessionIds.join('|'), activeSessionId])
+  useEffect(() => {
+    if (!tabs.length) return
+    try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)) } catch { /* 存不进去不影响使用 */ }
+  }, [tabs])
+  // 切会话：把新会话加进标签栏，并恢复它上次的滚动位置
+  const scrollMem = useRef<Map<string, number>>(new Map())
+  useEffect(() => {
+    setTabs((cur) => openTab(cur, activeSessionId, activeSessionId))
+    const el = scrollRef.current
+    if (el) el.scrollTop = scrollMem.current.get(activeSessionId) ?? el.scrollTop
+  }, [activeSessionId])
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => { if (sidRef.current) scrollMem.current.set(sidRef.current, el.scrollTop) }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+  // ── 提示音：完成一种、等你处理一种（开关在设置里，见 lib/sound.ts）──────
+  const prevBusy = useRef(busy)
+  useEffect(() => {
+    const was = prevBusy.current
+    prevBusy.current = busy
+    if (!was || busy) return
+    // 这一轮里最后一条要是「失败」，就不算正常完成，不响
+    const last = items[items.length - 1]
+    const failed = !!last && last.status === 'failed'
+    const cue = cueOf({ turnEnded: !failed })
+    if (cue) void playCue(cue)
+  }, [busy])
+  // 新冒出来的授权卡 / 计划审批 / 提问卡：响「等你处理」；处理完的从集合里移除
+  const awaiting = useMemo(
+    () => items.filter((it) => (it.kind === 'auth_request' || it.kind === 'plan_request' || it.kind === 'ask_request') && it.status === 'in_progress').map((it) => it.itemId),
+    [items],
+  )
+  const seenAwait = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const now = new Set(awaiting)
+    let fresh = false
+    for (const id of now) if (!seenAwait.current.has(id)) { fresh = true; break }
+    for (const id of [...seenAwait.current]) if (!now.has(id)) seenAwait.current.delete(id)
+    for (const id of now) seenAwait.current.add(id)
+    if (fresh) void playCue('wait')
+  }, [awaiting.join('|')])
 
   // ── 只渲染尾部窗口 ────────────────────────────────────
   // 历史重放会一次灌进几千条 item（旧会话实测 60 万条事件），全量渲染 markdown 直接卡死。
@@ -228,16 +329,8 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDig
     el.scrollTop = el.scrollHeight
   }
 
-  // textarea 自适应高度：默认 1 行，随内容长高，最多 3 行（66px + 上下 3px 内边距），超出滚动。
-  // 单行时高 28px 与两侧 28px 按钮等高，文字和「+」/发送按钮垂直居中对齐。
-  // 先重置 height 再按 scrollHeight 设，钳在 max。input 变化（含清空/填入建议）时重算。
-  const MAX_TA = 72
-  useEffect(() => {
-    const ta = taRef.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    ta.style.height = `${Math.min(ta.scrollHeight, MAX_TA)}px`
-  }, [input])
+  // textarea 高度：不再跟着内容自动长（改成手拖外框，见上面的 data-chat-resize + inputH）。
+  // 拖高后文字区用 CSS 的 self-stretch 填满外框，内部滚动；没拖过就是正常一行高。
 
   // 导出当前会话：仅对话 / 完整报告（+执行记录、文件改动、授权记录），可选 HTML；文件名去掉 Windows 不允许的字符
   const exportSession = async (mode: ExportMode, redact: boolean) => {
@@ -464,12 +557,27 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDig
 
   // 跨会话搜索「问 AI」：检索片段作为上下文标签附上（send = 直接发出）
   const autoSend = useRef(false)
+  // 上一次由面板「问 AI」自动预填的那句问题：用户没改过的话，下次点别的面板就换成新问题
+  const autoAsk = useRef('')
   useEffect(() => onChatContext((p) => {
     for (const c of p.chips) att.addContext(c.ctx, c.name, c.text)
-    // 预填的问题是「初稿」：用户已经打了字就别覆盖（面板点 ✨ 时不该冲掉正在写的内容）
-    if (p.text !== undefined) setInput((prev) => (prev.trim() ? prev : p.text!))
+    // 预填的问题只是「初稿」：输入框空着、或末尾还停在上一次自动预填的那句（没动过）就换成这次的；
+    // 用户已经自己写了字 → 换行补在下面（不冲掉用户写的内容，但问题一定带进去）。规则见 askPrefill.ts
+    const q = p.text
+    if (q !== undefined) {
+      setInput((prev) => {
+        const next = prefillAsk(prev, q, autoAsk.current)
+        if (next !== prev) autoAsk.current = q
+        return next
+      })
+    }
     if (p.send) autoSend.current = true
-    else requestAnimationFrame(() => taRef.current?.focus())
+    // 光标放到末尾：用户一眼能看到预填的问题，直接接着改
+    else requestAnimationFrame(() => {
+      const ta = taRef.current
+      if (!ta) return
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.scrollTop = ta.scrollHeight
+    })
   }), [])
   useEffect(() => { if (autoSend.current && canChat && att.items.length) { autoSend.current = false; submit() } })
 
@@ -555,7 +663,16 @@ export function ChatPanel({ activeSessionId, sessionPhase, sessionTitle, seedDig
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
         postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
         preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
-        thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode} />
+        thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode}
+        switcher={sessions?.length ? {
+          sessions,
+          activeId: activeSessionId,
+          activeBusy: busy,
+          activeAttention: sessionPhase.phase === 'error' ? 'failed' as const : undefined,
+          onSwitch: (id: string) => { void onOpenSession?.(id) },
+          onNew,
+          onOpenHistory,
+        } : undefined} />
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -662,7 +779,14 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         <AttachmentChips items={att.items} onRemove={att.remove} onError={att.setHint} noImage={!models.current?.multimodal} className="mb-1.5 pt-1.5" />
         {att.hint && <div data-attach-hint className="mb-1.5 text-[11.5px] text-[var(--color-warn)]">{att.hint}</div>}
         {shellBusy && <div data-shell-busy className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-text-muted)]"><Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />{tr('正在终端「{title}」执行…', { title: shellBusy })}</div>}
-        <div {...att.dropProps} className={`relative flex items-end gap-1.5 rounded-lg border bg-[var(--color-bg-base)] px-2.5 py-1.5 transition-colors ${bang !== null ? 'border-[color:color-mix(in_srgb,var(--color-warn)_60%,transparent)]' : 'border-[var(--color-border-default)] focus-within:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'}`}>
+        {/* 输入框高度：往上拖变高（双击恢复默认一行）；拖过的高度记在 localStorage */}
+        <div data-chat-resize
+          title={tr('拖动调整输入框高度（双击恢复默认）')}
+          onPointerDown={onResizeDown} onDoubleClick={resetInputH}
+          className="group/resize relative -mt-0.5 flex h-2 shrink-0 cursor-row-resize items-center justify-center">
+          <span className="h-[4px] w-12 rounded-full bg-[var(--color-border-default)] transition-all group-hover/resize:h-[5px] group-hover/resize:bg-[var(--color-ask)]" />
+        </div>
+        <div {...att.dropProps} data-compose-box style={inputH ? { height: inputH } : undefined} className={`relative flex items-end gap-1.5 rounded-lg border bg-[var(--color-bg-base)] px-2.5 py-1.5 transition-colors ${bang !== null ? 'border-[color:color-mix(in_srgb,var(--color-warn)_60%,transparent)]' : 'border-[var(--color-border-default)] focus-within:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'}`}>
           <AtMenuPopup m={atMenu} />
           {/* 「+」菜单：工作目录（会话绑定，本地终端 cwd / AI 默认工作区）/ Skills ▸ / 常用任务 ▸ / 运维手册 ▸。
               二级菜单选中后交给后面两个 picker（不显示自己的按钮，经 preset 打开）：模板填入输入框不自动发送；手册填参数 + 选终端后发出。
@@ -697,7 +821,7 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
             disabled={!canChat}
             rows={1}
             placeholder={canChat ? (busy ? tr('追问…（Enter 在下一步前插入，Alt+Enter 本轮结束后再发）') : tr('跟 AI 对话…（Enter 发送，@ 引用，! 开头跑命令）')) : tr('等待引擎就绪…')}
-            className="flex-1 resize-none overflow-y-auto bg-transparent py-[3px] text-[13px] leading-[22px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] disabled:opacity-50"
+            className="flex-1 resize-none self-stretch overflow-y-auto bg-transparent py-[3px] text-[13px] leading-[22px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] disabled:opacity-50"
           />
           {/* 跑着的时候也留发送按钮（有内容才出现）：补发的消息排队，本轮结束自动送出 */}
           {busy && (
@@ -952,6 +1076,16 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
     const t = setTimeout(() => setNote(undefined), 5000)
     return () => clearTimeout(t)
   }, [note, compacting])
+  // 会话花费提醒阈值（设置里填的元；0=不提醒）。改设置后立刻生效
+  const [threshold, setThreshold] = useState(0)
+  useEffect(() => {
+    let alive = true
+    const load = () => client.settings.get().then((x) => { if (alive) setThreshold(x.system?.costWarnYuan ?? 0) }, () => {})
+    void load()
+    window.addEventListener(USAGE_PRICES_EVENT, load)
+    return () => { alive = false; window.removeEventListener(USAGE_PRICES_EVENT, load) }
+  }, [])
+  const lvl = costLevel(t?.cost, threshold)
   const tick = usage?.inputTokens ?? 0
   useEffect(() => {
     const on = () => setPriceTick((n) => n + 1)
@@ -976,12 +1110,19 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
       n: t.requests, total: fmtTokens(totalTokens(t)), input: t.input.toLocaleString(), cache: t.cacheRead.toLocaleString(),
       rate: (cacheHitRate(t) * 100).toFixed(1), output: t.output.toLocaleString(), cost: fmtCost(t.cost, t.currency),
     }),
+    lvl !== 'ok' && t?.cost !== undefined ? tr('本会话已花 {cost}，超过你设的提醒阈值 {limit}（只提醒，不会中断任务；可在 设置 → AI 与安全 调整）', { cost: fmtCost(t.cost, t.currency), limit: `¥${threshold}` }) : '',
     tr('点击立即压缩上下文（把较早的对话压成摘要，最近一轮原文会保留）'),
   ].filter(Boolean).join('\n\n')
   return (
     <button data-usage-chip onClick={doCompact} disabled={compacting} title={tip}
       className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] tabular-nums text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-secondary)]">
       {t?.requests ? <span>{fmtTokens(totalTokens(t))}</span> : null}
+      {t?.cost !== undefined && (
+        <span data-usage-cost={lvl}
+          className={lvl === 'over' ? 'font-medium text-[var(--color-warn)]' : lvl === 'warn' ? 'text-[var(--color-warn)]' : ''}>
+          {fmtCost(t.cost, t.currency)}
+        </span>
+      )}
       {pct !== undefined && (
         <>
           {/* 圆弧：从 12 点钟顺时针走 pct% */}
@@ -1082,7 +1223,9 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
   )
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode, switcher }: {
+  /** 标题后的会话切换箭头（hover 出最近会话列表） */
+  switcher?: Omit<SessionSwitcherProps, 'sessions'> & { sessions: SessionMeta[] }
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
   thinking?: ThinkingLevel                          // 会话级思考深度（低/中/高）
   onPickThinking?: (lv: ThinkingLevel | undefined) => void   // undefined = 恢复为跟随模型配置
@@ -1103,7 +1246,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   const [draft, setDraft] = useState('')
   const commit = () => { onRename?.(draft.trim() || title); setEditing(false) }
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 pl-3">
+    <div className="relative z-30 flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 pl-3">
       {/* 无会话：标题区显示占位，仅保留 新建/历史 入口（其余按钮依赖会话，隐藏） */}
       {!hasSession ? (
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium text-[var(--color-text-muted)]">
@@ -1119,6 +1262,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
           <span className="truncate" title={titleOf(title)}>{titleOf(title)}</span>
           {/* 只有点铅笔图标才进入编辑，点标题文字不触发（避免误触） */}
+          {switcher && <SessionSwitcher {...switcher} />}
           {onRename && (
             <button onClick={() => { setDraft(title); setEditing(true) }} title={tr('重命名')}
               className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-muted)] opacity-0 transition-opacity hover:text-[var(--color-accent)] group-hover:opacity-100">

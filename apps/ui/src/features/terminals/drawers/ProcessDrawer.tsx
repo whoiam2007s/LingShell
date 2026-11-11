@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Copy, Cpu, ListTree, MessageSquareQuote, Pause, Play, RefreshCw, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, Cpu, ListTree, Pause, Play, RefreshCw, X } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
 import {
-  PROC_SIGNALS, PROC_SIGNAL_LABEL, buildProcTree, compareProcs, filterProcs, fmtPct, fmtRss, procQuote, processSupported, redactSecrets, tk, tr,
+  PROC_SIGNALS, PROC_SIGNAL_LABEL, buildProcTree, compareProcs, filterProcs, fmtPct, fmtRss, procChip, processSupported, tk, tr,
   type ProcList, type ProcRow, type ProcSignal, type ProcSortKey, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
-import { quoteToChat } from '../../../lib/quoteToChat.js'
+import { askAiChip } from '../../../lib/askAi.js'
 import { Select } from '../../../components/ui/Select.js'
 import { trx } from '../../../lib/trx.js'
 
@@ -77,11 +78,10 @@ export function ProcessDrawer({ term, onClose }: { term?: TerminalInfo; onClose:
   const clickHead = (key: ProcSortKey) => setSort((s) => s.key === key ? { key, desc: !s.desc } : { key, desc: !(key === 'user' || key === 'stat' || key === 'command') })
   const note = (text: string) => { setFlash(text); setTimeout(() => setFlash((f) => (f === text ? '' : f)), 1500) }
   const copy = (r: ProcRow) => navigator.clipboard?.writeText(r.command).then(() => note(tr('已复制命令行')), () => note(tr('复制失败')))
-  const askAi = async (r: ProcRow) => {
-    const q = procQuote(term?.title ?? '', r)
-    // 命令行常含 mysql -p… / Authorization: Bearer …：与其它「问 AI」入口一致，默认先脱敏
-    const s = await client.settings.get().catch(() => undefined)
-    quoteToChat(s?.system?.aiRedact === false ? q : redactSecrets(q))
+  // 「问 AI」：挂「进程」chip（名字 = 命令名 #PID），事实全在 chip 里，问题预填在输入框
+  const askAi = (r: ProcRow) => {
+    const chip = procChip(term?.title ?? '', r)
+    void askAiChip({ ctx: 'proc', name: chip.name, text: chip.text, question: tr('这个进程是干什么的？占这么多资源正常吗、要不要处理') })
     onClose()
   }
   const ask = (row: ProcRow, sig: ProcSignal) => { setTyped(''); setConfirm({ row, sig }) }
@@ -166,7 +166,7 @@ export function ProcessDrawer({ term, onClose }: { term?: TerminalInfo; onClose:
                 className={`${BTN} ${s === 'HUP' ? 'text-[var(--color-warn)]' : 'text-[var(--color-danger)]'}`}>{sigLabel(s)}</button>
             ))}
             <button onClick={() => copy(selRow)} className={`${BTN} text-[var(--color-text-secondary)]`}><Copy className="h-3 w-3" />{tr('复制命令行')}</button>
-            <button onClick={() => askAi(selRow)} className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI')}</button>
+            <button onClick={() => askAi(selRow)} className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
             {flash && <span className="text-[11px] text-[var(--color-success)]">{flash}</span>}
           </div>
         </div>

@@ -1,9 +1,9 @@
 // 告警汇总抽屉（右侧活动栏「告警」）：关键字告警命中的行，新的在上。点一条 → 切到该终端并滚到那一行；「问 AI」把该行前后 20 行放进对话输入框
 import { useEffect, useState } from 'react'
-import { X, Trash2, Sparkles } from 'lucide-react'
-import { redactSecrets, tr } from '@lingshell/shared'
-import { client } from '../../../client/index.js'
-import { quoteToChat } from '../../../lib/quoteToChat.js'
+import { X, Trash2 } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
+import { tr } from '@lingshell/shared'
+import { askAiChip } from '../../../lib/askAi.js'
 import { HelpTip } from '../../../components/ui/form.js'
 import { clearAlertHits, markAlertsRead, useAlertHits, type AlertHitEntry } from '../alertHits.js'
 
@@ -16,10 +16,9 @@ export function AlertsDrawer({ onClose }: { onClose: () => void }) {
   const ask = async (e: AlertHitEntry) => {
     const ctx = e.context(20)
     if (ctx === null) { gone(e); return }
-    const s = await client.settings.get().catch(() => undefined)
     const fence = '```'
-    const q = `终端「${e.terminalTitle}」的输出命中告警规则「${e.rule}」（${new Date(e.at).toLocaleTimeString()}）：\n${e.line}\n\n前后各 20 行：\n${fence}\n${ctx}\n${fence}\n帮我看看这是什么问题。`   // i18n-ignore 发给 AI 的话
-    quoteToChat(s?.system?.aiRedact === false ? q : redactSecrets(q))
+    const text = `终端「${e.terminalTitle}」的输出命中告警规则「${e.rule}」（${new Date(e.at).toLocaleTimeString()}）：\n${e.line}\n\n前后各 20 行：\n${fence}\n${ctx}\n${fence}`   // i18n-ignore 发给 AI 的话
+    void askAiChip({ ctx: 'alert', name: e.rule, text, question: tr('这条告警说明什么问题？怎么查、怎么修') })
   }
   return (
     <div className="flex h-full flex-col" data-alerts-drawer>
@@ -44,7 +43,7 @@ export function AlertsDrawer({ onClose }: { onClose: () => void }) {
               <div className="mt-0.5 line-clamp-2 break-all font-mono text-[11.5px] text-[var(--color-text-primary)]">{e.line}</div>
             </button>
             <div className="mt-0.5 flex items-center gap-2">
-              <button onClick={() => void ask(e)} className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] hover:underline"><Sparkles className="h-3 w-3" />{tr('问 AI')}</button>
+              <button onClick={() => void ask(e)} className="flex items-center gap-1 text-[11px] text-[var(--color-ask)] hover:underline"><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
               {note?.id === e.id && <span className="text-[10.5px] text-[var(--color-warn)]">{note.text}</span>}
             </div>
           </div>

@@ -26,7 +26,7 @@ export const keyEnvOf = (profileId?: string): string => `LINGSHELL_MP_${pid(prof
 export const usesPiAi = (provider: string, protocol?: ModelProtocol): boolean => protocolOf(provider, protocol) !== 'anthropic'
 
 // 思考深度：三档 → 各家实际值（表在 shared，界面也要用同一份，避免两处对不上）
-import { THINKING_WIRE, thinkingWireOf, type ThinkingLevel } from '@lingshell/shared'
+import { thinkingWireMapOf, thinkingWireOfModel, type ThinkingLevel } from '@lingshell/shared'
 
 // 无需 key 的本地端点（ollama）也得给个占位：pi-ai 的 OpenAI 兼容实现没有 key 会直接拒绝发请求
 export const NO_KEY_PLACEHOLDER = 'no-key'
@@ -48,8 +48,8 @@ const RESPONSES_COMPAT = { supportsDeveloperRole: false, supportsMaxOutputTokens
  * undefined = 不支持（界面上会置灰）。值 'xxx' = 发这个值；null = 支持但不发参数（只有「关」）。
  * 表在 shared/THINKING_WIRE，这里只做一次形态转换，不再维护第二份。
  */
-const effortsOf = (provider: string): Record<string, string | null> | undefined => {
-  const map = THINKING_WIRE[provider]
+const effortsOf = (provider: string, model?: string): Record<string, string | null> | undefined => {
+  const map = thinkingWireMapOf(provider, model)
   if (!map) return undefined
   const out: Record<string, string | null> = {}
   for (const [lv, wire] of Object.entries(map)) out[lv] = wire === null ? null : String(wire)
@@ -112,13 +112,13 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
   const ds = s.provider === 'deepseek' && !responses
   const contextWindow = contextWindowOf(s.provider, s.model, s.contextWindow)
   // Responses 第一版不声明推理档位：各家该发哪个字段还不一致，先不自造（界面上思考深度对它不生效）
-  const efforts = responses ? undefined : effortsOf(s.provider)
+  const efforts = responses ? undefined : effortsOf(s.provider, s.model)
   const model: PiModel = { id: s.model, name: s.model, contextWindow, maxTokens: maxTokensOf(contextWindow), input: inputOf(s.multimodal), ...(efforts ? { reasoningEfforts: efforts } : {}) }
   // 用户选的档位 → 实际派发值（'off' = 支持但什么都不发，pi-ai 用它表示"不思考"）。
   // 没选时保持原有行为：DeepSeek 一直默认按 high 发（= 界面上的「中」）；
   // 其它厂商以前不发这个参数，没选就不发 —— 免得给不认识它的端点添麻烦。
   const level = s.thinking ?? (s.provider === 'deepseek' ? 'medium' : undefined)
-  const wire = responses ? undefined : thinkingWireOf(s.provider, level)
+  const wire = responses ? undefined : thinkingWireOfModel(s.provider, s.model, level)
   const others = (routes[route]?.models ?? []).filter((m) => m.id !== s.model)
   return {
     ...routes,

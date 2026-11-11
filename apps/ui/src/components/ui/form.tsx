@@ -1,6 +1,6 @@
 // 跨功能共用的表单 / 布局小件（原先在 settings/ui.tsx 与各功能里各一份）。
 // 放在 components 是为了让功能目录不必为了一个 HelpTip 去 import 设置功能（那会把整个设置弹窗拉进来，形成循环依赖）
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CircleHelp } from 'lucide-react'
 import { tr } from '@lingshell/shared'
@@ -12,20 +12,34 @@ import { cn } from '../../lib/cn.js'
 /** 问号图标，悬停 / 键盘聚焦显示完整说明。浮层挂 body 且 fixed 定位，不会被滚动容器裁掉 */
 export function HelpTip({ children, className }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLSpanElement>(null)
+  const tipRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ x: number; y: number; up: boolean } | null>(null)
+  // 先按锚点放一次，再把浮层夹到视口内：以前用固定 160px 猜高度，长文案会超出屏幕被藏住
   const show = () => {
     const r = ref.current?.getBoundingClientRect()
     if (!r) return
-    const up = r.bottom + 160 > window.innerHeight   // 下方放不下就往上
-    setPos({ x: Math.min(Math.max(r.left + r.width / 2, 170), window.innerWidth - 170), y: up ? r.top - 6 : r.bottom + 6, up })
+    const below = r.bottom + 8
+    setPos({ x: r.left + r.width / 2, y: below, up: false })
   }
+  // 浮层渲染出来后量真实尺寸，再决定放上面还是下面、并夹在视口里
+  useLayoutEffect(() => {
+    if (!pos || !tipRef.current || !ref.current) return
+    const a = ref.current.getBoundingClientRect()
+    const t = tipRef.current.getBoundingClientRect()
+    const vw = window.innerWidth, vh = window.innerHeight, gap = 6, pad = 8
+    const up = a.bottom + gap + t.height > vh - pad && a.top - gap - t.height >= pad
+    const top = up ? a.top - gap - t.height : Math.min(a.bottom + gap, vh - pad - t.height)
+    const left = Math.min(Math.max(a.left + a.width / 2 - t.width / 2, pad), Math.max(pad, vw - pad - t.width))
+    if (Math.abs(top - pos.y) < 0.5 && Math.abs(left - (pos.x - t.width / 2)) < 0.5 && up === pos.up) return
+    setPos({ x: left + t.width / 2, y: top, up })
+  }, [pos])
   return (
     <span ref={ref} tabIndex={0} aria-label={tr('tip|说明')} onMouseEnter={show} onMouseLeave={() => setPos(null)} onFocus={show} onBlur={() => setPos(null)}
       className={cn('inline-flex shrink-0 cursor-help items-center text-[var(--color-text-muted)] outline-none hover:text-[var(--color-accent)] focus-visible:text-[var(--color-accent)]', className)}>
       <CircleHelp className="h-3.5 w-3.5" />
       {pos && createPortal(
-        <div role="tooltip" style={{ left: pos.x, top: pos.y, transform: `translate(-50%, ${pos.up ? '-100%' : '0'})` }}
-          className="pointer-events-none fixed z-[200] w-max max-w-[320px] whitespace-normal rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] px-2.5 py-2 text-[11.5px] font-normal leading-[1.6] text-[var(--color-text-secondary)] shadow-lg">
+        <div ref={tipRef} role="tooltip" style={{ left: pos.x, top: pos.y, transform: 'translateX(-50%)' }}
+          className="pointer-events-none fixed z-[200] w-max max-w-[600px] whitespace-normal rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] px-2.5 py-2 text-[11.5px] font-normal leading-[1.6] text-[var(--color-text-secondary)] shadow-lg">
           {children}
         </div>,
         document.body,

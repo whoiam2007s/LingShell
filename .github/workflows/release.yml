@@ -103,3 +103,26 @@ jobs:
             release/*.AppImage
             release/latest-linux.yml
           fail_on_unmatched_files: true
+
+  # 发布后自检：0.1.7 出过一次发布说明乱码（UTF-8 被按 GBK 解读），当时只有人肉看才发现。
+  # 这里把 Release body 读回来，出现典型乱码特征就让整条流水线失败。
+  verify:
+    name: 发布后自检（说明编码）
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 读回发布说明并检查乱码
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body=$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json body --jq '.body // ""')
+          printf '发布说明前 300 字：\n%s\n\n' "$(printf '%s' "$body" | head -c 300)"
+          if printf '%s' "$body" | grep -qE '鏂|锛|鐨|銆|锟'; then
+            echo "::error::发布说明疑似乱码（UTF-8 被按 GBK 解读）。检查 release.yml 里生成 release-notes.md 那一步的编码处理。"
+            false
+          fi
+          if [ "${#body}" -lt 20 ]; then
+            echo "::warning::发布说明为空或过短（${#body} 字），确认 CHANGELOG 里有对应版本小节。"
+          fi
+          echo "自检通过：发布说明编码正常（${#body} 字）。"

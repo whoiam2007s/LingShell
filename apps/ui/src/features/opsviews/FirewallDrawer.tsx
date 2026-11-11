@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FileCode2, MessageSquareQuote, Radar, ShieldCheck } from 'lucide-react'
+import { FileCode2, Radar, ShieldCheck } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import { paletteSend } from '../../lib/paletteBus.js'
 import {
-  FW_ACTION_LABEL, FW_DIR_LABEL, FW_TOOL_LABEL, firewallQuote, listenLines, portsSupported, questionPort, redactSecrets, ruleMatchesPort, tr,
+  FW_ACTION_LABEL, FW_DIR_LABEL, FW_TOOL_LABEL, firewallQuote, listenLines, portsSupported, questionPort, ruleMatchesPort, tr,
   type FwList, type FwTool, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Input } from '../../components/ui/Input.js'
 import { HelpTip } from '../../components/ui/form.js'
 import { BTN, DrawerHeader, MUTED, Unsupported, errText } from './common.js'
@@ -42,11 +43,11 @@ export function FirewallDrawer({ term, onClose }: { term?: TerminalInfo; onClose
   const sec = list?.sections.find((s) => s.tool === tool)
   const port = questionPort(q)
   const listening = useMemo(() => (list && port ? listenLines(list.listen, port) : []), [list, port])
+  // 问 AI：挂「防火墙」chip（规则表 + 端口监听），问题预填，不自动发送
   const ask = async () => {
     if (!list) return
-    const s = await client.settings.get().catch(() => undefined)
     const text = firewallQuote({ host: term?.title ?? '', question: q.trim() || tr('帮我看看这台主机的防火墙规则有没有问题'), list, port })
-    quoteToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'fw', name: term?.title ?? tr('防火墙'), text, question: q.trim() || tr('这些防火墙规则有问题吗？端口该开的开了、该关的关了吗') })
     onClose()
   }
 
@@ -62,7 +63,7 @@ export function FirewallDrawer({ term, onClose }: { term?: TerminalInfo; onClose
           <Input data-fw-ask size="sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void ask() }}
             placeholder={tr('问 AI：为什么 8080 端口外部访问不了')} />
           <button data-fw-ask-btn disabled={!list} onClick={() => void ask()} title={tr('把问题、防火墙规则和该端口的监听情况放进对话输入框（按设置脱敏，不自动发送）')}
-            className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI')}</button>
+            className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
           <button data-fw-probe onClick={() => paletteSend({ type: 'connProbe', source: term?.hostId ? `host:${term.hostId}` : `term:${tid}` })} title={tr('从这台主机（可再加别的源）测到其他服务的 DNS / TCP / HTTP 连通性')}
             className={`${BTN} text-[var(--color-text-secondary)]`}><Radar className="h-3 w-3" />{tr('测连通')}</button>
         </div>

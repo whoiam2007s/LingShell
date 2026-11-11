@@ -58,7 +58,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
       const ev = { type: 'auth:request' as const, approvalId, deadlineMs: APPROVAL_TIMEOUT_MS, ...req }
       pendingCards.set(approvalId, { sid: req.sessionId, ev })
       send(ev)
-      notifyIfUnfocused(win, tr('「{title}」等待你授权', { title: sessionTitle(req.sessionId) }), req.command ?? (req.needed === 'read' ? tr('读取终端') : tr('写入终端')))
+      if (sys().notifyDesktop !== false) notifyIfUnfocused(win, tr('「{title}」等待你授权', { title: sessionTitle(req.sessionId) }), req.command ?? (req.needed === 'read' ? tr('读取终端') : tr('写入终端')))
     })
   }
 
@@ -89,7 +89,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
       const ev = { type: 'plan:request' as const, approvalId, deadlineMs: APPROVAL_TIMEOUT_MS, ...req }
       pendingCards.set(approvalId, { sid: req.sessionId, ev })
       send(ev)
-      notifyIfUnfocused(win, tr('「{title}」等待你审批计划', { title: sessionTitle(req.sessionId) }), tr('{title}（{n} 步）', { title: req.title, n: req.steps.length }))
+      if (sys().notifyDesktop !== false) notifyIfUnfocused(win, tr('「{title}」等待你审批计划', { title: sessionTitle(req.sessionId) }), tr('{title}（{n} 步）', { title: req.title, n: req.steps.length }))
     })
   }
 
@@ -163,7 +163,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   const fleetOpenUnattended = hostRunner(fleetDeps, true)
 
   // AI 提问卡（ask_user，见 chatPlusIpc.ts）：发卡等回答，超时 / 停止 = 未回答
-  const askBroker = createAskBroker({ send, notify: (t, b) => notifyIfUnfocused(win, t, b), sessionTitle, unattended: (sid) => unattended.has(sid) })
+  const askBroker = createAskBroker({ send, notify: (t, b) => { if (sys().notifyDesktop !== false) notifyIfUnfocused(win, t, b) }, sessionTitle, unattended: (sid) => unattended.has(sid) })
   // dsh 是进程内库：没有 MCP 协议层、没有 bridge 端口、没有会话进程池。
   // 终端能力直接注册成 dsh 工具，授权走 tools/pre-execute 三态网关。
   const controller = new DshController({
@@ -275,7 +275,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   controller.onEvent(send)
   // AI 回合完成 / 出错时提醒（见 turnNotify.ts）：窗口在前台不打扰；点通知回到窗口并切到那个会话（已是当前会话就不切）
   controller.onEvent(createTurnNotifier({
-    enabled: () => sys().aiDoneNotify !== false,
+    enabled: () => sys().aiDoneNotify !== false && sys().notifyDesktop !== false,
     unattended: (sid) => unattended.has(sid),   // 巡检结果另有通知（只在异常时弹）
     title: sessionTitle,
     notify: (title, body, sid) => {

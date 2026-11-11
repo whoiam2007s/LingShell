@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileUp, Info, Loader2, MessageSquareQuote, Play, ScanSearch, XCircle } from 'lucide-react'
-import { DB_KIND_LABEL, DB_SCRIPT_MAX, checkScript, guessTableName, parseScriptOutput, redactSecrets, scriptIsReadonly, scriptReviewPrompt, tk, tr, type DbConn, type DbScriptResult, type ScriptCheck, type ScriptFinding } from '@lingshell/shared'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileUp, Info, Loader2, Play, ScanSearch, XCircle } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
+import { DB_KIND_LABEL, DB_SCRIPT_MAX, checkScript, guessTableName, parseScriptOutput, scriptIsReadonly, scriptReviewPrompt, tk, tr, type DbConn, type DbScriptResult, type ScriptCheck, type ScriptFinding } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { sendToChat } from '../../lib/sendToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Input } from '../../components/ui/Input.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
 import { ConfirmDialog } from '../common/index.js'
@@ -59,11 +60,11 @@ export function ScriptPanel({ conn, db, prod, version, onClose }: { conn: DbConn
     if (f.size > DB_SCRIPT_MAX) { setErr(tr('文件太大（{size}MB，上限 {max}MB）。大的导出文件请在终端里用客户端导入', { size: (f.size / 1024 / 1024).toFixed(1), max: DB_SCRIPT_MAX / 1024 / 1024 })); return }
     f.text().then((t) => { setSrc(t); setChk(undefined); setRes(undefined); setErr('') }, (e) => setErr(errText(e)))
   }
+  // 「让 AI 审查」：挂一个脚本 chip（脚本 + 规则检查结果），问题预填，不自动发送、不自动执行
   const askAi = async () => {
     if (!chk) return
-    const s = await client.settings.get().catch(() => undefined)
     const text = scriptReviewPrompt({ kind: conn.kind, conn: conn.name, version, script: chk.src, check: chk.r })
-    sendToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'sql', name: `${conn.name} · ${tr('脚本')}`, text, question: tr('这段脚本有哪些风险？能直接执行吗，需要改什么') })
     onClose()
   }
   // 每条都是只读语句（同「查询」页签的校验）：不是写操作，直接执行不弹确认
@@ -88,7 +89,7 @@ export function ScriptPanel({ conn, db, prod, version, onClose }: { conn: DbConn
         <button data-db-import onClick={() => file.current?.click()} className={`${BTN} text-[var(--color-text-secondary)]`} title={tr('导入本地脚本文件到编辑区（上限 {max}MB）', { max: DB_SCRIPT_MAX / 1024 / 1024 })}><FileUp className="h-3 w-3" />{tr('导入文件')}</button>
         <input ref={file} type="file" accept=".sql,.txt,.redis,.js,text/plain" className="hidden" onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = '' }} />
         <button data-db-detect disabled={!src.trim()} onClick={detect} className={`${BTN} text-[var(--color-accent)]`} title={tr('按规则检查：语法（引号 / 括号 / 注释）、缺 WHERE、删库删表、锁表、事务里不能执行的语句等')}><ScanSearch className="h-3 w-3" />{tr('智能检测')}</button>
-        <button data-db-review disabled={!chk || stale} onClick={() => void askAi()} className={`${BTN} text-[var(--color-accent)]`} title={tr('把脚本和规则检查结果发到对话，让 AI 再审一遍（按设置脱敏；只审查不执行）')}><MessageSquareQuote className="h-3 w-3" />{tr('让 AI 审查')}</button>
+        <button data-db-review disabled={!chk || stale} onClick={() => void askAi()} className={`${BTN} text-[var(--color-ask)]`} title={tr('把脚本和规则检查结果发到对话，让 AI 再审一遍（按设置脱敏；只审查不执行）')}><AskAiIcon className="h-3 w-3" />{tr('让 AI 审查')}</button>
         {!redis && !mongo && <label className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]" title={conn.kind === 'mysql' ? tr('整份脚本放在一个事务里，出错全部回滚（DDL 会隐式提交，无法回滚）') : tr('用 psql -1 整份脚本放在一个事务里，出错全部回滚')}>
           <Checkbox checked={tx} onCheckedChange={setTx} />{tr('整体事务（出错全部回滚）')}</label>}
         <span className="ml-auto" />

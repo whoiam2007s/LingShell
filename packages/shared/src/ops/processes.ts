@@ -200,6 +200,24 @@ export function procQuote(title: string, r: ProcRow): string {
   return `终端「${title}」所在主机上的进程：\n${facts}\n命令行：\n${fence}\n${r.command}\n${fence}\n`   // i18n-ignore 发给 AI 的话
 }
 
+/** 「问 AI」的上下文 chip：名字 = 命令名 #PID，全文 = 面板里已有的全部字段 */
+export function procChip(title: string, r: ProcRow): { name: string; text: string } {
+  const base = (r.command.trim().split(/\s+/)[0] ?? '').split(/[\\/]/).pop() || `PID ${r.pid}`
+  const facts = [
+    `PID ${r.pid}${r.ppid !== undefined ? `（父进程 ${r.ppid}）` : ''}`, `用户 ${r.user || '—'}`,   // i18n-ignore 发给 AI 的话
+    r.cpu !== undefined ? `CPU ${fmtPct(r.cpu)}%` : '', r.mem !== undefined ? `内存 ${fmtPct(r.mem)}%` : '',   // i18n-ignore 发给 AI 的话
+    r.rss !== undefined ? `RSS ${fmtRss(r.rss)}` : '', r.etime ? `已运行 ${r.etime}` : '', r.stat ? `状态 ${r.stat}` : '',   // i18n-ignore 发给 AI 的话
+  ].filter(Boolean).join(' · ')
+  const text = [
+    '【进程】',   // i18n-ignore 发给 AI 的话
+    `终端「${title}」所在主机上的进程：`,   // i18n-ignore 发给 AI 的话
+    facts,
+    `命令行：\n\`\`\`\n${r.command}\n\`\`\``,   // i18n-ignore 发给 AI 的话
+    '说明：这是进程面板里的信息，不是命令输出。',   // i18n-ignore 发给 AI 的话
+  ].join('\n')
+  return { name: `${base} #${r.pid}`, text }
+}
+
 // 执行记录：decision = process_kill，command 里带信号、pid 和命令行（截断，去控制字符）
 export const PROC_DECISION = 'process_kill'
 export function procAuditCommand(pid: number, sig: ProcSignal, command: string): string {

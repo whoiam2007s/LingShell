@@ -1,5 +1,10 @@
 // 英文译文：键 = 中文原文（见 ../../i18n.ts）。只放这一块负责的文件里用到的文案
 export const shell: Record<string, string> = {
+  // App.tsx：左边活动栏的工具按钮
+  '表格查看：选一个文件（CSV / TSV / JSON）按表格看': 'Table viewer: pick a file (CSV / TSV / JSON) and view it as a table',
+  'Git：这个对话的工作目录（改动 / 分支 / 历史 / 储藏 / 同步）': 'Git: this chat\'s working directory (changes / branches / history / stash / sync)',
+  '数据库：MySQL / PostgreSQL / Redis / MongoDB 查询、表结构、慢查询': 'Database: query MySQL / PostgreSQL / Redis / MongoDB, table schemas, slow queries',
+  '接口调试：从本机或某台主机发 HTTP 请求': 'API debugger: send HTTP requests from this machine or a host',
   // App.tsx
   '新会话': 'New session',
   '资源管理器（会话工作目录）': 'Explorer (session working directory)',
@@ -307,6 +312,9 @@ export const shell: Record<string, string> = {
   '按时间段 / 关键字检索多台的历史日志（含 .gz 轮转、journalctl）': 'Search historical logs on many hosts by time range / keyword (incl. rotated .gz and journalctl)',
   '连通性探测': 'Connectivity probe',
   '多台源主机 × 多个目标，测 DNS / TCP / HTTP': 'Multiple source hosts × multiple targets: test DNS / TCP / HTTP',
+  '连通性探测：多台源主机 × 多个目标，测 DNS / TCP / HTTP': 'Connectivity probe: multiple source hosts × multiple targets, test DNS / TCP / HTTP',
+  '表格查看：选一个文件（CSV / TSV / JSON / 命令输出）按表格看': 'Table viewer: pick a file (CSV / TSV / JSON / command output) and view it as a table',
+  '读取文件失败：{msg}': 'Failed to read file: {msg}',
   '目录同步': 'Directory sync',
   '本地 ⇄ 远程目录比较与同步（SFTP）': 'Compare and sync local ⇄ remote directories (SFTP)',
   '接口调试': 'API debugger',

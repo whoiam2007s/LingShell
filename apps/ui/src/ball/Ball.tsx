@@ -14,10 +14,43 @@ const HOVER_DELAY_MS = 250
 
 export function Ball() {
   const [v, setV] = useState<BallView | null>(null)
+  // 窗口当前尺寸：主进程先把窗口放大、渲染层下一帧才拿到新方向/展开态，
+  // 中间那一帧球会按旧方向画在错误的角上。这一帧干脆不画球（只有 ~16ms，看不出来）。
+  const [win, setWin] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
   const [hover, setHover] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+
+  // 拖动结束的兜底：pointer capture 在窗口被移动时可能丢失，元素上的 pointerup 就收不到了
+  // （表现：松开鼠标后球还一直跟着光标）。这里在窗口级再挂一层，任何松开/取消/失焦都结束拖动。
+  useEffect(() => {
+    const end = (e: PointerEvent) => {
+      const d = drag.current
+      if (!d) return
+      drag.current = null
+      if (d.moved) api()?.send('ball:dragEnd', e.screenX - d.x, e.screenY - d.y)
+    }
+    const cancel = () => {
+      const d = drag.current
+      drag.current = null
+      if (d?.moved) api()?.send('ball:dragEnd', 0, 0)
+    }
+    window.addEventListener('pointerup', end, true)
+    window.addEventListener('pointercancel', cancel, true)
+    window.addEventListener('blur', cancel)
+    return () => {
+      window.removeEventListener('pointerup', end, true)
+      window.removeEventListener('pointercancel', cancel, true)
+      window.removeEventListener('blur', cancel)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onSize = () => setWin({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', onSize)
+    return () => window.removeEventListener('resize', onSize)
+  }, [])
 
   useEffect(() => {
     const a = api()
@@ -31,11 +64,25 @@ export function Ball() {
     return off
   }, [])
 
-  // 悬停：先在窗口外量出卡片高度，交给主进程放大窗口（主进程回推 expanded / 展开方向）。内容变了再量一次
-  const content = v ? JSON.stringify({ ...v, expanded: 0, side: 0, valign: 0 }) : ''
+  // 悬停：先在窗口外量出卡片高度，交给主进程放大窗口（主进程回推 expanded / 展开方向）。
+  // 只有「可能改变高度」的字段变了才重量；高度变化不到 2px 不发 —— 状态每秒推一次，
+  // 每次都发就会每秒把透明小窗 resize 一次，看起来就是卡。
+  const heightKey = v ? `${v.locked}|${v.approvals.length}|${v.sessions.length}|${v.transfers.active}|${v.watchdog.firing}|${v.error ? 1 : 0}` : ''
+  const measured = useRef(0)
   useLayoutEffect(() => {
-    if (hover && cardRef.current) api()?.send('ball:expand', cardRef.current.offsetHeight)
-  }, [hover, content])
+    if (!hover || v?.expanded || !cardRef.current) return
+    const h = cardRef.current.offsetHeight
+    if (Math.abs(h - measured.current) < 2) return
+    measured.current = h
+    api()?.send('ball:expand', h)
+  }, [hover, heightKey])
+
+  // 主进程推来新的 side/valign 后，这一帧的布局已经落地（球在正确的角上）—— 回它一句，
+  // 它才会去放大窗口。这就是「先摆好球、再放大」的握手。
+  useLayoutEffect(() => {
+    if (!v || v.expanded) return
+    api()?.send('ball:layoutReady')
+  }, [v?.side, v?.valign, v?.expanded])
 
   const enter = () => {
     api()?.send('ball:enter')
@@ -45,6 +92,7 @@ export function Ball() {
   const leave = () => {
     clearTimeout(hoverTimer.current)
     if (drag.current) return
+    measured.current = 0   // 下次悬停要重新量一次，否则「高度没变」会被当成已经展开过、不再发 expand
     setHover(false)
     api()?.send('ball:leave')
   }
@@ -52,7 +100,7 @@ export function Ball() {
   const onDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
     drag.current = { x: e.screenX, y: e.screenY, moved: false }
-    e.currentTarget.setPointerCapture(e.pointerId)
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 拿不到捕获也没关系：窗口级监听兜底 */ }
   }
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current
@@ -75,27 +123,37 @@ export function Ball() {
 
   if (!v) return null
   const expanded = v.expanded && hover
+  // 球的落点完全由 side / valign 决定（窗口位置主进程已经算好，保证球的屏幕坐标不变）：
+  // 卡片用绝对定位铺满窗口，球也用绝对定位贴在对应角上 —— 两者互不影响布局，
+  // 所以「窗口先变大、内容后渲染」的那一帧里球也不会跑到左上角去。
+  const orbAt = cn('absolute z-10', v.side === 'left' ? 'right-0' : 'left-0', v.valign === 'bottom' ? 'bottom-0' : 'top-0')
+  const origin = `${v.valign === 'bottom' ? 'bottom' : 'top'} ${v.side === 'left' ? 'right' : 'left'}`
   const orb = (
     <div data-ball-orb data-look={v.look} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onLostPointerCapture={onLost}
       onContextMenu={(e) => { e.preventDefault(); api()?.send('ball:menu') }}
-      className="relative flex shrink-0 cursor-pointer select-none items-center justify-center rounded-full" style={{ width: BALL, height: BALL }}>
+      className={cn('flex shrink-0 cursor-pointer select-none items-center justify-center rounded-full', orbAt)} style={{ width: BALL, height: BALL }}>
       <Orb v={v} />
     </div>
   )
   const card = <Card v={v} />
   return (
     <div data-ball-root className="relative h-screen w-screen overflow-hidden" onMouseEnter={enter} onMouseLeave={leave}>
-      {expanded ? (
-        <div data-ball-card className={cn('flex h-full w-full overflow-hidden rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]',
-          v.valign === 'top' ? 'flex-col' : 'flex-col-reverse')}>
-          <div className={cn('flex shrink-0 items-center', v.side === 'right' ? 'flex-row' : 'flex-row-reverse')}>
-            {orb}
+      {expanded && (
+        <div data-ball-card style={{ transformOrigin: origin }}
+          className={cn('animate-ball-in absolute inset-0 flex overflow-hidden rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]',
+            v.valign === 'top' ? 'flex-col' : 'flex-col-reverse')}>
+          {/* 第一行给球让位（球是绝对定位贴角的），标题跟球同一行 */}
+          <div className={cn('flex shrink-0 items-center', v.side === 'right' ? 'flex-row' : 'flex-row-reverse')} style={{ height: BALL }}>
+            <span className="shrink-0" style={{ width: BALL }} aria-hidden />
             <Head v={v} />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3 pt-1">{card}</div>
         </div>
-      ) : orb}
-      {/* 量高度用（同卡片结构）：不可见、不占位 */}
+      )}
+      {/* 窗口比球大、卡片却还没显示 = 正处在放大后的那一帧，先不画球 */}
+      {!expanded && (win.w > BALL + 2 || win.h > BALL + 2) ? null : orb}
+      {/* 量高度用（同卡片结构）：不可见、不占位。悬停期间一直挂着 —— 展开时不卸载，
+          免得「卸载测量块 + 挂真卡片 + 窗口 resize」三件事挤在同一帧 */}
       {hover && (
         <div ref={cardRef} aria-hidden className="pointer-events-none invisible absolute left-0 top-0 w-[280px] border">
           <div style={{ height: BALL }} /><div className="px-3 pb-3 pt-1">{card}</div>

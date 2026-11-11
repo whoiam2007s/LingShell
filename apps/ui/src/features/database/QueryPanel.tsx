@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { History, Loader2, MessageSquareQuote, Play, ScanSearch, Trash2 } from 'lucide-react'
-import { DB_PAGE_SIZE, dateLocale, explainPrompt, guessTableName, redactSecrets, tr, type DbConn, type DbExplainResult, type DbQueryResult } from '@lingshell/shared'
+import { History, Loader2, Play, ScanSearch, Trash2 } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
+import { DB_PAGE_SIZE, dateLocale, explainPrompt, guessTableName, tr, type DbConn, type DbExplainResult, type DbQueryResult } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { sendToChat } from '../../lib/sendToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { HlTextarea } from './HlTextarea.js'
 import { Select } from '../../components/ui/Select.js'
 import { BTN, MUTED, PRIMARY, errText } from '../../components/ui/drawer.js'
@@ -64,11 +65,11 @@ export function QueryPanel({ conn, db, version, sql, setSql, autoRun, onClose }:
     ran.current = autoRun.n
     if (autoRun.mode === 'explain') explain(); else run()
   }, [autoRun.n])
+  // 「让 AI 解读」：挂一个 SQL chip（SQL + 执行计划），问题预填在输入框，不自动发送
   const askAi = async () => {
     if (!plan) return
-    const s = await client.settings.get().catch(() => undefined)
     const text = explainPrompt({ kind: conn.kind, conn: conn.name, version, sql: plan.sql, plan: plan.text })
-    sendToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'sql', name: `${conn.name} · SQL`, text, question: tr('这条 SQL 在做什么？执行计划说明慢在哪、怎么优化') })
     onClose()
   }
   return (
@@ -85,7 +86,7 @@ export function QueryPanel({ conn, db, version, sql, setSql, autoRun, onClose }:
           <button data-db-explain disabled={!sql.trim() || !!busy} onClick={explain} title={tr('只看执行计划，不真的执行（只放查询语句）')} className={`${BTN} text-[var(--color-text-secondary)]`}>{busy === 'explain' ? <Loader2 className="h-3 w-3 animate-spin" /> : <ScanSearch className="h-3 w-3" />}EXPLAIN</button>
           <button data-db-history onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHo(ho ? null : { x: r.left, y: r.bottom + 4 }) }}
             title={tr('最近执行过的语句（按连接存在本机，最多 50 条）')} className={`${BTN} text-[var(--color-text-secondary)]`}><History className="h-3 w-3" />{tr('历史')}</button>
-          {plan && <button data-db-ask onClick={() => void askAi()} title={tr('把 SQL 和执行计划发到对话，让 AI 解读（按设置脱敏）')} className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('让 AI 解读')}</button>}
+          {plan && <button data-db-ask onClick={() => void askAi()} title={tr('把 SQL 和执行计划发到对话，让 AI 解读（按设置脱敏）')} className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('让 AI 解读')}</button>}
           <span className={`text-[10.5px] ${MUTED}`}>{tr('Ctrl+Enter 执行')}{db ? tr(' · 库 {v}', { v: db }) : ''}</span>
           {/* 分页和执行按钮同一行，靠右 */}
           {res?.paged && (

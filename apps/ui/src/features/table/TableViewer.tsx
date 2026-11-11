@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Braces, ChevronDown, ChevronRight, Columns3, Copy, MessageSquareQuote, Table2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Braces, ChevronDown, ChevronRight, Columns3, Copy, Table2, X } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import {
-  analyzeOutput, cellNumber, filterRows, isDurationColumn, jsonPath, jsonSearch, redactSecrets, sortRows, tableQuote, toCsv, toMarkdown,
+  analyzeOutput, cellNumber, filterRows, isDurationColumn, jsonPath, jsonSearch, sortRows, tableQuote, toCsv, toMarkdown,
   tr, tk, type OutTable, type TableMode,
 } from '@lingshell/shared'
-import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Input } from '../../components/ui/Input.js'
 import { Select } from '../../components/ui/Select.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
@@ -46,9 +46,9 @@ function TableDialog({ src, onClose }: { src: TableSource; onClose: () => void }
   }, [onClose])
   const flash = (t: string) => { setNote(t); setTimeout(() => setNote((n) => (n === t ? '' : n)), 2000) }
   const copy = (text: string, what: string) => navigator.clipboard.writeText(text).then(() => flash(tr('已复制 {what}', { what })), () => flash(tr('复制失败')))
+  // 问 AI：挂「表格」chip，不自动发送
   const ask = async (text: string) => {
-    const s = await client.settings.get().catch(() => undefined)
-    quoteToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'table', name: tr('表格'), text, question: tr('这张表里有什么值得注意的？') })
     onClose()
   }
   const isJson = view.kind === 'json'
@@ -151,7 +151,7 @@ function TableView({ table, popOpen, onCopy, onAsk, modePicker }: {
         <span className="ml-auto text-[11px] text-[var(--color-text-muted)]">{tr('{n} 行', { n: filtered ? `${shownIdx.length} / ${table.rows.length}` : table.rows.length })}{table.header ? '' : tr(' · 没认出表头')}</span>
         <button className={BTN} title={tr('复制当前显示的行和列（CSV）')} onClick={() => onCopy(toCsv(exportCols(), exportRows()), 'CSV')}><Copy className="h-3.5 w-3.5" />{tr('复制 CSV')}</button>
         <button className={BTN} title={tr('复制当前显示的行和列（Markdown 表格）')} onClick={() => onCopy(toMarkdown(exportCols(), exportRows()), 'Markdown')}><Copy className="h-3.5 w-3.5" />{tr('复制 Markdown')}</button>
-        <button className={cn(BTN, 'text-[var(--color-accent)]')} title={tr('把当前显示的表格（Markdown）放进对话输入框（按设置脱敏，不自动发送）')} onClick={() => onAsk(exportCols(), exportRows(), table.rows.length)}><MessageSquareQuote className="h-3.5 w-3.5" />{tr('问 AI')}</button>
+        <button className={cn(BTN, 'text-[var(--color-ask)]')} title={tr('把当前显示的表格（Markdown）放进对话输入框（按设置脱敏，不自动发送）')} onClick={() => onAsk(exportCols(), exportRows(), table.rows.length)}><AskAiIcon />{tr('问 AI')}</button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="min-w-full border-collapse font-mono text-[11.5px]">
@@ -222,7 +222,7 @@ function JsonView({ value, onCopy, onAsk }: { value: unknown; onCopy: (t: string
         <span className="ml-auto" />
         <button className={BTN} onClick={() => setFlip(new Set())}>{tr('恢复默认展开')}</button>
         <button className={BTN} onClick={() => onCopy(JSON.stringify(value, null, 2), 'JSON')}><Copy className="h-3.5 w-3.5" />{tr('复制 JSON')}</button>
-        <button className={cn(BTN, 'text-[var(--color-accent)]')} title={tr('把 JSON 放进对话输入框（按设置脱敏，不自动发送）')} onClick={onAsk}><MessageSquareQuote className="h-3.5 w-3.5" />{tr('问 AI')}</button>
+        <button className={cn(BTN, 'text-[var(--color-ask)]')} title={tr('把 JSON 放进对话输入框（按设置脱敏，不自动发送）')} onClick={onAsk}><AskAiIcon />{tr('问 AI')}</button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[12px] leading-[1.6]">
         <JsonNode name={undefined} value={value} path={[]} isOpen={isOpen} toggle={toggle} sel={sel} onSel={setSel} keep={searching ? found.keep : undefined} q={q.trim().toLowerCase()} />

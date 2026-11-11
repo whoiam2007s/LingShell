@@ -139,10 +139,18 @@ export const multimodalDefault = (_provider: string, model: string): boolean => 
 
 // ── 上下文标签（@ 引用终端 / 主机 / 历史会话、`!命令` 的终端块）────────────
 // 发给模型时追加在用户原话之后、路径块之前，形如 <context type="terminal" name="本地 1">…</context>；回放时解析回标签
-export type ContextKind = 'terminal' | 'host' | 'session' | 'shell' | 'git' | 'container' | 'history' | 'ports' | 'k8s' | 'alert' | 'check'
-export const CONTEXT_KINDS: ContextKind[] = ['terminal', 'host', 'session', 'shell', 'git', 'container', 'history', 'ports', 'k8s', 'alert', 'check']
+export type ContextKind = 'terminal' | 'host' | 'session' | 'shell' | 'git' | 'container' | 'history' | 'ports' | 'k8s' | 'alert' | 'check' | 'proc' | 'svc' | 'sql' | 'log' | 'disk' | 'fw' | 'table' | 'probe' | 'audit' | 'usage'
+export const CONTEXT_KINDS: ContextKind[] = ['terminal', 'host', 'session', 'shell', 'git', 'container', 'history', 'ports', 'k8s', 'alert', 'check', 'proc', 'svc', 'sql', 'log', 'disk', 'fw', 'table', 'probe', 'audit', 'usage']
 export interface ContextAttachment { kind: 'context'; ctx: ContextKind; name: string; text: string }
 export const CONTEXT_MAX_CHARS = 12000
+
+// 气泡里只预览前 400 字：一段 1 万多字的输出挂在 chip 上，悬停时会把整屏糊满。
+// 全文照常发给 AI（发送用的是 text 本体），这里只影响展示。
+export const CHIP_PREVIEW_CHARS = 400
+export function chipPreview(text: string): { preview: string; truncated: boolean; chars: number } {
+  const t = text ?? ''
+  return { preview: t.slice(0, CHIP_PREVIEW_CHARS), truncated: t.length > CHIP_PREVIEW_CHARS, chars: t.length }
+}
 
 const ctxName = (s: string) => s.replace(/["\r\n<>]/g, ' ').trim().slice(0, 120)
 const ctxBody = (s: string) => s.replace(/<\/context>/g, '</ context>')
@@ -150,10 +158,18 @@ const ctxBody = (s: string) => s.replace(/<\/context>/g, '</ context>')
 // 新增 git 时漏了它，结果 git 上下文整段显示在消息气泡里（发送内容里剥不下来）。
 const CTX_TAIL = new RegExp(`\\n*<context type="(${CONTEXT_KINDS.join('|')})" name="([^"\\n]*)">\\n((?:(?!\\n<\\/context>)[\\s\\S])*)\\n<\\/context>\\s*$`)
 
+/** 超上限时只发前面一段，并明确告知被截断（模型据此决定要不要自己再取） */
+export const clampContext = (text: string): string => {
+  const t = text ?? ''
+  if (t.length <= CONTEXT_MAX_CHARS) return t
+  const kept = t.slice(0, CONTEXT_MAX_CHARS)
+  return `${kept}\n\n（已截断：原文 ${t.length} 字，这里只放了前 ${CONTEXT_MAX_CHARS} 字。需要后面的内容我再读。）`   // i18n-ignore 发给 AI 的话
+}
+
 /** 在用户原话后追加上下文块（没有时原样返回） */
 export function withContextBlocks(text: string, ctxs: ContextAttachment[]): string {
   if (!ctxs.length) return text
-  const blocks = ctxs.map((c) => `<context type="${c.ctx}" name="${ctxName(c.name)}">\n${ctxBody(c.text.slice(0, CONTEXT_MAX_CHARS))}\n</context>`)
+  const blocks = ctxs.map((c) => `<context type="${c.ctx}" name="${ctxName(c.name)}">\n${ctxBody(clampContext(c.text))}\n</context>`)
   return `${text.trim() ? `${text.trimEnd()}\n\n` : ''}${blocks.join('\n')}`
 }
 

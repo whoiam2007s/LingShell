@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
 
 // 仿 VS Code 的竖向活动栏：贴在工作区外侧，放打开侧边面板/工具的图标按钮，省出头部空间
+// relative z-50：抽屉是 z-40（TerminalDrawer / SessionDrawer），活动栏上的弹出菜单必须压在抽屉之上，
+// 否则抽屉开着时点「更多视图」看不到菜单项（菜单被抽屉盖住）。
 export function ActivityBar({ side, children, bottom }: { side: 'left' | 'right'; children: ReactNode; bottom?: ReactNode }) {
   return (
     <div data-activity-bar={side}
       // 各功能自带的图标按钮（h-6 + 3.5 图标）在活动栏里统一放大到 ActBtn 的尺寸；只作用于直接按钮，不碰其弹出菜单里的按钮
-      className={`flex w-[calc(2.25rem*var(--icon-zoom,1))] shrink-0 flex-col items-center gap-1 bg-[var(--color-bg-panel)] py-2 [&>*>button]:h-[var(--act-btn)] [&>*>button]:w-[var(--act-btn)] [&>*>button>svg]:h-4 [&>*>button>svg]:w-4 [&>button]:h-[var(--act-btn)] [&>button]:w-[var(--act-btn)] [&>button>svg]:h-4 [&>button>svg]:w-4 ${side === 'left' ? 'border-r' : 'border-l'} border-[var(--color-border-subtle)]`}>
+      className={`relative z-50 flex w-[calc(2.25rem*var(--icon-zoom,1))] shrink-0 flex-col items-center gap-1 bg-[var(--color-bg-panel)] py-2 [&>*>button]:h-[var(--act-btn)] [&>*>button]:w-[var(--act-btn)] [&>*>button>svg]:h-4 [&>*>button>svg]:w-4 [&>button]:h-[var(--act-btn)] [&>button]:w-[var(--act-btn)] [&>button>svg]:h-4 [&>button>svg]:w-4 ${side === 'left' ? 'border-r' : 'border-l'} border-[var(--color-border-subtle)]`}>
       {children}
       {bottom && <div className="mt-auto flex flex-col items-center gap-1">{bottom}</div>}
     </div>

@@ -559,4 +559,7 @@ export const sharedB: Record<string, string> = {
   '分批执行 · 回滚': 'Rollout · Rollback',
   '分批执行 · 第 {n} 批': 'Rollout · Batch {n}',
   '分批执行 · 第 {n} 批健康检查': 'Rollout · Batch {n} health check',
+  '手动下载': 'Download manually',
+  '打开发布页，自己下载安装包手动安装': 'Open the release page and install the package yourself',
+  '重试': 'Retry',
 }

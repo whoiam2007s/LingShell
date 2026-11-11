@@ -2,8 +2,8 @@
 // 统一一行高：图标或小缩略图（16px）+ 名称 + ×。图片 = 图片附件，或文件名是图片的文件（按路径发出的图片文件）。
 // 点击打开：图片 → 应用内预览（可缩放、多张左右切换）；文件 → 系统默认程序打开；目录 → 系统资源管理器。
 import { useEffect, useState } from 'react'
-import { FileText, Folder, Image as ImageIcon, Info, X, TerminalSquare, Server, MessageSquare, SquareTerminal, GitBranch, Container, History, EthernetPort, Boxes, TriangleAlert, HeartPulse } from 'lucide-react'
-import { tr, tk, type MsgAttachment, type ContextKind } from '@lingshell/shared'
+import { FileText, Folder, Image as ImageIcon, Info, X, TerminalSquare, Server, MessageSquare, SquareTerminal, GitBranch, Container, History, EthernetPort, Boxes, TriangleAlert, HeartPulse, Activity, ServerCog, Database, ScrollText, HardDrive, ShieldCheck, Table2, Network, ClipboardCheck, Coins } from 'lucide-react'
+import { chipPreview, tr, tk, type MsgAttachment, type ContextKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { imageSrc, isImageAtt, errMsg, PATH_ONLY_HINT, NO_IMAGE_HINT, type ChipView } from './attachments.js'
 import type { TermBlock } from '../../lib/termBlock.js'
@@ -43,15 +43,20 @@ export function AttachmentChips({ items, onRemove, onError, noImage, className }
 const CTX_ICON: Record<ContextKind, typeof FileText> = {
   terminal: TerminalSquare, host: Server, session: MessageSquare, shell: SquareTerminal, git: GitBranch,
   container: Container, history: History, ports: EthernetPort, k8s: Boxes, alert: TriangleAlert, check: HeartPulse,
+  proc: Activity, svc: ServerCog, sql: Database, log: ScrollText,
+  disk: HardDrive, fw: ShieldCheck, table: Table2, probe: Network, audit: ClipboardCheck, usage: Coins,
 }
 const CTX_LABEL: Record<ContextKind, string> = {
   terminal: tk('终端'), host: tk('主机'), session: tk('会话'), shell: tk('终端块'), git: tk('仓库'),
   container: tk('容器'), history: tk('命令历史'), ports: tk('监听端口'), k8s: tk('K8s'), alert: tk('告警'), check: tk('体检'),
+  proc: tk('进程'), svc: tk('服务'), sql: tk('SQL'), log: tk('日志'),
+  disk: tk('磁盘'), fw: tk('防火墙'), table: tk('表格'), probe: tk('连通性'), audit: tk('执行记录'), usage: tk('用量'),
 }
 function CtxChip({ a, onRemove }: { a: MsgAttachment & { key?: string }; onRemove?: () => void }) {
   const ctx = a.ctx ?? 'terminal'
   const Icon = CTX_ICON[ctx]
-  const tip = (a.text ?? '').length > 1500 ? `${a.text!.slice(0, 1500)}…` : a.text ?? ''
+  const pv = chipPreview(a.text ?? '')
+  const tip = pv.truncated ? `${pv.preview}\n\n…${tr('共 {n} 字，发送时全文给 AI', { n: pv.chars })}` : pv.preview
   return (
     <span data-att-kind="context" data-ctx={ctx} title={`${tr('{label}：{name}', { label: tr(CTX_LABEL[ctx]), name: a.name })}\n\n${tip}`}
       className="group flex h-6 max-w-[260px] items-center gap-1 rounded-md border border-[color:color-mix(in_srgb,var(--color-accent)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_8%,transparent)] pl-1 pr-0.5 text-[11.5px] text-[var(--color-text-secondary)]">

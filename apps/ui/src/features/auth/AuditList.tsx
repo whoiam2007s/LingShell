@@ -9,6 +9,10 @@ import { Checkbox } from '../../components/ui/Checkbox.js'
 import { SaveRunbookDialog } from '../runbooks/index.js'
 import { REVIEW_DECISION, SUDO_LEASE_RULE } from '@lingshell/shared'
 import { ReviewBadge } from './SafetyBits.js'
+import { auditDigest, isRisky, isToday } from '@lingshell/shared'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
+import { askAiChip } from '../../lib/askAi.js'
+import { Select } from '../../components/ui/Select.js'
 
 const ALLOW_REASON: Record<string, string> = { first_access: tk('首次授权'), elevation: tk('提升为写入'), dangerous_command: tk('危险命令确认'), user: tk('批准'), plan: tk('计划内') }
 
@@ -62,6 +66,9 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
   const [rows, setRows] = useState<AuditEntry[]>([])
   // 全部会话：想找某次改动不用先记得是在哪个会话里做的
   const [all, setAll] = useState(false)
+  const [onlyRisky, setOnlyRisky] = useState(false)
+  const [onlyToday, setOnlyToday] = useState(false)
+  const [hostFilter, setHostFilter] = useState('')
   const [titles, setTitles] = useState<Map<string, string>>(new Map())
   const refresh = useCallback(() => {
     ;(all ? client.audit.listRecent() : client.audit.listForSession(sessionId)).then(setRows).catch(() => {})
@@ -94,16 +101,42 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
 
   // 「保存为手册」：本会话执行成功的命令沉淀成运维手册
   const [saving, setSaving] = useState(false)
+  const shown = rows.filter((r) => (!onlyRisky || isRisky(r)) && (!onlyToday || isToday(r)) && (!hostFilter || r.hostKey === hostFilter))
+  const hostKeys = [...new Set(rows.map((r) => r.hostKey))]
   const canSave = !all && rows.some((r) => r.decision.startsWith('exec_allowed') && r.exitCode === 0)
+  // 「让 AI 复盘」：把当前筛选出来的记录汇总成一个 chip，问题预填，不自动发送
+  const review = () => {
+    const note = [all ? tr('全部会话') : tr('本会话'), onlyToday ? tr('今天') : '', onlyRisky ? tr('只看危险') : '', hostFilter ? host(hostFilter) : ''].filter(Boolean).join(' · ')
+    void askAiChip({ ctx: 'audit', name: `${tr('执行记录')} · ${shown.length}`, text: auditDigest({ rows: shown, hostLabel: host, scopeNote: note }), question: tr('帮我复盘：这些操作里有风险的吗？有没有该回滚 / 该补授权的') })
+  }
+  // 筛选条：一行放不下就整块换行，但每个标签 / 按钮自己不许断行（原来文字被挤成两行）
+  const nowrap = 'flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] text-[var(--color-text-muted)]'
   const scope = (
-    <div className="mb-2 flex items-center">
-      <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
+    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <label className={`${nowrap} cursor-pointer`}>
         <Checkbox checked={all} onCheckedChange={setAll} />
         {tr('显示全部会话')}
       </label>
+      <label className={`${nowrap} cursor-pointer`}>
+        <Checkbox checked={onlyRisky} onCheckedChange={setOnlyRisky} />
+        {tr('只看危险')}
+      </label>
+      <label className={`${nowrap} cursor-pointer`}>
+        <Checkbox checked={onlyToday} onCheckedChange={setOnlyToday} />
+        {tr('只看今天')}
+      </label>
+      {hostKeys.length > 1 && (
+        <Select size="sm" className="w-[110px] shrink-0" value={hostFilter} onValueChange={setHostFilter}
+          options={[{ value: '', label: tr('所有主机') }, ...hostKeys.map((k) => ({ value: k, label: host(k) }))]} />
+      )}
+      <span className="ml-auto" />
+      <button onClick={review} disabled={!shown.length} title={tr('把当前筛选出的执行记录汇总后挂到对话（不自动发送）')}
+        className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-ask)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50">
+        <AskAiIcon className="h-3 w-3" />{tr('让 AI 复盘')}
+      </button>
       {canSave && (
         <button onClick={() => setSaving(true)} title={tr('把本会话执行成功的命令保存为可重复执行的运维手册')}
-          className="ml-auto flex items-center gap-1 rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">
+          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">
           <BookPlus className="h-3 w-3" />{tr('保存为手册')}
         </button>
       )}
@@ -116,7 +149,8 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
   return (
     <div className="space-y-1.5">
       {scope}
-      {rows.map((r, i) => {
+      {shown.length === 0 && <div className="rounded-md border border-dashed border-[var(--color-border-subtle)] px-2.5 py-2 text-[11px] text-[var(--color-text-muted)]">{tr('当前筛选条件下没有记录')}</div>}
+      {shown.map((r, i) => {
         // 写入没有备份 = 新建的文件（没有原文可还原），别标成「改文件」让人以为丢了还原
         const d = r.decision === 'write_allowed' && !r.backupPath ? { label: tr('新建文件'), tone: 'muted' as const }
           : r.rule && r.decision.startsWith('deny:') ? { label: tr('按规则拦截'), tone: 'bad' as const } : describe(r.decision)

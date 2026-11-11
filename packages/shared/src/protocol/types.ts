@@ -332,6 +332,12 @@ export interface SystemSettings {
   terminalFailHint?: boolean
   // AI 一轮跑完 / 出错且窗口不在前台时发系统通知（用户主动停止的不发）。缺省开
   aiDoneNotify?: boolean
+  // 声音提醒：任务完成 / 等待你确认或交互时各响一种提示音（默认开，可单独关掉）
+  notifySound?: boolean
+  // 系统提示：任务完成 / 等待你确认或交互时弹系统通知（默认开，可单独关掉）
+  notifyDesktop?: boolean
+  // 单会话花费提醒：本会话花费超过这个金额（元）时，聊天头部的花费标黄（只提示，不中断）。0 = 不提醒
+  costWarnYuan?: number
   // 命令放行 / 询问 / 禁止规则（AI 执行终端命令时先按它判定，先匹配先生效），见 commandRules.ts
   commandRules: import('../ai/index.js').CommandRule[]
   // AI 一轮里第一次对某台 Linux SSH 主机做改动前后各拍一次轻量快照，回合末显示「本轮主机变化」（见 hostProfile.ts）。缺省开
@@ -465,19 +471,68 @@ export const THINKING_WIRE: Record<string, Partial<Record<ThinkingLevel, string 
   // ollama / openai-compatible：本地与自定义端点，不认识 reasoningEffort，置灰
 }
 
-/** 该厂商界面上能选的档位（按 关 / 低 / 中 / 高 顺序）；空数组 = 完全不支持思考深度 */
-export const thinkingLevelsOf = (provider: string): ThinkingLevel[] => {
-  const map = THINKING_WIRE[provider]
+/**
+ * 模型级覆盖：同一个厂商里不同模型的支持情况不一样（非推理模型压根没有思考档位、
+ * 老模型没有 minimal），只在厂商级表上判断会给界面留下「选了也没用」的档位。
+ *
+ * 一条规则 = 厂商 + 模型名正则 → 这个模型认识的四档（语义同 THINKING_WIRE）。
+ * 没匹配到任何规则 = 回退厂商级 THINKING_WIRE（行为与以前完全一致，不会因为表没写全就坏掉）。
+ *
+ * 收录原则：只写**确定**的（这一代模型明确不提供思考档位 / 明确只支持某几种取值）。
+ * 拿不准的一律不写 —— 宁可回退厂商默认，也不瞎发参数。
+ */
+export interface ThinkingModelRule {
+  provider: string
+  model: RegExp
+  map: Partial<Record<ThinkingLevel, string | null>>
+  /** 依据（写进代码便于日后核对，不展示给用户） */
+  why: string
+}
+export const THINKING_WIRE_MODEL: ThinkingModelRule[] = [
+  // OpenAI：只有 o 系列 / gpt-5 是推理模型；gpt-4o、gpt-4.1、gpt-4-turbo、chatgpt-4o 这些
+  // 不接受 reasoningEffort，发过去会被忽略或 400，所以整族置灰。
+  { provider: 'openai', model: /^(gpt-4o|gpt-4\.1|gpt-4-turbo|gpt-4-|chatgpt-4o)/i, map: {}, why: '非推理模型，无 reasoningEffort' },   // i18n-ignore 代码内注释
+  // Gemini：1.5 / 2.0 没有可调的思考预算（2.5 起才有 thinkingConfig），整族置灰。
+  { provider: 'gemini', model: /^gemini-(1\.5|2\.0)/i, map: {}, why: '2.5 之前没有可调思考预算' },   // i18n-ignore 代码内注释
+  // DeepSeek：deepseek-chat（V3）是非推理模型；只有 deepseek-reasoner 走思维链。
+  { provider: 'deepseek', model: /^deepseek-chat/i, map: {}, why: 'deepseek-chat 非推理模型' },   // i18n-ignore 代码内注释
+  // Qwen 不写：qwen-plus 系的 qwen3 变体也支持 enable_thinking，按模型名正则分不干净 ——
+  // 拿不准就回退厂商级（宁可在界面上多显示几档，也不瞎置灰）。,   // i18n-ignore 代码内注释
+]
+
+/** 该「厂商 + 模型」认不认思考档位；模型名不传 = 只看厂商级表 */
+export const thinkingWireMapOf = (provider: string, model?: string): Partial<Record<ThinkingLevel, string | null>> | undefined => {
+  if (model) {
+    for (const r of THINKING_WIRE_MODEL) if (r.provider === provider && r.model.test(model)) return r.map
+  }
+  return THINKING_WIRE[provider]
+}
+
+/** 该「厂商 + 模型」界面上能选的档位（按 关 / 低 / 中 / 高 顺序）；空数组 = 不支持思考深度 */
+export const thinkingLevelsOfModel = (provider: string, model?: string): ThinkingLevel[] => {
+  const map = thinkingWireMapOf(provider, model)
   return map ? THINKING_LEVELS.filter((lv) => lv in map) : []
 }
 
+/** 该「厂商 + 模型」有没有可选的思考档位（只有「关」不算） */
+export const thinkingSupportedModel = (provider: string, model?: string): boolean =>
+  thinkingLevelsOfModel(provider, model).some((lv) => lv !== 'off')
+
+/** 档位 → 实际派发值（按模型查）；null = 支持但不发参数；undefined = 这一档不支持 / 没选档位 */
+export function thinkingWireOfModel(provider: string, model: string | undefined, level?: ThinkingLevel): string | null | undefined {
+  if (!level) return undefined
+  return thinkingWireMapOf(provider, model)?.[level]
+}
+
+/** 该厂商界面上能选的档位（按 关 / 低 / 中 / 高 顺序）；空数组 = 完全不支持思考深度 */
+export const thinkingLevelsOf = (provider: string, model?: string): ThinkingLevel[] => thinkingLevelsOfModel(provider, model)
+
 /** 该厂商有没有可选的思考档位（只有「关」不算） */
-export const thinkingSupported = (provider: string): boolean => thinkingLevelsOf(provider).some((lv) => lv !== 'off')
+export const thinkingSupported = (provider: string, model?: string): boolean => thinkingSupportedModel(provider, model)
 
 /** 档位 → 实际派发值；null = 支持但不发参数；undefined = 这一档不支持 / 没选档位 */
-export function thinkingWireOf(provider: string, level?: ThinkingLevel): string | null | undefined {
-  if (!level) return undefined
-  return THINKING_WIRE[provider]?.[level]
+export function thinkingWireOf(provider: string, level?: ThinkingLevel, model?: string): string | null | undefined {
+  return thinkingWireOfModel(provider, model, level)
 }
 
 /** 档位往下标；没设时按「中」显示（与各厂商默认一致） */

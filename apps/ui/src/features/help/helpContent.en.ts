@@ -59,7 +59,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
   {
     id: 'chat', title: 'AI chat and permissions', icon: MessageSquare,
     blocks: [
-      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hover for "Rename" and "Export session"), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), and "Knowledge base". Drawers slide out next to the activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
+      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hover for "Rename" and "Export session"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Knowledge base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
       { h: 'Status dots in session history', p: 'Each session in "Session history" has a small dot before its title showing the result of **the last turn** of that session: running = blue (breathing), waiting for your approval / plan = orange, failed = red.', tips: [
         'Opening the drawer or the session does not clear it; the red dot goes away only after that session\'s **next turn succeeds**.',
         'It reflects the last turn only, not historical failures; no dot = the last turn finished normally.',
@@ -601,7 +601,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'The last 500 lines are shown first, then new lines keep appending (after log rotation it follows the new file automatically). "+" in the panel title bar opens another log, so several tabs can be open at once.',
         '"Pause" only stops the display; lines keep arriving in the background and the button shows how many are pending. "Resume" catches up in one go.',
         'Type keywords in the filter box (".*" toggles regex, "Aa" toggles case sensitivity); with "Matching lines only" on, only matching lines show; turn it off to show everything with matches highlighted.',
-        'Click lines to select them (Ctrl for multiple, Shift for a range), then "Copy selected lines" or "Ask AI": the selected lines and the file path go into the chat input, not sent automatically.',
+        'Click lines to select them, or **press the mouse on one line and drag across others** to select a whole range; Ctrl-click adds / removes a single line, Shift-click extends a range, and "Select all" picks every currently shown line. Then "Copy selected lines" or "Ask AI": the selected lines and the file path go into the chat input, not sent automatically.',
         '"Auto scroll": scrolling up stops following, scrolling back to the bottom resumes. "Max N lines" drops the oldest beyond the limit (default 10,000); "Clear" empties the current view; "Export current content as .txt" saves the lines currently shown.',
         'After "Collapse" in the title bar, logs keep being followed; click "Logs" in the right activity bar → "Show log panel" to bring it back. "Close all logs" or closing a tab stops following.',
       ], tips: [
@@ -1718,6 +1718,36 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Keys that look like passwords, tokens or secrets (password / secret / token / key…) or values that look like secrets are shown as ●●●●●● by default, marked "Same on both sides / Different"; click the eye icon to see the plaintext.',
         '"Ask AI to explain differences": puts the diff table into the chat input (sensitive values always masked, then processed by your redaction settings); add a question and send.',
       ], tips: ['Each file is limited to 1MB. YAML only supports the forms common in config files (mappings, lists, multi-line text); flow style like [a, b] is compared as a whole.'] },
+    ],
+  },
+  {
+    id: 'layout', title: 'Layout: activity bars, drawers and the input box', icon: AppWindow,
+    blocks: [
+      { h: 'Two activity bars', p: 'There are two vertical icon bars, split by what they manage rather than where they sit:', steps: [
+        '**Left (next to the chat)**: Explorer (chat working directory), History, Session permissions / execution log, Knowledge base | Table viewer, Git, Database, API debugger, Deploy review. The last five relate to "this project / this machine" but don\'t depend on which terminal is active, so they live here.',
+        '**Right (in the terminal area)**: Explorer (current terminal directory), Dual-pane files, Command history | Host health check, Processes, Services, Containers, Listening ports, More views (disk / cron / firewall / service topology / Kubernetes) | Alerts, Logs, Session log, Instant replay | Connectivity probe, Batch run, File compare, Runbooks | the transfer queue at the bottom.',
+        'Drawers slide out from the bar that owns them: the left bar\'s drawers come out at the chat panel\'s right edge (Git, Database, History, Permissions, Knowledge base), the right bar\'s drawers cover the terminal area\'s right edge. Click the same icon again to close.',
+        'Every icon has a tooltip saying what it does and what it needs (e.g. "Linux SSH only", "local terminal shows local Docker"); hover first when unsure.',
+      ], tips: [
+        'Icons never wrap or collapse; when the window is short they simply continue downwards.',
+        'Git, Database, API debugger and Deploy review are opened from the left bar; the same entries in the command palette (Ctrl+K) behave identically.',
+      ] },
+      { h: 'Input box height', p: 'One line high by default. To write something long (a long instruction, several pasted contexts), resize it temporarily:', steps: [
+        'Move the pointer to the thin bar just above the input box, the cursor turns into a vertical resize arrow; drag upwards to make it taller (up to 70% of the window height). The text area grows with the box and scrolls internally.',
+        'Double-click that thin bar to return to the default one line.',
+      ], tips: [
+        'The dragged height is not remembered: switching chats or restarting returns to one line, so a tall box can\'t squeeze the conversation away.',
+        'The input box does not grow with its content; use the drag handle or the internal scrollbar for long text.',
+      ] },
+      { h: 'Many terminal tabs', p: 'When tabs no longer fit you are not limited to horizontal scrolling:', steps: [
+        'A "…" button appears at the right end of the tab strip only when tabs really don\'t fit.',
+        'Clicking it lists every terminal: icon, title, production badge, disconnected state, with the current one highlighted; click one to switch, click outside or press Esc to close.',
+      ], tips: ['Tabs that don\'t fit stay in the horizontal list (wheel or drag still reaches them); "…" is just a faster path.'] },
+      { h: 'What "Ask AI" looks like', p: 'Every "Ask AI / let AI explain / troubleshoot with AI / send to AI" in the app uses the same blue square-bubble icon and does the same thing:', steps: [
+        'A matching context chip appears above the input box (hover to see the full text that will be sent; anything over 400 characters shows a preview first), and after sending it is shown under your message.',
+        'The question is prefilled but **never sent automatically**: an empty input gets the question directly; if you already typed something, the question is appended on a new line below; if the text is just the previously auto-filled question, it is replaced.',
+        'Clicking the same object again keeps one chip instead of stacking several.',
+      ], tips: ['Long content (thousands of log lines, a whole health report) is only sent in full when you send the message; the chip previews it, and a single attachment over 12000 characters is truncated with a note.'] },
     ],
   },
 ]

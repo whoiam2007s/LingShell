@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { summarizeUsage, sessionUsage, costOf, cacheHitRate, rangeStart, dayKey, fmtTokens, fmtCost, DEFAULT_USAGE_PRICES, type UsageRecord, type UsagePrices } from './usage.js'
+import { summarizeUsage, sessionUsage, costOf, costLevel, cacheHitRate, rangeStart, dayKey, fmtTokens, fmtCost, DEFAULT_USAGE_PRICES, type UsageRecord, type UsagePrices } from './usage.js'
 
 const NOW = new Date(2026, 9, 13, 15, 0, 0)   // 本地 2026-10-13 15:00
 const at = (daysAgo: number, h = 10) => new Date(2026, 9, 13 - daysAgo, h).toISOString()
@@ -78,5 +78,15 @@ describe('usage 计算', () => {
     expect(fmtCost(undefined, 'CNY')).toBe('未设置单价')
     expect(fmtCost(1.234, 'USD')).toBe('$1.23')
     expect(fmtCost(0.0012, 'CNY')).toBe('¥0.0012')
+  })
+
+  it('花费档位：没设阈值不提醒，到 80% 标黄，超过标红', () => {
+    expect(costLevel(100, 0)).toBe('ok')
+    expect(costLevel(100, undefined)).toBe('ok')
+    expect(costLevel(undefined, 10)).toBe('ok')
+    expect(costLevel(1, 10)).toBe('ok')
+    expect(costLevel(8, 10)).toBe('warn')
+    expect(costLevel(10, 10)).toBe('over')
+    expect(costLevel(12.5, 10)).toBe('over')
   })
 })

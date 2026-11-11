@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowUp, File as FileIcon, Folder, FolderOpen, HardDrive, MessageSquareQuote } from 'lucide-react'
+import { ArrowUp, File as FileIcon, Folder, FolderOpen, HardDrive } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import {
-  bashPath, diskLinuxOnly, diskQuote, diskSupported, formatSize, redactSecrets, tk, tr,
+  bashPath, diskLinuxOnly, diskQuote, diskSupported, formatSize, tk, tr,
   type DiskBigFiles, type DiskCommon, type DiskDeleted, type DiskLevel, type FsScope, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { Input } from '../../components/ui/Input.js'
 import { HelpTip } from '../../components/ui/form.js'
 import { getTermCwd } from '../../lib/termCwd.js'
@@ -73,17 +74,17 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
   }
   const go = (p: string) => { setPath(p); setDraft(p); setTab('dirs') }
 
+  // 问 AI：挂「磁盘」chip，问题预填，不自动发送
   const ask = async () => {
-    const s = await client.settings.get().catch(() => undefined)
     const text = diskQuote({ host: term?.title ?? '', level, big, common, deleted, fmt: formatSize })
-    quoteToChat(s?.system?.aiRedact === false ? text : redactSecrets(text))
+    void askAiChip({ ctx: 'disk', name: term?.title ?? tr('磁盘'), text, question: tr('磁盘空间都去哪了？哪些能安全清理') })
     onClose()
   }
 
   const header = <DrawerHeader icon={<HardDrive className="h-3.5 w-3.5" />} title={tr('磁盘占用')} loading={!!loading} onRefresh={ok ? () => load(tab, path) : undefined} onClose={onClose}
     extra={ok ? <>
       <button data-disk-ask disabled={!level && !big && !common && !deleted} onClick={() => void ask()} title={tr('把已统计的结果放进对话输入框，问 AI 哪些能安全清理（按设置脱敏，不自动发送）')}
-        className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI 怎么清理')}</button>
+        className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI 怎么清理')}</button>
       <HelpTip>{tr('只读：只用 du / find / df / lsof 统计，不删除任何东西（要清理请在终端或资源管理器里操作，或问 AI）。只统计同一分区（du -x），每次最多算 25 秒，超时显示已统计的部分。没有 root 时读不了别人的目录，结果会偏小。本地终端用 Git Bash 统计。')}</HelpTip>
     </> : undefined} />
   if (!ok) return <div className="flex h-full flex-col">{header}<div className={`px-3 py-3 text-[12px] ${MUTED}`}>{tr('磁盘空间分析支持本地终端和 Linux / macOS 的 SSH 终端。')}</div></div>
@@ -136,7 +137,7 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
           {level.entries.length === 0 && <div className={`px-3 py-2 ${MUTED}`}>{tr('空目录')}</div>}
           {level.entries.map((e) => (
             <div key={e.path} data-disk-entry={e.name} onClick={e.dir ? () => go(e.path) : undefined} title={e.path}
-              className={`group relative flex items-center gap-1.5 px-3 py-[3px] hover:bg-[var(--color-bg-hover)] ${e.dir ? 'cursor-pointer' : ''}`}>
+              className={`group relative flex h-6 items-center gap-1.5 px-3 hover:bg-[var(--color-bg-hover)] ${e.dir ? 'cursor-pointer' : ''}`}>
               <div className="pointer-events-none absolute inset-y-[3px] left-3 rounded-sm bg-[color:color-mix(in_srgb,var(--color-accent)_16%,transparent)]" style={{ width: `calc(${(e.kb / max) * 100}% - 24px)` }} />
               {e.dir ? <Folder className="relative h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" /> : <FileIcon className="relative h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />}
               <span className="relative min-w-0 flex-1 truncate text-[var(--color-text-primary)]">{e.name}</span>
@@ -150,7 +151,7 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
           <div className={`px-3 py-1 text-[10.5px] ${MUTED}`}>{tr('{dir} 下大于 {mb}MB 的文件（同一分区）', { dir: big.dir, mb: big.minMb })}{big.truncated && <span className="ml-1 text-[var(--color-warn)]">{tr('超时，只找了一部分')}</span>}</div>
           {big.files.length === 0 && <div className={`px-3 py-2 ${MUTED}`}>{tr('没有大于 {mb}MB 的文件', { mb: big.minMb })}</div>}
           {big.files.map((f) => (
-            <div key={f.path} data-disk-big className="group flex items-center gap-1.5 px-3 py-[3px] hover:bg-[var(--color-bg-hover)]" title={f.path}>
+            <div key={f.path} data-disk-big className="group flex h-6 items-center gap-1.5 px-3 hover:bg-[var(--color-bg-hover)]" title={f.path}>
               <FileIcon className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
               <span className="min-w-0 flex-1 truncate font-mono text-[var(--color-text-primary)]">{f.path}</span>
               {onReveal && <button title={tr('在资源管理器打开所在目录')} onClick={() => onReveal(parentOf(f.path) ?? '/')} className={`${IB} hidden group-hover:flex`}><FolderOpen className="h-3 w-3" /></button>}
@@ -180,7 +181,7 @@ export function DiskUsageDrawer({ term, initialPath, onReveal, onClose }: { term
           </div>
           {deleted.items.length === 0 && <div className={`px-3 py-2 ${MUTED}`}>{tr('没有发现已删除但仍被占用的文件')}</div>}
           {deleted.items.map((d) => (
-            <div key={`${d.pid}:${d.path}`} data-disk-deleted className="flex items-center gap-1.5 px-3 py-[3px] hover:bg-[var(--color-bg-hover)]" title={`${d.fd ? tr('{cmd}（pid {pid}，fd {fd}）', { cmd: d.command, pid: d.pid, fd: d.fd }) : tr('{cmd}（pid {pid}）', { cmd: d.command, pid: d.pid })}\n${d.path}`}>
+            <div key={`${d.pid}:${d.path}`} data-disk-deleted className="flex h-6 items-center gap-1.5 px-3 hover:bg-[var(--color-bg-hover)]" title={`${d.fd ? tr('{cmd}（pid {pid}，fd {fd}）', { cmd: d.command, pid: d.pid, fd: d.fd }) : tr('{cmd}（pid {pid}）', { cmd: d.command, pid: d.pid })}\n${d.path}`}>
               <span className="w-24 shrink-0 truncate text-[var(--color-text-primary)]">{d.command}<span className={`ml-1 text-[10px] ${MUTED}`}>{d.pid}</span></span>
               <span className="min-w-0 flex-1 truncate font-mono text-[var(--color-text-secondary)]">{d.path}</span>
               <span className="w-16 shrink-0 text-right font-mono text-[var(--color-text-secondary)]">{formatSize(d.bytes)}</span>

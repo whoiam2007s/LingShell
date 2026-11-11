@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, ArrowRightLeft, Boxes, HeartPulse, Loader2, LogIn, MessageSquareQuote, RotateCcw, ScrollText, Sparkles, Square, SquareTerminal } from 'lucide-react'
+import { AlertTriangle, ArrowRightLeft, Boxes, HeartPulse, Loader2, LogIn, RotateCcw, ScrollText, Sparkles, Square, SquareTerminal } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import {
   K8S_KIND_OF, K8S_RESOURCES, fmtK8sAge, k8sDescribePrompt, k8sHealthPrompt, k8sProdContext, k8sRestartLabel, k8sSupported, podLevel, portsSupported, workloadLevel, tr,
   type K8sForward, type K8sHealth, type K8sKind, type K8sList, type K8sPod, type K8sProbe, type K8sResource, type K8sRestartKind, type TerminalInfo,
@@ -357,7 +358,7 @@ export function K8sDrawer({ term, onClose }: { term?: TerminalInfo; onClose: () 
                   <button data-k8s-restart disabled={!!busy} title={tr('kubectl rollout restart {obj}（逐个替换 Pod，记入执行记录）', { obj: `${selKind}/${sel.name}` })} onClick={() => { setAck(false); setConfirm({ kind: selKind as K8sRestartKind, name: sel.name, namespace: sel.namespace }) }}
                     className={`${BTN} text-[var(--color-warn)]`}>{busy === 'restart' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}{tr('滚动重启')}</button>
                 )}
-                <button data-k8s-ai title={tr('把 describe 输出发到对话，让 AI 解读（按设置脱敏）')} onClick={() => void askAi()} className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('describe 交给 AI')}</button>
+                <button data-k8s-ai title={tr('把 describe 输出发到对话，让 AI 解读（按设置脱敏）')} onClick={() => void askAi()} className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('describe 交给 AI')}</button>
                 {!bgFwd && <span className={`text-[10.5px] ${MUTED}`}><SquareTerminal className="mr-0.5 inline h-3 w-3" />{tr('跟踪 / 进入 / 转发会新开终端标签')}</span>}
                 {flash && <span data-k8s-flash className="text-[11px] text-[var(--color-success)]">{flash}</span>}
               </div>

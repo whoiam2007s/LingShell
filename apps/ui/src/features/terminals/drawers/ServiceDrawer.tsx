@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ArrowUpToLine, Loader2, MessageSquareQuote, RefreshCw, ScrollText, ServerCog, X } from 'lucide-react'
+import { AlertTriangle, ArrowUpToLine, Loader2, RefreshCw, ScrollText, ServerCog, X } from 'lucide-react'
+import { AskAiIcon } from '../../../components/ui/AskAi.js'
 import {
-  SVC_ACTIONS, SVC_ACTION_LABEL, filterSvcs, redactSecrets, sortSvcs, svcAutostart, svcFailed, svcQuote, systemdSupported, tr,
+  SVC_ACTIONS, SVC_ACTION_LABEL, filterSvcs, sortSvcs, svcAutostart, svcFailed, svcChip, systemdSupported, tr,
   type SvcAction, type SvcList, type SvcRow, type TerminalInfo,
 } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
-import { quoteToChat } from '../../../lib/quoteToChat.js'
+import { askAiChip } from '../../../lib/askAi.js'
 import { Input } from '../../../components/ui/Input.js'
 import { openLogViewer } from '../../logs/index.js'
 import { trx } from '../../../lib/trx.js'
@@ -83,11 +84,11 @@ export function ServiceDrawer({ term, onClose }: { term?: TerminalInfo; onClose:
       .catch((e) => setActErr(tr('{action} {name} 失败：\n{msg}', { action: tr(SVC_ACTION_LABEL[x.action]), name: x.row.name, msg: errText(e) })))
       .finally(() => { setRunning(undefined); refresh(); loadStatus(x.row.name) })
   }
+  // 「问 AI」：挂「服务」chip（名字 = 服务名），status 全文一起带上，问题预填在输入框
   const askAi = async (r: SvcRow) => {
     const text = status?.name === r.name && status.text ? status.text : await client.systemd.status(tid, r.name).catch((e) => tr('（读取 status 失败：{msg}）', { msg: errText(e) }))
-    const s = await client.settings.get().catch(() => undefined)
-    const quote = svcQuote(term?.title ?? '', r, text)
-    quoteToChat(s?.system?.aiRedact === false ? quote : redactSecrets(quote))
+    const chip = svcChip(term?.title ?? '', r, text)
+    void askAiChip({ ctx: 'svc', name: chip.name, text: chip.text, question: tr('这个服务为什么起不来 / 有哪些隐患？怎么查怎么修') })
     onClose()
   }
   const viewLog = (r: SvcRow) => { openLogViewer(tid, { kind: 'journal', unit: r.name }); onClose() }
@@ -174,7 +175,7 @@ export function ServiceDrawer({ term, onClose }: { term?: TerminalInfo; onClose:
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <button title={tr('在日志面板里打开 journalctl -u {name} -f', { name: selRow.name })} onClick={() => viewLog(selRow)} className={`${BTN} text-[var(--color-text-secondary)]`}><ScrollText className="h-3 w-3" />{tr('查看日志')}</button>
-            <button title={tr('把服务状态和最近日志放进对话输入框（按设置脱敏，不自动发送）')} onClick={() => void askAi(selRow)} className={`${BTN} text-[var(--color-accent)]`}><MessageSquareQuote className="h-3 w-3" />{tr('问 AI')}</button>
+            <button title={tr('把服务状态和最近日志放进对话输入框（按设置脱敏，不自动发送）')} onClick={() => void askAi(selRow)} className={`${BTN} text-[var(--color-ask)]`}><AskAiIcon className="h-3 w-3" />{tr('问 AI')}</button>
             {flash && <span className="text-[11px] text-[var(--color-success)]">{flash}</span>}
           </div>
         </div>

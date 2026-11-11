@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
+import { existsSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import type { ExecFullOpts, ExecFullResult } from '@lingshell/terminal-core'
 import { BatchRuns, localRunner, runBatchHost, type Runner } from './batchExec.js'
 import { findBash } from '../core/index.js'
@@ -83,8 +86,15 @@ describe.skipIf(!sh)('localRunner', () => {
   it('取消同样杀整棵进程树并及时返回', async () => {
     const ac = new AbortController()
     const t0 = Date.now()
-    const p = run('echo start; sleep 10; echo never', { signal: ac.signal })
-    setTimeout(() => ac.abort(), 300)
+    // 用哨兵文件确认「shell 已经跑起来、echo start 已经执行」，再取消。
+    // 固定 sleep(300) 会跟 Git Bash 冷启动赛跑：启动比 300ms 慢时还没输出就被杀，断言随机失败。
+    const flag = join(tmpdir(), `ls-batch-cancel-${process.pid}-${Date.now()}`)
+    const p = run(`echo start; : > "${flag}"; sleep 10; echo never`, { signal: ac.signal })
+    try {
+      const deadline = Date.now() + 8000
+      while (!existsSync(flag) && Date.now() < deadline) await new Promise((x) => setTimeout(x, 20))
+    } finally { try { rmSync(flag, { force: true }) } catch { /* 清不掉不影响断言 */ } }
+    ac.abort()
     const r = await p
     expect(r).toMatchObject({ code: null, stopped: 'aborted' })
     expect(r.output).toContain('start')

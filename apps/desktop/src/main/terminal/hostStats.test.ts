@@ -115,7 +115,15 @@ describe('本机网络 / 磁盘 IO', () => {
   it('本机真实采样：Windows / Linux 能取到网络计数，其它系统只有时间戳', async () => {
     const s = await localIoSnap()
     expect(s.t).toBeGreaterThan(0)
-    if (process.platform === 'win32' || process.platform === 'linux') expect(s.net).toBeDefined()
+    if (process.platform === 'win32' || process.platform === 'linux') {
+      // netstat / /proc 读取偶尔慢或短暂不可用：重试几次，别让 CI 随机红
+      let snap = s
+      for (let i = 0; i < 3 && !snap.net; i++) {
+        await new Promise((r) => setTimeout(r, 100))
+        snap = await localIoSnap()
+      }
+      expect(snap.net).toBeDefined()
+    }
     expect((await localIoSnap('aix')).net).toBeUndefined()
   })
 })

@@ -27,7 +27,7 @@ const PROGRESS_NOUN: Record<GitInProgress, string> = { merge: tk('op|合并'), r
 // 顶部：分支、领先 / 落后、抓取 / 拉取 / 推送；四页：更改（暂存、丢弃、提交、AI 写说明）/ 分支（含标签）/ 历史（提交图）/ 储藏。
 // 读走独立通道（不在终端里刷屏）；写操作都是手动点的，危险的先确认，都记执行记录。切终端时由外层 key 重挂载。
 // 抽屉宽度固定用最宽档（历史 / diff 页要的宽度），切 tab 不再变宽窄
-export function GitDrawer({ term, onClose }: { term?: TerminalInfo; onClose: () => void }) {
+export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; onClose: () => void; initialDir?: string }) {
   const tid = term?.id ?? ''
   const ok = !!term && !(term.type === 'ssh' && term.os === 'windows')
   const [dir, setDir] = useState('')
@@ -68,12 +68,12 @@ export function GitDrawer({ term, onClose }: { term?: TerminalInfo; onClose: () 
         if (refetch.current) { refetch.current = false; refresh(dirRef.current) }
       })
   }, [ok, tid, dir])
-  // 起始目录：shell 集成报的终端当前目录，没有就问一次 pwd
+  // 起始目录：左边活动栏进来时用「对话工作目录」（同一个项目，省得再选一次）；否则用终端当前目录
   const followTerm = useCallback(async () => {
-    const d = getTermCwd(tid) || await client.terminal.pwd(tid).catch(() => '') || ''
+    const d = initialDir || getTermCwd(tid) || await client.terminal.pwd(tid).catch(() => '') || ''
     if (!d) { setErr(tr('取不到终端当前目录：在下面输入仓库目录后回车')); return }
     setDir(d); setDirDraft(d); refresh(d)
-  }, [tid, refresh])
+  }, [tid, refresh, initialDir])
   useEffect(() => { if (ok) void followTerm() }, [ok])
 
   const note = (t: string) => { setFlash(t); setTimeout(() => setFlash((f) => (f === t ? '' : f)), 3000) }

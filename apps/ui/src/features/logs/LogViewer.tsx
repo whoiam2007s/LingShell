@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as RMouseEvent } from 'react'
-import { ArrowDownToLine, BarChart3, Copy, Download, Eraser, Maximize2, Minimize2, Minus, MessageSquareQuote, Pause, Play, Plus, RotateCw, ScrollText, X, Layers } from 'lucide-react'
+import { ArrowDownToLine, BarChart3, Copy, Download, Eraser, Maximize2, Minimize2, Minus, Pause, Play, Plus, RotateCw, ScrollText, X, Layers } from 'lucide-react'
+import { AskAiIcon } from '../../components/ui/AskAi.js'
 import {
-  LOG_COMMON_PATHS, LogInsight, fmtLogClock, tr, dateLocale, logSourceLabel, logSupported, redactSecrets, mergeSearchResults, LOG_SEARCH_RAW_MAX,
+  LOG_COMMON_PATHS, LogInsight, fmtLogClock, tr, dateLocale, logSourceLabel, logSupported, mergeSearchResults, LOG_SEARCH_RAW_MAX,
   type LogSource, type TerminalInfo, type MultiLogTarget, type LogSearchQuery, type LogSearchHostResult, type MultiLogHostState,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
-import { quoteToChat } from '../../lib/quoteToChat.js'
+import { askAiChip } from '../../lib/askAi.js'
 import { paletteSend } from '../../lib/paletteBus.js'
 import { Select } from '../../components/ui/Select.js'
 import { themeOf, useTermPrefs } from '../../lib/termPrefs.js'
@@ -304,7 +305,32 @@ function LogTab({ spec, host, hidden }: { spec: LogTabSpec; host: string; hidden
   const first = Math.max(0, Math.floor(scroll.top / ROW_H) - 30)
   const rows = visible.slice(first, first + Math.ceil(scroll.h / ROW_H) + 60)
 
+  // 拖动选行：在行上按下 → 划过的行实时扩选，松开结束。
+  // 原来只有 Ctrl 多选 / Shift 连选；用鼠标直接拖着划过几行是最自然的做法，也得能用。
+  const dragging = useRef(false)
+  const dragMoved = useRef(false)
+  const dragFrom = useRef<number | null>(null)
+  const rowDown = (e: RMouseEvent, n: number) => {
+    if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) return   // 带修饰键的点击交给 clickRow
+    dragging.current = true; dragMoved.current = false; dragFrom.current = n
+  }
+  const rowEnter = (e: RMouseEvent, n: number) => {
+    const from = dragFrom.current
+    if (!dragging.current || from === null || !(e.buttons & 1)) return
+    if (n !== from) dragMoved.current = true
+    setSel(pickRange(visible, from, n))
+  }
+  useEffect(() => {
+    const up = () => {
+      // 拖选完把浏览器的文字选区清掉（否则「问 AI」按钮旁边会一片蓝，也容易误判成选了字）
+      if (dragging.current && dragMoved.current) window.getSelection()?.removeAllRanges()
+      dragging.current = false; dragFrom.current = null
+    }
+    window.addEventListener('mouseup', up)
+    return () => window.removeEventListener('mouseup', up)
+  }, [])
   const clickRow = (e: RMouseEvent, n: number) => {
+    if (dragMoved.current) { dragMoved.current = false; return }   // 刚拖选完：别把选区缩成这一行
     if (window.getSelection()?.toString()) return   // 在拖选文字，不算点选行
     if (e.shiftKey && anchor !== undefined) { setSel(pickRange(visible, anchor, n)); return }
     setAnchor(n)
@@ -315,11 +341,15 @@ function LogTab({ spec, host, hidden }: { spec: LogTabSpec; host: string; hidden
   const flash = (t: string) => { setNote(t); setTimeout(() => setNote(''), 2000) }
   const copySel = () => navigator.clipboard.writeText(selText()).then(() => flash(tr('已复制 {n} 行', { n: sel.size })), () => flash(tr('复制失败')))
   // 问 AI：选中行 + 来源放进对话输入框（不自动发）；「发给 AI 前脱敏」开着就先按样式脱敏
+  // 问 AI：选中的行挂成「日志」chip（不自动发送）
   const ask = async () => {
     const text = selText()
-    const s = await client.settings.get().catch(() => undefined)
-    quoteToChat(logQuote(logSourceLabel(spec.src), host, s?.system?.aiRedact === false ? text : redactSecrets(text)))
-    flash(tr('已放入对话输入框'))
+    void askAiChip({
+      ctx: 'log', name: `${logSourceLabel(spec.src)} · ${tr('{n} 行', { n: sel.size })}`,
+      text: logQuote(logSourceLabel(spec.src), host, text),
+      question: tr('这几行日志说明什么？最可能的原因和下一步怎么查'),
+    })
+    flash(tr('已挂到输入框上方'))
   }
   // 导出当前显示的内容（过滤「只看匹配行」时只导出匹配行）
   const exportTxt = () => {
@@ -360,8 +390,9 @@ function LogTab({ spec, host, hidden }: { spec: LogTabSpec; host: string; hidden
           options={MAX_LINES_CHOICES.map((n) => ({ value: String(n), label: tr('最多 {n} 行', { n: n.toLocaleString(dateLocale()) }) }))} />
         <button title={tr('清屏')} onClick={() => { setBuf((b) => ({ lines: [], next: b.next })); setSel(new Set()); setDropped(0) }} className={IB}><Eraser className="h-3.5 w-3.5" /></button>
         <button title={tr('导出当前内容为 .txt')} disabled={!visible.length} onClick={exportTxt} className={IB}><Download className="h-3.5 w-3.5" /></button>
+        <button title={tr('选中当前显示的所有行')} disabled={!visible.length} onClick={() => setSel(new Set(visible.map((l) => l.n)))} className={IB}>{tr('全选')}</button>
         <button title={tr('复制选中行')} disabled={!sel.size} onClick={copySel} className={IB}><Copy className="h-3.5 w-3.5" /></button>
-        <button title={tr('把选中行和文件路径放进对话输入框（按设置脱敏，不自动发送）')} disabled={!sel.size} onClick={() => void ask()} className={IB}><MessageSquareQuote className="h-3.5 w-3.5" />{sel.size ? tr('问 AI（{n} 行）', { n: sel.size }) : tr('问 AI')}</button>
+        <button title={tr('把选中行和文件路径放进对话输入框（按设置脱敏，不自动发送）')} disabled={!sel.size} onClick={() => void ask()} className={`${IB} ${sel.size ? 'text-[var(--color-ask)]' : ''}`}><AskAiIcon />{sel.size ? tr('问 AI（{n} 行）', { n: sel.size }) : tr('问 AI')}</button>
       </div>
       {multi && (
         <div data-log-hosts className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[var(--color-border-subtle)] px-2 py-1 text-[11px]">
@@ -386,7 +417,8 @@ function LogTab({ spec, host, hidden }: { spec: LogTabSpec; host: string; hidden
         <div className="relative w-max min-w-full" style={{ height: visible.length * ROW_H }}>
           <div style={{ transform: `translateY(${first * ROW_H}px)` }}>
             {rows.map((l) => (
-              <div key={l.n} onClick={(e) => clickRow(e, l.n)} style={{ height: ROW_H, lineHeight: `${ROW_H}px` }}
+              <div key={l.n} onClick={(e) => clickRow(e, l.n)} onMouseDown={(e) => rowDown(e, l.n)} onMouseEnter={(e) => rowEnter(e, l.n)}
+                style={{ height: ROW_H, lineHeight: `${ROW_H}px` }}
                 className={`cursor-default whitespace-pre px-2 ${sel.has(l.n) ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_22%,transparent)]' : 'hover:bg-[color:color-mix(in_srgb,var(--color-accent)_8%,transparent)]'}`}>
                 {l.h !== undefined && hostLabels && <span data-host={l.h} style={{ color: hostColor(l.h), fontWeight: 600 }}>[{hostLabels[l.h]}] </span>}
                 {segments(l.text, colors, f.re).map((g, i) => <span key={i} style={segStyle(g.color, g.bold, g.mark)}>{g.text}</span>)}
@@ -403,7 +435,7 @@ function LogTab({ spec, host, hidden }: { spec: LogTabSpec; host: string; hidden
         <span className="max-w-[40%] truncate font-mono" title={logSourceLabel(spec.src)}>{host} · {logSourceLabel(spec.src)}</span>
         <span>{tr('line|{n} 行', { n: buf.lines.length.toLocaleString(dateLocale()) })}</span>
         {dropped > 0 && <span title={tr('超过保留上限丢弃的最早行数')}>{tr('已丢弃 {n} 行', { n: dropped.toLocaleString(dateLocale()) })}</span>}
-        {sel.size > 0 && <span>{tr('已选 {n} 行（Ctrl 多选，Shift 连选）', { n: sel.size })}</span>}
+        {sel.size > 0 && <span>{tr('已选 {n} 行（拖动或 Shift 连选，Ctrl 多选）', { n: sel.size })}</span>}
         {note && <span className="text-[var(--color-accent)]">{note}</span>}
         <span className="ml-auto" />
         {multi?.mode === 'search'
