@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+/* 兼容模式：继续用 tailwind.config.js 里的主题 / keyframes / animation（Tailwind 4 的 @config 指令） */
+@config "../tailwind.config.js";
 
 /* ─────────────────────────────────────────────────────────
    灵壳 LingShell 设计系统 — Operator Console（深色专业工具美学）
@@ -421,3 +421,8 @@ body {
 .ed-bad { background-color: color-mix(in srgb, var(--color-danger) 45%, transparent); box-shadow: inset 0 -2px 0 var(--color-danger); }
 .ed-match { background-color: color-mix(in srgb, var(--color-warn) 35%, transparent); }
 .ed-cur { background-color: color-mix(in srgb, var(--color-accent) 55%, transparent); }
+
+/* Tailwind 4 迁移兼容：v3 的 `outline-none` 语义是「2px 透明轮廓」（高对比度模式下仍然可见），
+   v4 把它改成 outline-style:none，另加了 outline-hidden 表达 v3 的行为。
+   项目里 67 处 outline-none 都是配自绘焦点样式的，这里保持 v3 语义，避免升级后高对比度 / 强制焦点模式下焦点提示消失。 */
+.outline-none { outline: 2px solid transparent; outline-offset: 2px; }
