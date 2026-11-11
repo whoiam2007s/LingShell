@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ShieldAlert, ShieldCheck, Shield, ShieldX, Clock, Check, X, Pencil } from 'lucide-react'
 import type { ConvItem } from '../useConversation.js'
 import { cn } from '../../../lib/cn.js'
@@ -7,9 +7,12 @@ import { DiffView } from '../../../components/DiffView.js'
 import { ReviewBadge, SudoLeasePick } from '../../auth/index.js'
 import { SUDO_LEASE_DEFAULT, tr } from '@lingshell/shared'
 import { trx } from '../../../lib/trx.js'
+import { hasModalOverlay, isOnTop, isTypingTarget, shouldAuthHotkey } from '../../../lib/keys.js'
 
 // 授权请求卡片：会话向某终端请求读/写权限，用户在对话时间线里点 [允许]/[拒绝]。
 // 允许前可改命令（仅 exec_in_terminal）；拒绝时可写原因，原因会作为工具结果交给 AI。
+// 键盘：焦点不在输入框 / 终端、没有弹层、卡片是最新一张未处理卡时，Enter 允许、Esc 拒绝；
+// 危险命令要连按两次 Enter（第一次只切到待确认态，3 秒内第二次才放行）。
 export function AuthRequestItem({ item }: { item: ConvItem }) {
   const a = item.auth
   if (!a) return null
@@ -43,6 +46,7 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
     : a.tool === 'download_file' ? tr('确认把该文件下载到本机？')
     : a.reason === 'dangerous_command' ? tr('此命令命中危险模式，确认执行？')
     : a.rule && a.reason === 'elevation' ? tr('命令命中「总是询问」规则，确认执行？')
+    : a.reason === 'mode_confirm' ? tr('已授权写入 · 本条按「逐条确认」档再确认一次')
     : a.reason === 'elevation' ? tr('请求将权限提升到写入')
     : a.tool === 'run_on_hosts' ? tr('跨主机提问：首次访问这些主机（只读命令，各台独立通道执行，不占用终端）')
     : tr('首次访问该终端')
@@ -55,6 +59,8 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
   const [note, setNote] = useState('')
   const [sent, setSent] = useState<{ command?: string; note?: string; sudo?: number }>()   // 本卡提交了什么，决定后回显
   const [sudo, setSudo] = useState({ on: false, minutes: SUDO_LEASE_DEFAULT })   // 「本主机 N 分钟内允许提权」
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [armed, setArmed] = useState(false)   // 危险命令：第 1 次 Enter 只切到「再按一次」态
   const allow = () => {
     const command = editing && draft.trim() && draft.trim() !== a.command?.trim() ? draft.trim() : undefined
     const sudoMinutes = a.sudo && sudo.on ? sudo.minutes : undefined
@@ -67,11 +73,47 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
     void client.auth.decide(a.approvalId, { decision: 'deny', note: n })
   }
 
+  // 危险命令的「待确认」状态 3 秒后自动解除：手停在回车键上不会把两下连击变成一次确认
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 3000)
+    return () => clearTimeout(t)
+  }, [armed])
+
+  // 键盘：Enter 允许 / Esc 拒绝。守卫条件见 lib/keys.ts 的 shouldAuthHotkey（六个全满足才响应）：
+  // 卡片未处理、是最新一张、焦点不在输入框/终端、没有弹层、卡片不在编辑态、卡片真露在最上层。
+  useEffect(() => {
+    if (resolved) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== 'Escape') return
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return
+      const self = rootRef.current
+      const pendingCards = document.querySelectorAll<HTMLElement>('[data-auth-pending]')
+      const ok = shouldAuthHotkey({
+        pending: true,
+        latest: !!self && pendingCards[pendingCards.length - 1] === self,
+        typing: isTypingTarget(document.activeElement),
+        modal: hasModalOverlay(),
+        cardEditing: editing || denying,
+        visible: !!self && isOnTop(self),
+      })
+      if (!ok) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape') { setArmed(false); deny(); return }
+      if (danger && !armed) { setArmed(true); return }   // 危险命令第一次 Enter：只切态
+      setArmed(false)
+      allow()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  })
+
   const HeadIcon = resolved === 'allow' ? ShieldCheck : danger ? ShieldAlert : Shield
 
   return (
-    <div className="animate-fade-in px-3 py-1">
-      <div className="overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)]">
+    <div ref={rootRef} data-auth-pending={resolved ? undefined : ''} className="animate-fade-in px-3 py-1">
+      <div className={cn('overflow-hidden rounded-md border bg-[var(--color-bg-raised)]', armed ? 'border-[var(--color-danger)]' : 'border-[var(--color-border-default)]')}>
         {/* 头部：危险时用淡红底色区分，不用刺眼红框 */}
         <div className={cn('flex items-center gap-2 px-2.5 py-1.5', danger && 'bg-[color:color-mix(in_srgb,var(--color-danger)_10%,transparent)]')}>
           <HeadIcon className={cn('h-3.5 w-3.5 shrink-0', danger ? 'text-[var(--color-danger)]' : 'text-[var(--color-warn)]')} />
@@ -203,13 +245,22 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
                 />
               )}
               {a.sudo && !denying && <SudoLeasePick on={sudo.on} minutes={sudo.minutes} onChange={(on, minutes) => setSudo({ on, minutes })} />}
+              {/* 危险命令第 1 次 Enter 后：明确告诉你还差一下 */}
+              {danger && armed && (
+                <div data-auth-armed className="mt-2 rounded bg-[color:color-mix(in_srgb,var(--color-danger)_14%,transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-danger)]">
+                  {tr('再按一次 Enter 确认（3 秒内有效）')}
+                </div>
+              )}
               <div className="mt-2 flex items-center gap-2">
                 <button
                   onClick={allow}
-                  className="flex items-center gap-1 rounded-md border border-transparent bg-[var(--color-accent)] px-3 py-1 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)]"
+                  className={cn('flex items-center gap-1 rounded-md border border-transparent px-3 py-1 text-[12px] font-medium transition-colors',
+                    armed
+                      ? 'bg-[var(--color-danger)] text-[var(--color-on-danger)] ring-2 ring-[var(--color-danger)]'
+                      : 'bg-[var(--color-accent)] text-[var(--color-bg-base)] hover:bg-[var(--color-accent-dim)]')}
                 >
                   <Check className="h-3.5 w-3.5" />
-                  {editing ? tr('按修改后执行') : tr('允许')}
+                  {editing ? tr('按修改后执行') : armed ? tr('确认执行') : tr('允许')}
                 </button>
                 <button
                   onClick={() => (denying ? deny() : setDenying(true))}
@@ -228,6 +279,11 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
                   </button>
                 )}
               </div>
+              {!denying && (
+                <div className="mt-1 text-[10.5px] text-[var(--color-text-muted)]">
+                  {danger ? tr('Enter 需连按两次确认 · Esc 拒绝') : tr('Enter 允许 · Esc 拒绝')}
+                </div>
+              )}
             </>
           ) : (
             <div className="mt-2">
