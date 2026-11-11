@@ -1,6 +1,12 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* 字体：原 tailwind.config.js 的 fontFamily.extend。
+   颜色 token 项目里全部走任意值（bg-[var(--color-…)]，5100 处），没有用到嵌套类名，故不再迁；
+   animate-* 与 @keyframes 见本文件下方的 ai-* 手写定义，也无需放进 @theme。 */
+@theme {
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
 
 /* ─────────────────────────────────────────────────────────
    灵壳 LingShell 设计系统 — Operator Console（深色专业工具美学）
@@ -421,3 +427,16 @@ body {
 .ed-bad { background-color: color-mix(in srgb, var(--color-danger) 45%, transparent); box-shadow: inset 0 -2px 0 var(--color-danger); }
 .ed-match { background-color: color-mix(in srgb, var(--color-warn) 35%, transparent); }
 .ed-cur { background-color: color-mix(in srgb, var(--color-accent) 55%, transparent); }
+
+/* Chromium 原生 <textarea> 在暗色主题下有个首帧问题：它会先用系统皮肤画一帧浅色背景，
+   拖动改变尺寸（触发重绘）后才用上 CSS 里的深色值 —— 表现就是「平时白底、一拖就变黑」。
+   让它继承 :root 的 color-scheme 并去掉系统外观，首帧就直接用 CSS 背景。 */
+textarea {
+  color-scheme: inherit;
+  appearance: none;
+}
+
+/* Tailwind 4 迁移兼容：v3 的 `outline-none` 语义是「2px 透明轮廓」（高对比度模式下仍然可见），
+   v4 把它改成 outline-style:none，另加了 outline-hidden 表达 v3 的行为。
+   项目里 67 处 outline-none 都是配自绘焦点样式的，这里保持 v3 语义，避免升级后高对比度 / 强制焦点模式下焦点提示消失。 */
+.outline-none { outline: 2px solid transparent; outline-offset: 2px; }

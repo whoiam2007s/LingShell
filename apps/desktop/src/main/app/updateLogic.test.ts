@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest'
-import { resolveUpdateSource, nextUpdateStatus } from './updateLogic.js'
+import { resolveUpdateSource, nextUpdateStatus, classifyUpdateError } from './updateLogic.js'
+
+describe('classifyUpdateError', () => {
+  it('网络 / 代理类', () => {
+    expect(classifyUpdateError('getaddrinfo ENOTFOUND dl.example.com')).toBe('network')
+    expect(classifyUpdateError('net::ERR_PROXY_CONNECTION_FAILED')).toBe('network')
+    expect(classifyUpdateError('Request timed out')).toBe('network')
+  })
+  it('校验 / 签名类', () => {
+    expect(classifyUpdateError('sha512 checksum mismatch')).toBe('signature')
+    expect(classifyUpdateError('code signature verification failed')).toBe('signature')
+  })
+  it('磁盘类', () => {
+    expect(classifyUpdateError('ENOSPC: no space left on device')).toBe('disk')
+  })
+  it('认不出的归 other，空消息也不炸', () => {
+    expect(classifyUpdateError('something weird')).toBe('other')
+    expect(classifyUpdateError(undefined)).toBe('other')
+  })
+})
 
 const YML = 'provider: generic\nurl: https://dl.example.com/LingShell\nupdaterCacheDirName: lingshell-updater\n'
 

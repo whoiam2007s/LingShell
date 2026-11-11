@@ -155,7 +155,9 @@ export class AuthRegistry {
       }
       // 逐条确认档：即便已授权，每条 write 仍逐命令确认（read 安全不问）。这是 confirm 与 auto/trust 的差异。
       if (needed === 'write' && trust === 'confirm') {
-        return { kind: 'prompt', reason: 'elevation', risk }
+        // mode_confirm ≠ 权限不够：该主机早就授了写入，只是这个档要求每条再点一次。
+        // UI 据此把文案从「请求将权限提升到写入」换成「已授权 · 本条需确认」。
+        return { kind: 'prompt', reason: 'mode_confirm', risk }
       }
       return { kind: 'allow' }
     }

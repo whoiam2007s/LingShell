@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { k8sAuditLabel, dockerAuditLabel, batchAuditLabel, rolloutAuditLabel, gitAuditLabel, gitOpAuditLabel, explorerAuditLabel, systemdAuditLabel, cronAuditLabel, canRollback, rollbackStatus, ROLLBACK_DECISION, type AuditEntry, type HostSummary, tr, tk, dateLocale } from '@lingshell/shared'
+import { k8sAuditLabel, dockerAuditLabel, batchAuditLabel, rolloutAuditLabel, gitAuditLabel, gitOpAuditLabel, explorerAuditLabel, systemdAuditLabel, cronAuditLabel, canRollback, rollbackStatus, ROLLBACK_DECISION, exportTable, auditTable, formatExt, type ExportFormat, type AuditEntry, type HostSummary, tr, tk, dateLocale } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
-import { RotateCcw, BookPlus, Undo2 } from 'lucide-react'
+import { RotateCcw, BookPlus, Undo2, Download } from 'lucide-react'
 import { RollbackDialog, AUDIT_CHANGED } from './RollbackDialog.js'
 import { ConfirmDialog } from '../common/index.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
@@ -109,6 +109,20 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
     const note = [all ? tr('全部会话') : tr('本会话'), onlyToday ? tr('今天') : '', onlyRisky ? tr('只看危险') : '', hostFilter ? host(hostFilter) : ''].filter(Boolean).join(' · ')
     void askAiChip({ ctx: 'audit', name: `${tr('执行记录')} · ${shown.length}`, text: auditDigest({ rows: shown, hostLabel: host, scopeNote: note }), question: tr('帮我复盘：这些操作里有风险的吗？有没有该回滚 / 该补授权的') })
   }
+  // 导出：只导出当前筛选出来的记录（危险 / 今天 / 主机）。含命令原文与路径，菜单里会先提示分享范围。
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportNow = (format: ExportFormat) => {
+    setExportOpen(false)
+    if (!shown.length) return
+    const day = new Date().toISOString().slice(0, 10)
+    const scopeNote = [all ? tr('全部会话') : tr('本会话'), onlyToday ? tr('今天') : '', onlyRisky ? tr('只看危险') : '', hostFilter ? host(hostFilter) : ''].filter(Boolean).join(' · ')
+    const text = exportTable(format, tr('执行记录：{scope}', { scope: scopeNote }), auditTable(shown, {
+      hostLabel: host,
+      timeLabel: (iso) => new Date(iso).toLocaleString(dateLocale(), { hour12: false }),
+    }))
+    const name = `${tr('执行记录')}-${day}`.replace(/[\\/:*?"<>|]/g, '_')
+    void client.system.saveTextFile(`${name}.${formatExt(format)}`, text).catch(() => {})
+  }
   // 筛选条：一行放不下就整块换行，但每个标签 / 按钮自己不许断行（原来文字被挤成两行）
   const nowrap = 'flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] text-[var(--color-text-muted)]'
   const scope = (
@@ -134,6 +148,24 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
         className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-ask)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50">
         <AskAiIcon className="h-3 w-3" />{tr('让 AI 复盘')}
       </button>
+      {/* 导出：Markdown / CSV。菜单里先提示「含命令原文与路径」，避免顺手转发出去 */}
+      <span className="relative flex shrink-0">
+        <button data-audit-export onClick={() => setExportOpen((v) => !v)} disabled={!shown.length}
+          title={tr('导出当前筛选的记录（Markdown / CSV）')}
+          className="flex items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-50">
+          <Download className="h-3 w-3" />{tr('导出')}
+        </button>
+        {exportOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+            <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] py-0.5 shadow-xl">
+              <div className="px-2.5 py-1 text-[10px] leading-snug text-[var(--color-text-muted)]">{tr('含命令原文与路径，注意分享范围')}</div>
+              <button onClick={() => exportNow('markdown')} className="block w-full px-2.5 py-1 text-left text-[11.5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">Markdown</button>
+              <button onClick={() => exportNow('csv')} className="block w-full px-2.5 py-1 text-left text-[11.5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">CSV</button>
+            </div>
+          </>
+        )}
+      </span>
       {canSave && (
         <button onClick={() => setSaving(true)} title={tr('把本会话执行成功的命令保存为可重复执行的运维手册')}
           className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border border-[var(--color-border-default)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">

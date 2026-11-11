@@ -92,6 +92,7 @@ describe('阶段三：SystemSettings', () => {
       keybindings: {},
       commandRules: [],
       uiTheme: 'dark', uiThemeDark: 'dark', uiThemeLight: 'light', uiZoom: 1, iconSize: 'small',
+      updateSkipVersion: '',
     })
     expect(DEFAULT_SETTINGS.system).toEqual(DEFAULT_SYSTEM_SETTINGS)
   })

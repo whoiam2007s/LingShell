@@ -361,6 +361,8 @@ export interface SystemSettings {
   language?: import('../i18n/index.js').UiLanguage
   // 终端里点「文件:行号」用外部编辑器跳到该行的参数模板（{file} {line} {col}）：空 = 按编辑器自动（code -g 等，见 fileLinks.ts）
   editorGotoArgs?: string
+  // 更新：用户点了「跳过这个版本」，顶栏不再提示该版本（设置页仍可手动检查）。'' / 缺省 = 不跳过
+  updateSkipVersion?: string
 }
 // auto = 跟随界面主题（见 appearance.ts 的 resolveTerminalTheme）
 export type TerminalThemeId = 'auto' | 'dark' | 'light' | 'solarized-dark' | 'dracula' | 'one-dark' | 'monokai' | 'github-light'
@@ -389,6 +391,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   keybindings: {},
   commandRules: [],
   uiTheme: 'dark', uiThemeDark: 'dark', uiThemeLight: 'light', uiZoom: 1, iconSize: 'small',
+  updateSkipVersion: '',
 }
 
 // 用户设置。apiKey 在主进程经 safeStorage 加密存储，跨 IPC 传输时仅在保存方向出现。
@@ -555,7 +558,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 // ── Phase 3：授权 ────────────────────────────────────────
 export type TrustLevel = 'autonomous' | 'confirm' | 'readonly'   // 全自主/确认/只读
 export type RiskLevel = 'safe' | 'dangerous'
-export type PromptReason = 'first_access' | 'elevation' | 'dangerous_command'
+export type PromptReason = 'first_access' | 'elevation' | 'mode_confirm' | 'dangerous_command'   // mode_confirm：已授权写入，只是「逐条确认」档要求再确认一次（不是权限不够）
 
 // 用户在授权卡上的回答。note：拒绝时告诉 AI 为什么；command：允许前改过的命令（仅 exec_in_terminal）；
 // steps：计划卡批准时用户删改后的步骤（仅 propose_plan）

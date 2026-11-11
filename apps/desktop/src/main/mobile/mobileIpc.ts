@@ -32,7 +32,7 @@ export interface MobileDeps {
   now?(): number
 }
 
-const REASON: Record<string, string> = { first_access: tk('首次访问该主机'), elevation: tk('请求提升为写入权限'), dangerous_command: tk('命中危险命令模式') }
+const REASON: Record<string, string> = { first_access: tk('首次访问该主机'), elevation: tk('请求提升为写入权限'), mode_confirm: tk('已授权 · 本条需确认'), dangerous_command: tk('命中危险命令模式') }
 
 export function registerMobile(d: MobileDeps) {
   const now = d.now ?? Date.now

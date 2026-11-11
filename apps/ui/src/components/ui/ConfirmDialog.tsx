@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { tr } from '@lingshell/shared'
+import { isTypingTarget } from '../../lib/keys.js'
 
 // 通用二次确认弹窗（居中）。会话删除、主机删除等危险操作复用。
 // 用 Portal 挂到 body：否则若渲染在抽屉内，抽屉面板的 transform(translate-x) 会让 fixed 退化为相对抽屉定位，把弹窗困在半个面板里。
@@ -16,13 +17,20 @@ export function ConfirmDialog({ open, title, message, confirmText = tr('删除')
   children?: React.ReactNode
   confirmDisabled?: boolean   // 确认按钮先灰着（如生产环境要先勾选「我确认」）
 }) {
-  // Esc / 点遮罩 = 取消；捕获阶段拦下，别让抽屉跟着 Esc 一起关
+  // Esc = 取消、Enter = 确认；捕获阶段拦下，别让抽屉跟着 Esc 一起关。
+  // 焦点在输入框里时 Enter 交给输入框（children 里可能有要填的内容），Esc 仍然生效。
   useEffect(() => {
     if (!open) return
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); onCancel() } }
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); onCancel(); return }
+      if (e.key === 'Enter' && !confirmDisabled && !e.shiftKey) {
+        if (isTypingTarget(e.target)) return
+        e.stopPropagation(); e.preventDefault(); onConfirm()
+      }
+    }
     window.addEventListener('keydown', k, true)
     return () => window.removeEventListener('keydown', k, true)
-  }, [open, onCancel])
+  }, [open, onCancel, onConfirm, confirmDisabled])
   if (!open) return null
   return createPortal((
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 backdrop-blur-sm animate-fade-in" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel() }}>

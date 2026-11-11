@@ -661,7 +661,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
 
       {/* 会话 header */}
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
-        postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
+        postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} workDir={workDir} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
         preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
         thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode}
         switcher={sessions?.length ? {
@@ -1223,7 +1223,7 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
   )
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode, switcher }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, workDir, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode, switcher }: {
   /** 标题后的会话切换箭头（hover 出最近会话列表） */
   switcher?: Omit<SessionSwitcherProps, 'sessions'> & { sessions: SessionMeta[] }
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
@@ -1239,6 +1239,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   usage?: { inputTokens: number; limit: number }
   onExport?: (mode: ExportMode, redact: boolean) => void
   title: string
+  workDir?: string   // 当前会话绑定的工作目录（hover 标题时和名称一起显示）
   onRename?: (t: string) => void
   onNew?: () => void
 }) {
@@ -1260,7 +1261,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
       ) : (
         <div className="group flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium text-[var(--color-text-primary)]">
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-          <span className="truncate" title={titleOf(title)}>{titleOf(title)}</span>
+          <span className="truncate" title={workDir ? `${titleOf(title)}\n${tr('工作目录：{path}', { path: workDir })}` : `${titleOf(title)}\n${tr('未绑定工作目录（用默认工作区）')}`}>{titleOf(title)}</span>
           {/* 只有点铅笔图标才进入编辑，点标题文字不触发（避免误触） */}
           {switcher && <SessionSwitcher {...switcher} />}
           {onRename && (

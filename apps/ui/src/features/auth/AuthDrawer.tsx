@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { ShieldCheck, Trash2, ArrowUp, X } from 'lucide-react'
 import { Select } from '../../components/ui/Select.js'
-import { tr, tk, type AuthLevel, type ExecMode, type HostSummary } from '@lingshell/shared'
+import { tr, tk, EXEC_MODE_BRIEF, EXEC_MODES, type AuthLevel, type ExecMode, type HostSummary } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
 import { AuditList } from './AuditList.js'
@@ -79,15 +79,25 @@ export function AuthDrawer({ onClose }: { onClose: () => void }) {
           <AuditList sessionId={sessionId} hosts={hosts} />
         ) : (
           <>
-            {/* 执行模式（四档）：唯一的信任控制入口，这里只展示当前值 */}
+            {/* 执行模式（四档）：唯一的信任控制入口，这里只展示当前值和四档说明 */}
             <div className="flex items-center justify-between">
               <span className="text-[12px] font-medium text-[var(--color-text-secondary)]">{tr('执行模式')}</span>
               <span className="rounded bg-[var(--color-bg-raised)] px-2 py-0.5 text-[11.5px] text-[var(--color-text-primary)]">
                 {tr(MODE_LABEL[mode])}
               </span>
             </div>
-            <div className="mt-1 text-[11px] leading-relaxed text-[var(--color-text-muted)]">
-              {tr('执行模式决定哪些操作会自动放行；切换在聊天输入框上方的模式按钮。')}
+            <div data-exec-mode-brief className="mt-1.5 space-y-0.5">
+              {EXEC_MODES.map((m) => (
+                <div key={m} data-exec-mode-item={m}
+                  className={cn('flex items-start gap-1.5 rounded px-1.5 py-0.5 text-[11px] leading-snug',
+                    m === mode ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]')}>
+                  <span className={cn('shrink-0 font-medium', m === mode ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-secondary)]')}>{tr(MODE_LABEL[m])}</span>
+                  <span>{tr(EXEC_MODE_BRIEF[m])}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-1.5 text-[11px] leading-relaxed text-[var(--color-text-muted)]">
+              {tr('切换在聊天输入框上方的模式按钮。')}
             </div>
 
             {/* 已授权列表（本地 + 主机） */}

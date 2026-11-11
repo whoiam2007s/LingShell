@@ -16,7 +16,7 @@ export function createAppIpc(): AppApi {
       saveTextFile: (name: string, content: string) => window.electronAPI.invoke('system:saveTextFile', name, content) as Promise<string | undefined>,
       exportDiagnostics: () => window.electronAPI.invoke('system:exportDiagnostics') as Promise<string | undefined>,
       getUpdateStatus: () => window.electronAPI.invoke('system:getUpdateStatus') as Promise<{ currentVersion: string; status: UpdateStatus }>,
-      checkUpdate: () => window.electronAPI.invoke('system:checkUpdate') as Promise<UpdateStatus>,
+      checkUpdate: (autoDownload?: boolean) => window.electronAPI.invoke('system:checkUpdate', autoDownload === true) as Promise<UpdateStatus>,
       downloadUpdate: () => window.electronAPI.invoke('system:downloadUpdate') as Promise<UpdateStatus>,
       installUpdate: () => window.electronAPI.invoke('system:installUpdate') as Promise<void>,
       notify: (title: string, body: string) => window.electronAPI.invoke('system:notify', title, body) as Promise<void>,

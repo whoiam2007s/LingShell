@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, Trash2, Filter, Sparkles } from 'lucide-react'
-import { tr, type CommandHistoryEntry } from '@lingshell/shared'
+import { X, Trash2, Filter, Sparkles, Download } from 'lucide-react'
+import { tr, dateLocale, exportTable, historyTable, formatExt, type CommandHistoryEntry, type ExportFormat } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
 import { askAiChip } from '../../../lib/askAi.js'
@@ -18,6 +18,7 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
   // 来源筛选：默认只看用户手敲的（AI 执行的命令太杂，会把列表刷满）
   const [src, setSrc] = useState<'user' | 'ai' | 'all'>('user')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const reload = () => { client.history.list(hostKey).then(setEntries).catch(() => setEntries([])) }
   useEffect(reload, [hostKey])
@@ -56,6 +57,19 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
     void askAiChip({ ctx: 'history', ...historyBatchChip({ host: hostLabel, entries: shown }), question: tr('归纳这段操作在干什么，哪些是危险或不可逆的') })
     onClose()
   }
+  // 导出：只导出当前筛选出来的（来源 / 当前终端）结果，列 = 时间、主机、终端、来源、命令。
+  // 命令历史本身不记退出码（那是执行记录的字段），要退出码请去执行记录导出。
+  const exportNow = (format: ExportFormat) => {
+    setExportOpen(false)
+    if (!shown.length) return
+    const day = new Date().toISOString().slice(0, 10)
+    const text = exportTable(format, tr('命令历史：{host}', { host: hostLabel }), historyTable(shown, {
+      hostLabel: (k) => (k === hostKey ? hostLabel : k === 'local' ? tr('本地') : k),
+      timeLabel: (iso) => new Date(iso).toLocaleString(dateLocale(), { hour12: false }),
+    }))
+    const safe = `${tr('命令历史')}-${hostLabel}-${day}`.replace(/[\\/:*?"<>|]/g, '_')
+    void client.system.saveTextFile(`${safe}.${formatExt(format)}`, text).catch(() => {})
+  }
   // 清空：只显示当前终端时只清当前终端记录（逐条现找下标再删），否则清整台主机。
   const clearHistory = async () => {
     if (onlyCurrent) {
@@ -82,8 +96,22 @@ export function CommandHistoryDrawer({ hostKey, hostLabel, activeTerminalId, onC
           <button title={tr('问 AI：归纳这段操作（最多 10 条）')} onClick={askBatch}
             className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]"><Sparkles className="h-3.5 w-3.5" /></button>
         )}
+        {/* 导出：Markdown / CSV（CSV 带 BOM，Excel 打开不乱码） */}
+        <span className={`relative flex shrink-0 ${shown.length > 0 ? '' : 'ml-auto'}`}>
+          <button data-hist-export title={tr('导出当前列表（Markdown / CSV）')} onClick={() => setExportOpen((v) => !v)} disabled={!shown.length}
+            className="flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-40"><Download className="h-3.5 w-3.5" /></button>
+          {exportOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+              <div className="absolute right-0 top-full z-50 mt-1 w-28 overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] py-0.5 shadow-xl">
+                <button onClick={() => exportNow('markdown')} className="block w-full px-2.5 py-1 text-left text-[11.5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">Markdown</button>
+                <button onClick={() => exportNow('csv')} className="block w-full px-2.5 py-1 text-left text-[11.5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">CSV</button>
+              </div>
+            </>
+          )}
+        </span>
         <button title={tr('只显示当前终端')} onClick={() => setOnlyCurrent((v) => !v)}
-          className={`${shown.length > 0 ? '' : 'ml-auto'} flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 text-[11px] ${onlyCurrent ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
+          className={`flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 text-[11px] ${onlyCurrent ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'}`}>
           <Filter className="h-3 w-3" />{tr('当前')}
         </button>
         <button title={tr('清空该主机历史')} onClick={() => setConfirmClear(true)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"><Trash2 className="h-3.5 w-3.5" /></button>

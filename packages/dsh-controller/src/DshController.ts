@@ -81,7 +81,7 @@ export type LogFn = (level: 'debug' | 'info' | 'warn' | 'error', message: string
 export interface ApprovalRequest {
   sessionId: string; terminalId: string
   needed: 'read' | 'write'
-  reason: 'first_access' | 'elevation' | 'dangerous_command'
+  reason: 'first_access' | 'elevation' | 'mode_confirm' | 'dangerous_command'
   risk: 'safe' | 'dangerous'
   tool: string
   command?: string

@@ -108,7 +108,10 @@ export function SessionSwitcher(p: SessionSwitcherProps) {
                     active
                       ? 'bg-[color:color-mix(in_srgb,var(--color-accent)_14%,transparent)] text-[var(--color-accent)]'
                       : 'text-[var(--color-text-secondary)]')}>
-                  <span className="min-w-0 flex-1 truncate">{tabTitle(s.title) || tr('新会话')}</span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate">{tabTitle(s.title) || tr('新会话')}</span>
+                    {s.workDir && <span data-session-workdir className="truncate text-[10px] text-[var(--color-text-muted)]">{s.workDir}</span>}
+                  </span>
                   <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{whenOf(s.lastActiveAt)}</span>
                 </button>
               )
