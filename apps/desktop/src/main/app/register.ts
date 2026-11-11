@@ -43,7 +43,7 @@ export function registerAppIpc(ctx: MainContext, deps: Deps) {
   // 自动更新（未配置更新源时恒为 disabled、不联网，见 updater.ts）
   const updater = initUpdater(win, (s) => send({ type: 'update:status', ...s }))
   ipcMain.handle('system:getUpdateStatus', () => ({ currentVersion: app.getVersion(), status: updater.status() }))
-  ipcMain.handle('system:checkUpdate', () => updater.check())
+  ipcMain.handle('system:checkUpdate', (_e, autoDownload?: boolean) => updater.check(autoDownload === true))
   ipcMain.handle('system:downloadUpdate', () => updater.download())
   ipcMain.handle('system:installUpdate', () => updater.install())
   // 切换界面语言后重启：带上原来的启动参数（--hidden 除外，用户正看着窗口）

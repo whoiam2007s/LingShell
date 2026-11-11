@@ -32,3 +32,16 @@ export function nextUpdateStatus(prev: UpdateStatus, event: string, arg?: unknow
     default: return undefined
   }
 }
+
+// 更新失败归类：electron-updater 的 error message 五花八门，按关键词给出「下一步该查什么」。
+// 只做粗分类，认不出的归 other —— 界面上永远先显示原始错误，分类建议只是补充。
+export type UpdateErrorKind = 'network' | 'signature' | 'disk' | 'other'
+
+export function classifyUpdateError(msg: string | undefined): UpdateErrorKind {
+  const s = (msg ?? '').toLowerCase()
+  if (!s) return 'other'
+  if (/enotfound|econnreset|econnrefused|etimedout|getaddrinfo|socket hang up|network|proxy|timed? ?out|certificate|x509|err_/.test(s)) return 'network'
+  if (/sha512|sha256|checksum|signature|integrity|verif/.test(s)) return 'signature'
+  if (/enospc|no space|disk full|quota/.test(s)) return 'disk'
+  return 'other'
+}

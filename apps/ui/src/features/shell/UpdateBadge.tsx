@@ -1,6 +1,7 @@
 // 顶栏「有新版本」提示：检测到后出现在用量统计图标**前面**。
 // 三态：红色「有更新」圈形箭头（有新版本，点它开始下载）→ 环形进度 + 顶部细进度条 + 百分比（下载中）→ 红色「向上安装」符号（已下载，点它弹窗选现在装还是关闭后装）。
 // 不用绿色：绿色像"已完成/正常"，这里是要用户注意并动手的事。
+// 用户点了「跳过这个版本」后，这个版本不再出现在顶栏（设置页仍可手动检查）。
 import { useEffect, useState } from 'react'
 import { ArrowUpCircle, ArrowUpFromLine } from 'lucide-react'
 import { tr, type UpdateStatus } from '@lingshell/shared'
@@ -10,19 +11,26 @@ import { UpdateReadyDialog } from './UpdateReadyDialog.js'
 export function UpdateBadge() {
   const [st, setSt] = useState<UpdateStatus | null>(null)
   const [ask, setAsk] = useState(false)   // 已下载：问「现在重启」还是「关闭后安装」
+  const [skip, setSkip] = useState('')    // 设置里「已跳过的版本」
 
   useEffect(() => {
+    const loadSkip = () => client.settings.get().then((s) => setSkip(s.system?.updateSkipVersion ?? '')).catch(() => {})
     client.system.getUpdateStatus().then((r) => setSt(r.status)).catch(() => {})
-    return client.on((ev) => {
+    void loadSkip()
+    // 设置页点「跳过此版本 / 恢复更新提示」时会广播这个事件：立刻重读，不用等下一次状态推送
+    window.addEventListener('lingshell:settings-changed', loadSkip)
+    const off = client.on((ev) => {
       if (ev.type !== 'update:status') return
       setSt({ state: ev.state, version: ev.version, percent: ev.percent, error: ev.error })
       // 下载完就弹窗（用户点了下载才有这一步）；已经在问的话不重复弹
       if (ev.state === 'downloaded') setAsk((open) => open || true)
     })
+    return () => { window.removeEventListener('lingshell:settings-changed', loadSkip); off() }
   }, [])
 
-  // 只在"确实有新版本"之后出现；已是最新 / 未配置 / 出错都不在顶栏打扰（那些去 设置 → 关于 看）
+  // 只在"确实有新版本"之后出现；已是最新 / 未配置 / 出错 / 用户跳过的版本都不在顶栏打扰（那些去 设置 → 关于 看）
   if (!st || (st.state !== 'available' && st.state !== 'downloading' && st.state !== 'downloaded')) return null
+  if (st.state === 'available' && skip && st.version === skip) return null
 
   const v = st.version ? ` ${st.version}` : ''
   const done = st.state === 'downloaded'

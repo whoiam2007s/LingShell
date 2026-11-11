@@ -28,7 +28,9 @@ export interface AppApi {
     // 自动更新：当前版本 + 状态；checkUpdate 触发一次检查（未配置更新源时直接返回 disabled）；
     // installUpdate 仅在 downloaded 后由用户点「重启以更新」调用。状态变化经 update:status 事件推送
     getUpdateStatus(): Promise<{ currentVersion: string; status: UpdateStatus }>
-    checkUpdate(): Promise<UpdateStatus>
+    // autoDownload=true（用户手点「检查更新」）：发现新版本后主进程直接开始下载，不必再去顶栏点更新图标。
+    // 缺省 / false（启动 10 秒后、每小时的后台检查）：只检查，不替用户花流量。
+    checkUpdate(autoDownload?: boolean): Promise<UpdateStatus>
     // 用户点了更新图标：真正开始下载（autoDownload 已关，不点就不下）。已在下载/已下载时只回状态
     downloadUpdate(): Promise<UpdateStatus>
     installUpdate(): Promise<void>

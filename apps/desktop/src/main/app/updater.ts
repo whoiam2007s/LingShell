@@ -10,8 +10,9 @@ import { resolveUpdateSource, nextUpdateStatus } from './updateLogic.js'
 
 export interface Updater {
   status(): UpdateStatus
-  check(): Promise<UpdateStatus>
-  // 用户点更新图标时才真正开始下载（autoDownload 已关）
+  // autoDownload=true：用户手点「检查更新」，发现新版本后顺带开始下载；缺省只检查
+  check(autoDownload?: boolean): Promise<UpdateStatus>
+  // 只在没有待下载版本时用它；手点检查（check(true)）和顶栏图标都会走到这里
   download(): Promise<UpdateStatus>
   install(): void
 }
@@ -19,8 +20,11 @@ export interface Updater {
 const EVENTS = ['checking-for-update', 'update-available', 'update-not-available', 'download-progress', 'update-downloaded', 'error'] as const
 
 // 自动更新：未配置更新源时完全不碰 autoUpdater（不实例化、不联网），状态恒为 disabled。
-// 配置了：启动后检查一次（仅打包版）+ 设置页手动检查；后台下载，下完通知并等用户点「重启以更新」，绝不强制重启；
+// 配置了：启动后检查一次（仅打包版）+ 设置页手动检查；下完通知并等用户点「重启以更新」，绝不强制重启；
 // 退出应用时也会自动安装（autoInstallOnAppQuit）。
+//
+// 下载时机（用户 0.1.9 要求）：顶栏图标点一下，或设置 → 关于点「检查更新」——后者发现新版本就直接开始下载，
+// 不必再回顶栏点一次。启动 10 秒后 / 每小时的后台检查只检查、不下载，不替用户花流量。
 export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void): Updater {
   const ymlPath = join(process.resourcesPath, 'app-update.yml')
   const src = resolveUpdateSource({
@@ -35,10 +39,10 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
   }
 
   const au: AppUpdater = electronUpdater.autoUpdater
-  // 检测到新版本只提示、不自动下载：下载要用户点（点一下就是要装，意图明确）。
+  // electron-updater 自己不在检测到版本时下载：什么时候下载由我们决定（见上）。
   // 这样 autoInstallOnAppQuit 打开也不会出现"用户什么都没点、退出就被装"的情况。
   au.autoDownload = false
-  // 下载是用户主动点的 → 退出时装上是对的（用户点了下载就是想升级）。
+  // 下载是用户主动点的（顶栏图标 / 设置页检查更新）→ 退出时装上是对的（用户点了就是想升级）。
   // 下载完成时也会弹窗问「现在重启 / 关闭后安装」，这里只是兜底：用户没在弹窗里选、直接关窗也能装上。
   au.autoInstallOnAppQuit = true
   au.logger = {
@@ -49,7 +53,7 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
   }
   if (src.override) {
     // 下载阶段 electron-updater 还会读 app-update.yml（取 updaterCacheDirName），
-    // 这一步不在“检查”路径上：只用环境变量临时换源、包里又没打进这个文件的构建会在这里 ENOENT。
+    // 这一步不在"检查"路径上：只用环境变量临时换源、包里又没打进这个文件的构建会在这里 ENOENT。
     // 给它指一个临时生成的配置（必须先设 updateConfigPath，它的 setter 会清空 clientPromise）。
     if (!existsSync(ymlPath)) {
       try {
@@ -65,22 +69,15 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
   log('info', 'main', 'updater', `更新源 ${src.url}${src.override ? '（环境变量 LINGSHELL_UPDATE_URL）' : ''}，当前版本 ${app.getVersion()}`)   // i18n-ignore 日志
 
   status = { state: 'none' }
-  for (const ev of EVENTS) {
-    au.on(ev, (arg?: unknown) => {
-      const next = nextUpdateStatus(status, ev, arg)
-      if (!next) return
-      const wasDownloaded = status.state === 'downloaded'
-      status = next
-      emit(status)
-      if (ev === 'update-downloaded' && !wasDownloaded) notify(win, tr('灵壳 {version} 已下载', { version: status.version ?? '' }), tr('点「立即重启安装」，或关闭灵壳时自动安装'))
-    })
-  }
+  // 本次检查是否由用户手点触发（发现新版本就顺带开始下载）。后台定时检查保持 false。
+  let autoDownloadOnCheck = false
 
   /**
-   * 用户点了更新图标：真正开始下载。
-   * 已经在下载 / 已下载好就只回状态，不重复触发。
+   * 真正开始下载。已在下载 / 已下载好就只回状态，不重复触发。
+   * 顶栏图标点一下、设置页点「检查更新」（autoDownloadOnCheck）都走这里。
    */
   const download = async (): Promise<UpdateStatus> => {
+    autoDownloadOnCheck = false
     if (status.state === 'downloading' || status.state === 'downloaded') return status
     if (status.state !== 'available') return status   // 没有待下载的版本：先让界面去 check
     try { await au.downloadUpdate() } catch (e) {
@@ -90,16 +87,39 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
     return status
   }
 
-  const check = async (): Promise<UpdateStatus> => {
+  for (const ev of EVENTS) {
+    au.on(ev, (arg?: unknown) => {
+      const next = nextUpdateStatus(status, ev, arg)
+      if (!next) return
+      const wasDownloaded = status.state === 'downloaded'
+      status = next
+      emit(status)
+      if (ev === 'update-downloaded' && !wasDownloaded) notify(win, tr('灵壳 {version} 已下载', { version: status.version ?? '' }), tr('点「立即重启安装」，或关闭灵壳时自动安装'))
+      // 用户手点检查后发现新版本：直接开始下载（放在状态更新之后，download() 才认 available）
+      if (ev === 'update-available' && autoDownloadOnCheck) void download()
+      if (ev === 'error') autoDownloadOnCheck = false
+    })
+  }
+
+  const check = async (autoDownload = false): Promise<UpdateStatus> => {
     // 已下载好就不再重复检查/下载
     if (status.state === 'downloaded' || status.state === 'checking' || status.state === 'downloading') return status
-    try { await au.checkForUpdates() } catch (e) {
+    // 已经有待下载的版本（顶栏图标正亮着）：手点检查就直接开下，不用再查一遍
+    if (status.state === 'available') {
+      if (autoDownload) await download()
+      return status
+    }
+    autoDownloadOnCheck = autoDownload
+    try {
+      await au.checkForUpdates()
+    } catch (e) {
       // error 事件通常已发过；兜底一次
+      autoDownloadOnCheck = false
       if (status.state !== 'error') { status = nextUpdateStatus(status, 'error', e) ?? status; emit(status) }
     }
     return status
   }
-  setTimeout(() => { void check() }, 10_000)   // 启动 10 秒后再查，不跟启动抢资源
+  setTimeout(() => { void check() }, 10_000)   // 启动 10 秒后再查，不跟启动抢资源（不自动下载）
   // 之后每小时看一次：有新版会经 update:status 事件推到界面（顶栏出现更新图标）
   const hourly = setInterval(() => { void check() }, 60 * 60 * 1000)
   hourly.unref?.()   // 不因为它拖着进程不退出
