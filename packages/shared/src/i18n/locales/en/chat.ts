@@ -90,6 +90,8 @@ export const chat: Record<string, string> = {
   '开始备份': 'Start backup',
   '把「{path}」打包到 {dir}（文件名 {name}-时间.tar.gz），默认排除 {list}。大目录可能需要几分钟。': 'Pack "{path}" into {dir} (file name {name}-time.tar.gz), excluding {list} by default. A large folder may take a few minutes.',
   '数据库备份': 'Database backup',
+  '数据库·改值': 'Database · edit value',
+  '数据库·批量删除 key': 'Database · bulk delete keys',
   '目录备份': 'Folder backup',
   '自动压缩正在进行，等它结束再点一次': 'Auto-compaction is running; try again when it finishes',
   '压缩超时（历史太长或模型响应慢），可以再点一次；反复超时建议新开一个会话': 'Compaction timed out (history too long or the model is slow); try again, or start a new session if it keeps timing out',

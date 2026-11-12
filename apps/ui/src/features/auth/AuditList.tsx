@@ -33,6 +33,8 @@ function describe(d: string): { label: string; tone: 'ok' | 'warn' | 'bad' | 'mu
   if (d === 'mcp_call') return { label: tr('MCP 调用'), tone: 'warn' }
   if (d === 'db_backup') return { label: tr('数据库备份'), tone: 'muted' }
   if (d === 'dir_backup') return { label: tr('目录备份'), tone: 'muted' }
+  if (d === 'db_key_set') return { label: tr('数据库·改值'), tone: 'warn' }
+  if (d === 'db_key_del_many') return { label: tr('数据库·批量删除 key'), tone: 'bad' }
   if (d === 'key_deploy') return { label: tr('部署公钥'), tone: 'warn' }
   if (d === 'process_kill') return { label: tr('进程信号'), tone: 'bad' }   // 进程管理器里发 TERM / KILL / HUP
   if (d === 'db_kill') return { label: tr('数据库·终止会话'), tone: 'bad' }   // 数据库快查里手动终止会话
