@@ -429,6 +429,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       { h: 'Compress and extract (remote)', steps: [
         'Right-click "Compress to tar.gz" to create `name.tar.gz` in the same folder; with several items in the same folder selected, "Compress N items to tar.gz" names the archive after the folder. Name clashes become `name (1).tar.gz`.',
         'Right-click a .tar.gz / .tgz / .tar / .zip and choose "Extract here" to extract into the archive\'s folder. Existing files with the same name aren\'t overwritten.',
+        'Folders also have "Back up as tar.gz": it packs into `~/lingshell-backups/` as `name-YYYYMMDD-HHMMSS.tar.gz`, excluding `.git`, `node_modules`, `*.log`, `*.tmp` and `.DS_Store` by default, and is recorded in "Execution log" (Folder backup). Use "Compress to tar.gz" above when you want everything included.',
       ], tips: ['Runs tar / unzip on the server (in a separate channel, nothing is typed into the terminal) and is recorded in "Execution log" (Compress / Extract). If unzip isn\'t installed on the server you\'ll be asked to install it. Large files can take a while; progress shows at the bottom.'] },
       { h: 'Folder bookmarks', p: 'The "Folder bookmarks" button at the top opens the bookmark list: "Bookmark current folder", click a bookmark to jump there, hover and click × to remove it. You can also right-click a folder and choose "Add bookmark". Bookmarks are saved per host and persist across restarts.' },
       { h: 'Search by name (remote)', steps: [

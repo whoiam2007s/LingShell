@@ -523,6 +523,14 @@ export function parseCsvTable(text: string): DbTable {
 
 // ── Redis Key 浏览 ────────────────────────────────────────
 export const REDIS_KEY_DEL_DECISION = 'db_key_del'
+/** 改某个 string key 的值（写操作，记执行记录） */
+export const REDIS_KEY_SET_DECISION = 'db_key_set'
+/** 按扫描结果批量删 key（写操作，记执行记录） */
+export const REDIS_KEY_DEL_MANY_DECISION = 'db_key_del_many'
+/** key 值校验：必须是文本、不超过 512KB、不含 NUL（redis-cli 走 stdin 时会截断） */
+export const isRedisValue = (v: unknown): v is string => typeof v === 'string' && v.length <= 512 * 1024 && !v.includes('\u0000')
+/** 批量删除一次最多处理多少个 key（避免一次请求太大 / 删太久） */
+export const REDIS_DEL_MANY_MAX = 1000
 export const REDIS_PREVIEW_N = 100
 /** 用户输入的 key / 匹配模式：不能有换行和 NUL，长度有上限（拼命令时再 shq） */
 export const isRedisKey = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 1024 && !/[\0\r\n]/.test(v)

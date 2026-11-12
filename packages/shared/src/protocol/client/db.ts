@@ -21,6 +21,10 @@ export interface DbApi {
     redisScan(id: string, db: string, pattern: string, cursor: string): Promise<{ cursor: string; keys: string[] }>
     redisKey(id: string, db: string, key: string): Promise<import('../../db/index.js').RedisKeyInfo>
     redisDel(id: string, db: string, key: string, prodConfirmed: boolean): Promise<void>
+    // 改 string 类型 key 的值：写操作，生产主机必须二次确认，记执行记录（db_key_set）
+    redisSet(id: string, db: string, key: string, value: string, prodConfirmed: boolean): Promise<void>
+    // 把扫描出来的这批 key 一次删掉（分批 DEL）：写操作，生产主机必须二次确认，记执行记录（db_key_del_many）
+    redisDelMany(id: string, db: string, keys: string[], prodConfirmed: boolean): Promise<{ deleted: number }>
     kill(id: string, sessionId: number, about: string, prodConfirmed: boolean): Promise<void>
     /** 执行脚本（写操作，生产主机要 prodConfirmed，记执行记录）；失败不抛错，见 result.ok / error */
     script(id: string, script: string, tx: boolean, prodConfirmed: boolean, db?: string): Promise<import('../../db/index.js').DbScriptResult>

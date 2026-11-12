@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Copy, KeyRound, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, Copy, KeyRound, Loader2, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { REDIS_PREVIEW_N, tk, tr, type DbConn, type RedisKeyInfo } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { trx } from '../../lib/trx.js'
@@ -14,7 +14,7 @@ const fmtTtl = (s: number) => (s === -1 ? tr('永不过期') : s < 0 ? '—' : s
 const SIZE: Record<string, string> = { string: tk('{n} 字节'), list: tk('{n} 项'), set: tk('{n} 个成员'), zset: tk('{n} 个成员'), hash: tk('{n} 个字段'), stream: tk('stream|{n} 条') }
 
 // 数据库抽屉「Key」页签（Redis）：按模式 SCAN（分批，不用 KEYS，不阻塞实例），点 key 看类型 / TTL / 大小 / 内存和前 100 项内容；
-// 删除单个 key 是写操作：确认（生产主机再确认一次）+ 执行记录
+// 写操作三个：改 string 值 / 删单个 key / 删当前扫描到的一批 key —— 都要确认（生产主机再确认一次）+ 执行记录
 export function RedisKeysPanel({ conn, db, prod }: { conn: DbConn; db: string; prod: boolean }) {
   const [pattern, setPattern] = useState('*')
   const [keys, setKeys] = useState<string[]>()
@@ -25,6 +25,8 @@ export function RedisKeysPanel({ conn, db, prod }: { conn: DbConn; db: string; p
   const [info, setInfo] = useState<RedisKeyInfo>()
   const [kErr, setKErr] = useState('')
   const [del, setDel] = useState<1 | 2 | null>(null)
+  const [delMany, setDelMany] = useState<0 | 1 | 2>(0)
+  const [edit, setEdit] = useState<{ value: string } | null>(null)
   const [flash, setFlash] = useState('')
   const used = useRef('*')
   const seq = useRef(0)
@@ -56,6 +58,29 @@ export function RedisKeysPanel({ conn, db, prod }: { conn: DbConn; db: string; p
       setFlash(tr('已删除 {key}（已记入执行记录）', { key: k })); setTimeout(() => setFlash(''), 2500)
     } catch (e) { setKErr(errText(e)) }
   }
+  // 改 string 值：保存后重新读一次这个 key，界面立刻显示新值
+  const doSet = async () => {
+    const e = edit
+    setEdit(null)
+    if (!e) return
+    const k = pick
+    try {
+      await client.db.redisSet(conn.id, db, k, e.value, prod)
+      setFlash(tr('已修改 {key} 的值（已记入执行记录）', { key: k })); setTimeout(() => setFlash(''), 2500)
+      open(k)
+    } catch (x) { setKErr(errText(x)) }
+  }
+  // 批量删：删的是当前扫描出来（已确认扫描范围）的这一批，不是按模式重新扫
+  const doDelMany = async () => {
+    const list = keys ?? []
+    setDelMany(0)
+    if (!list.length) return
+    try {
+      const r = await client.db.redisDelMany(conn.id, db, list, prod)
+      setKeys([]); setPick(''); setInfo(undefined)
+      setFlash(tr('已删除 {n} 个 key（已记入执行记录）', { n: r.deleted })); setTimeout(() => setFlash(''), 2500)
+    } catch (e) { setErr(errText(e)) }
+  }
   const done = cursor === '0'
 
   return (
@@ -64,6 +89,10 @@ export function RedisKeysPanel({ conn, db, prod }: { conn: DbConn; db: string; p
         <Input data-db-key-pattern size="sm" className="!h-6 min-w-0 flex-1 font-mono" value={pattern} onChange={(e) => setPattern(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') scan(false) }} placeholder={tr('匹配模式，如 user:*、order:2024*（* 任意，? 单个字符）')} />
         <button data-db-key-scan onClick={() => scan(false)} disabled={scanning} className={PRIMARY}>{scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}{tr('扫描')}</button>
+        {done && !!keys?.length && (
+          <button data-db-key-del-many onClick={() => setDelMany(1)} title={tr('删除当前扫描到的全部 {n} 个 key（写操作，需要确认）', { n: keys.length })}
+            className={`${BTN} shrink-0 text-[var(--color-danger)]`}><Trash2 className="h-3 w-3" />{tr('删 {n} 个', { n: keys.length })}</button>
+        )}
         <span className={`whitespace-nowrap text-[10.5px] ${MUTED}`}>{tr('库 {v}', { v: db || conn.database || '0' })}</span>
       </div>
       {flash && <div className="shrink-0 border-b border-[var(--color-border-subtle)] px-3 py-1 text-[11px] text-[var(--color-success)]">{flash}</div>}
@@ -91,6 +120,10 @@ export function RedisKeysPanel({ conn, db, prod }: { conn: DbConn; db: string; p
             <div className="py-1.5">
               <div className="flex items-center gap-1.5 px-3 pb-1">
                 <span className="min-w-0 flex-1 break-all font-mono text-[12px] font-semibold text-[var(--color-text-primary)]">{pick}</span>
+                {info?.type === 'string' && typeof info.value === 'string' && (
+                  <button data-db-key-edit onClick={() => setEdit({ value: info.value as string })} title={tr('修改这个 key 的值（写操作，需要确认）')}
+                    className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]"><Pencil className="h-3.5 w-3.5" /></button>
+                )}
                 <button title={tr('复制 key 名')} onClick={() => void navigator.clipboard.writeText(pick)} className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]"><Copy className="h-3.5 w-3.5" /></button>
                 <button data-db-key-del disabled={!info} onClick={() => setDel(1)} title={tr('删除这个 key（写操作，需要确认，会记入执行记录）')} className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
@@ -121,6 +154,22 @@ export function RedisKeysPanel({ conn, db, prod }: { conn: DbConn; db: string; p
       <ConfirmDialog open={del === 2} title={tr('生产主机二次确认')} confirmText={tr('确认删除')}
         message={tr('「{name}」在生产主机上。再次确认要删除 key「{key}」？', { name: conn.name, key: pick })} onCancel={() => setDel(null)} onConfirm={() => void doDel()}>
         <div className={`flex items-center gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{tr('生产环境：确认业务不再需要这个 key（缓存删除后会回源，可能带来瞬时压力）。')}</div>
+      </ConfirmDialog>
+      {/* 改 string 值：直接编辑 + 确认 */}
+      <ConfirmDialog open={!!edit} title={tr('修改 key 的值')} confirmText={tr('保存')}
+        message={tr('把「{key}」的值改成下面的内容。原值会被覆盖、无法找回；操作会记入执行记录。', { key: pick })}
+        onCancel={() => setEdit(null)} onConfirm={() => void doSet()}>
+        <textarea data-db-key-edit-input value={edit?.value ?? ''} onChange={(e) => setEdit({ value: e.target.value })} rows={6}
+          className="w-full resize-y rounded border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] px-2 py-1 font-mono text-[11px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
+      </ConfirmDialog>
+      {/* 批量删：确认当前扫描到的这批 key */}
+      <ConfirmDialog open={delMany === 1} title={prod ? tr('生产主机：批量删除 key') : tr('批量删除 key')} confirmText={prod ? tr('下一步') : tr('删除 {n} 个', { n: keys?.length ?? 0 })}
+        message={tr('将删除当前扫描到的 {n} 个 key（匹配「{p}」）。删除后无法找回；操作会记入执行记录。', { n: keys?.length ?? 0, p: used.current })}
+        onCancel={() => setDelMany(0)} onConfirm={() => { if (prod) setDelMany(2); else void doDelMany() }} />
+      <ConfirmDialog open={delMany === 2} title={tr('生产主机二次确认')} confirmText={tr('确认删除 {n} 个', { n: keys?.length ?? 0 })}
+        message={tr('「{name}」在生产主机上。再次确认要删除这 {n} 个 key（匹配「{p}」）？', { name: conn.name, n: keys?.length ?? 0, p: used.current })}
+        onCancel={() => setDelMany(0)} onConfirm={() => void doDelMany()}>
+        <div className={`flex items-center gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{tr('生产环境：确认业务不再需要这些 key（缓存删除后会回源，可能带来瞬时压力）。')}</div>
       </ConfirmDialog>
     </div>
   )

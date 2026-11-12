@@ -14,7 +14,7 @@ import {
   BACKUP_DECISION, DB_KIND_LABEL, backupCancelCommand, backupCleanupCommand, backupDeleteCommand, backupErrorText, backupEstimateSql, backupFileName, backupListCommand, backupProbeCommand,
   backupSpaceCheck, backupStartCommand, backupStatusCommand, checkBackupOpts, isBackupDir, isBackupName, parseBackupList, parseBackupProbe, parseBackupStatus,
   backupsToPrune, sanitizeBackupSchedule,
-  DB_LIST_SQL, REDIS_KEY_DEL_DECISION, isRedisCursor, isRedisKey, parseCsvTable, parseRedisClients, pgDdl, queryInput, redisErrorOf, redisKeyCmds, redisKeyspace,
+  DB_LIST_SQL, REDIS_KEY_DEL_DECISION, REDIS_KEY_SET_DECISION, REDIS_KEY_DEL_MANY_DECISION, REDIS_DEL_MANY_MAX, isRedisValue, isRedisCursor, isRedisKey, parseCsvTable, parseRedisClients, pgDdl, queryInput, redisErrorOf, redisKeyCmds, redisKeyspace,
   redisPreviewTable, schemaTableSql, schemaTablesSql, shq, withDatabase,
   MONGO_SCRIPT_MAX, MONGO_VIEW_JS, docsToTable, isDbIdent, mongoExplain, mongoJs, mongoPageable, mongoParseOut, mongoQueryBody, mongoQueryText, mongoSchemaDetail, mongoViewResult, parseMongoQuery,
   DB_PAGE_MAX, DB_PAGE_SIZE, tr,
@@ -414,6 +414,38 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     } catch (e) { rc = 1; err = e instanceof Error ? e.message : String(e) }
     d.audit(c.hostKey, { command: dbAuditCommand(c, `DEL ${JSON.stringify(key)}${c.database ? `  (db ${c.database})` : ''}`), decision: REDIS_KEY_DEL_DECISION, exitCode: rc })
     if (rc) throw new Error(err)
+  })
+  // 改一个 string key 的值：写操作。只有 string 类型允许（其它类型请用 redis-cli）；
+  // 生产主机必须带二次确认标记；成败都记执行记录
+  d.handle('db:redisSet', async (_e, id, db, key, value, prodConfirmed) => {
+    const c = redisConn(id, db)
+    if (!isRedisKey(key)) throw new Error(tr('非法的 key'))
+    if (!isRedisValue(value)) throw new Error(tr('值不合法：要是文本，且不超过 512KB'))
+    if (d.host(c.hostKey)?.prod && prodConfirmed !== true) throw new Error(tr('生产主机上修改 key 需要二次确认'))
+    const type = String(await q.redis(c, ['TYPE', shq(key)])).trim()
+    if (type !== 'string') throw new Error(tr('只有 string 类型的值能在这里改（当前是 {t}），请用 redis-cli', { t: type || tr('未知') }))
+    let rc = 0, err = ''
+    try { await q.redis(c, ['SET', shq(key), shq(value)]) } catch (e) { rc = 1; err = e instanceof Error ? e.message : String(e) }
+    d.audit(c.hostKey, { command: dbAuditCommand(c, `SET ${JSON.stringify(key)} …（${value.length} 字符）${c.database ? `  (db ${c.database})` : ''}`), decision: REDIS_KEY_SET_DECISION, exitCode: rc })   // i18n-ignore 执行记录
+    if (rc) throw new Error(err)
+  })
+  // 把界面扫描出来的这批 key 一次删掉：分批 DEL（每批 100 个），生产主机二次确认，记执行记录
+  d.handle('db:redisDelMany', async (_e, id, db, keys, prodConfirmed) => {
+    const c = redisConn(id, db)
+    const list = Array.isArray(keys) ? keys.filter((k): k is string => isRedisKey(k)) : []
+    if (!list.length) throw new Error(tr('没有可删除的 key'))
+    if (list.length > REDIS_DEL_MANY_MAX) throw new Error(tr('一次最多删除 {n} 个 key，请缩小匹配范围', { n: REDIS_DEL_MANY_MAX }))
+    if (d.host(c.hostKey)?.prod && prodConfirmed !== true) throw new Error(tr('生产主机上批量删除 key 需要二次确认'))
+    let deleted = 0, rc = 0, err = ''
+    try {
+      for (let i = 0; i < list.length; i += 100) {
+        const batch = list.slice(i, i + 100)
+        deleted += Number(await q.redis(c, ['DEL', ...batch.map((k) => shq(k))]))
+      }
+    } catch (e) { rc = 1; err = e instanceof Error ? e.message : String(e) }
+    d.audit(c.hostKey, { command: dbAuditCommand(c, `DEL ×${deleted}/${list.length}（批量删除）${c.database ? `  (db ${c.database})` : ''}`), decision: REDIS_KEY_DEL_MANY_DECISION, exitCode: rc })   // i18n-ignore 执行记录
+    if (rc) throw new Error(err)
+    return { deleted }
   })
   // 终止会话：写操作。生产主机必须带二次确认标记；成败都记执行记录
   d.handle('db:kill', async (_e, id, sessionId, about, prodConfirmed) => {

@@ -28,7 +28,7 @@ export class HttpTransport implements AppClient {
   system: AppClient['system'] = { pickDirectory: ni, saveTextFile: ni, exportDiagnostics: ni, getUpdateStatus: ni, checkUpdate: ni, downloadUpdate: ni, installUpdate: ni, notify: async () => {}, appInfo: ni, openDir: ni, relaunch: async () => { location.reload() } }
   audit: AppClient['audit'] = { listForSession: ni, listRecent: ni, restore: ni }
   history: AppClient['history'] = { list: ni, delete: ni, clear: ni, forTerminal: ni, deleteCommand: ni }
-  fs: AppClient['fs'] = { listDir: ni, listDirByHost: ni, places: ni, remove: ni, deletePlan: ni, create: ni, rename: ni, openLocal: ni, showInFolder: ni, readText: ni, diffText: ni, writeText: ni, compare: ni, chmod: ni, pack: ni, unpack: ni, search: ni, searchContent: ni, pastePlan: ni, paste: ni, stats: ni, checksum: ni, owners: ni, chown: ni, sudoAuth: ni, sudoForget: ni, editExternal: ni }
+  fs: AppClient['fs'] = { listDir: ni, listDirByHost: ni, places: ni, remove: ni, deletePlan: ni, create: ni, rename: ni, openLocal: ni, showInFolder: ni, readText: ni, diffText: ni, writeText: ni, compare: ni, chmod: ni, pack: ni, backupDir: ni, unpack: ni, search: ni, searchContent: ni, pastePlan: ni, paste: ni, stats: ni, checksum: ni, owners: ni, chown: ni, sudoAuth: ni, sudoForget: ni, editExternal: ni }
   transfer: AppClient['transfer'] = { upload: ni, download: ni, downloadMany: ni, cancel: ni, list: ni, retry: ni, clearFinished: ni, revealLocal: ni, reorder: ni, uploadConflicts: ni, uploadDirect: ni, pause: ni, discard: ni }
   templates: AppClient['templates'] = { list: ni, save: ni, delete: ni }
   runbooks: AppClient['runbooks'] = { list: ni, save: ni, delete: ni }
@@ -88,7 +88,7 @@ export class HttpTransport implements AppClient {
   probe: AppClient['probe'] = { run: ni, cancel: ni }
   git: AppClient['git'] = { status: ni, diff: ni, stage: ni, commit: ni, suggest: ni, refs: ni, log: ni, show: ni, commitDiff: ni, stashes: ni, stashFiles: ni, stashDiff: ni, progress: ni, op: ni, blame: ni, readFile: ni, compare: ni, compareDiff: ni, changelog: ni, review: ni, remotes: ni, rebasePlan: ni }
   api: AppClient['api'] = { load: ni, save: ni, send: ni, clearHistory: ni }
-  db: AppClient['db'] = { list: ni, save: ni, delete: ni, ping: ni, view: ni, explain: ni, query: ni, databases: ni, schemaTables: ni, schemaTable: ni, redisScan: ni, redisKey: ni, redisDel: ni, kill: ni, script: ni, backupPlan: ni, backupStart: ni, backupStatus: ni, backupCancel: ni, backupList: ni, backupDelete: ni, backupScheduleGet: ni, backupScheduleSave: ni, backupScheduleRun: ni }
+  db: AppClient['db'] = { list: ni, save: ni, delete: ni, ping: ni, view: ni, explain: ni, query: ni, databases: ni, schemaTables: ni, schemaTable: ni, redisScan: ni, redisKey: ni, redisDel: ni, redisSet: ni, redisDelMany: ni, kill: ni, script: ni, backupPlan: ni, backupStart: ni, backupStatus: ni, backupCancel: ni, backupList: ni, backupDelete: ni, backupScheduleGet: ni, backupScheduleSave: ni, backupScheduleRun: ni }
   k8s: AppClient['k8s'] = { probe: ni, namespaces: ni, list: ni, text: ni, logs: ni, restart: ni, health: ni, openTerminal: ni, forward: ni, forwards: ni, stopForward: ni }
   diskUsage: AppClient['diskUsage'] = { level: ni, bigFiles: ni, common: ni, deleted: ni }
   fileLinks: AppClient['fileLinks'] = { open: ni, vscodePlan: ni, vscodeOpen: ni }

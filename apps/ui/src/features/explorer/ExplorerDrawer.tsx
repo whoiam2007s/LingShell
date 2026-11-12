@@ -18,7 +18,7 @@ import { openDirInVscode } from '../../components/VscodeRemote.js'
 import { attachPathsToChat, LOCAL_PATHS_MIME } from '../../lib/localPaths.js'
 import { setLastDir } from './explorerMemory.js'
 import { useClip, setClip, PasteConflictDialog, PropsDialog, ChownDialog, SudoDialog } from './ExplorerDialogs.js'
-import { baseName, isInside, SUDO_NEED_PW, tk, tr, type ConflictPolicy, type ContentHit } from '@lingshell/shared'
+import { baseName, isInside, SUDO_NEED_PW, tk, tr, DIR_BACKUP_DIR, DIR_BACKUP_EXCLUDES, type ConflictPolicy, type ContentHit } from '@lingshell/shared'
 import { trx } from '../../lib/trx.js'
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
@@ -394,6 +394,15 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
     refresh(dirOf(out)); setSel(new Set([out])); setAnchor(out)
   }))
   const doUnpack = (path: string) => runBusy(tr('正在解压…'), client.fs.unpack(scope, path).finally(() => refresh(dirOf(path))))
+  // 目录备份：确认后打包到 ~/lingshell-backups/<目录名>-时间.tar.gz（默认排除 .git / node_modules / 日志），完成后刷新备份目录
+  const [backupFor, setBackupFor] = useState<string>()
+  const doBackup = (p: string) => {
+    setBackupFor(undefined)
+    runBusy(tr('正在备份…'), client.fs.backupDir(scope, p).then((out) => {
+      setNote(tr('备份完成：{path}', { path: out }))
+      refresh(dirOf(out))
+    }))
+  }
 
   const runSearch = (query: string, kind: 'name' | 'content' = search?.kind ?? 'name') => {
     if (!query.trim()) return
@@ -897,6 +906,7 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
                 {isRemote && !winHost && <MI onClick={() => askChmod([e.path])}>{tr('修改权限…')}</MI>}
                 {isRemote && !winHost && <MI onClick={() => setChownFor([e])}>{tr('修改属主…')}</MI>}
                 {isRemote && !winHost && <MI onClick={() => doPack([e.path])}>{tr('压缩为 tar.gz')}</MI>}
+                {isRemote && !winHost && e.isDir && <MI data-menu-backup onClick={() => setBackupFor(e.path)}>{tr('备份为 tar.gz')}</MI>}
                 {isRemote && !winHost && !e.isDir && archiveKind(e.name) && <MI onClick={() => doUnpack(e.path)}>{tr('解压到此处')}</MI>}
                 <Sep />
                 {!isRemote && onUpload && <MI onClick={() => onUpload([e.path])}>{tr('上传到服务器…')}</MI>}
@@ -945,6 +955,11 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
           </div>
         )}
       </ConfirmDialog>
+      <ConfirmDialog open={!!backupFor} title={tr('备份为 tar.gz')} confirmText={tr('开始备份')}
+        message={tr('把「{path}」打包到 {dir}（文件名 {name}-时间.tar.gz），默认排除 {list}。大目录可能需要几分钟。', {
+          path: backupFor ?? '', dir: DIR_BACKUP_DIR, name: baseName(backupFor ?? ''), list: DIR_BACKUP_EXCLUDES.join(' '),
+        })}
+        onConfirm={() => backupFor && doBackup(backupFor)} onCancel={() => setBackupFor(undefined)} />
       {chmodFor && (
         <ChmodDialog names={chmodFor.paths.map((p) => byPath.get(p)?.name ?? p)} initial={chmodFor.mode} anyDir={chmodFor.anyDir} prod={prod}
           onConfirm={doChmod} onCancel={() => setChmodFor(null)} />

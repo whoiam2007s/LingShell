@@ -96,8 +96,10 @@ db.list → db:list
 db.ping → db:ping
 db.query → db:query
 db.redisDel → db:redisDel
+db.redisDelMany → db:redisDelMany
 db.redisKey → db:redisKey
 db.redisScan → db:redisScan
+db.redisSet → db:redisSet
 db.save → db:save
 db.schemaTable → db:schemaTable
 db.schemaTables → db:schemaTables
@@ -136,6 +138,7 @@ fileLinks.open → fileLinks:open
 fileLinks.vscodeOpen → fileLinks:vscodeOpen
 fileLinks.vscodePlan → fileLinks:vscodePlan
 firewall.list → firewall:list
+fs.backupDir → fs:backupDir
 fs.checksum → fs:checksum
 fs.chmod → fs:chmod
 fs.chown → fs:chown

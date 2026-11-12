@@ -1,5 +1,5 @@
 // AppClient 文件部分的 IPC 实现（接口见 packages/shared/src/protocol/client/files.ts，主进程见 apps/desktop/src/main/files/register.ts）
-import type { AppClient, FilesApi, DeletePlan, DirEntry, FsScope, TransferMove, TransferProgressEvent } from '@lingshell/shared'
+import type { AppClient, FilesApi, DeletePlan, DirEntry, FsScope, DirBackupOpts, TransferMove, TransferProgressEvent } from '@lingshell/shared'
 
 export function createFilesIpc(): FilesApi {
   return {
@@ -19,6 +19,7 @@ export function createFilesIpc(): FilesApi {
       compare: ((targets, path, opts) => window.electronAPI.invoke('fs:compare', targets, path, opts)) as AppClient['fs']['compare'],
       chmod: (scope: FsScope, paths: string[], mode: number, recursive: boolean) => window.electronAPI.invoke('fs:chmod', scope, paths, mode, recursive) as Promise<void>,
       pack: (scope: FsScope, paths: string[]) => window.electronAPI.invoke('fs:pack', scope, paths) as Promise<string>,
+      backupDir: (scope: FsScope, path: string, opts?: DirBackupOpts) => window.electronAPI.invoke('fs:backupDir', scope, path, opts) as Promise<string>,
       unpack: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:unpack', scope, path) as Promise<string>,
       search: ((scope, root, query) => window.electronAPI.invoke('fs:search', scope, root, query)) as AppClient['fs']['search'],
       searchContent: ((scope, root, query) => window.electronAPI.invoke('fs:search', scope, root, query, 'content')) as AppClient['fs']['searchContent'],
