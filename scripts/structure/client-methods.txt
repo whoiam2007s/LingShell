@@ -136,6 +136,7 @@ fileLinks.open → fileLinks:open
 fileLinks.vscodeOpen → fileLinks:vscodeOpen
 fileLinks.vscodePlan → fileLinks:vscodePlan
 firewall.list → firewall:list
+fs.backupDir → fs:backupDir
 fs.checksum → fs:checksum
 fs.chmod → fs:chmod
 fs.chown → fs:chown

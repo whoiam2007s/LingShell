@@ -28,7 +28,7 @@ export class HttpTransport implements AppClient {
   system: AppClient['system'] = { pickDirectory: ni, saveTextFile: ni, exportDiagnostics: ni, getUpdateStatus: ni, checkUpdate: ni, downloadUpdate: ni, installUpdate: ni, notify: async () => {}, appInfo: ni, openDir: ni, relaunch: async () => { location.reload() } }
   audit: AppClient['audit'] = { listForSession: ni, listRecent: ni, restore: ni }
   history: AppClient['history'] = { list: ni, delete: ni, clear: ni, forTerminal: ni, deleteCommand: ni }
-  fs: AppClient['fs'] = { listDir: ni, listDirByHost: ni, places: ni, remove: ni, deletePlan: ni, create: ni, rename: ni, openLocal: ni, showInFolder: ni, readText: ni, diffText: ni, writeText: ni, compare: ni, chmod: ni, pack: ni, unpack: ni, search: ni, searchContent: ni, pastePlan: ni, paste: ni, stats: ni, checksum: ni, owners: ni, chown: ni, sudoAuth: ni, sudoForget: ni, editExternal: ni }
+  fs: AppClient['fs'] = { listDir: ni, listDirByHost: ni, places: ni, remove: ni, deletePlan: ni, create: ni, rename: ni, openLocal: ni, showInFolder: ni, readText: ni, diffText: ni, writeText: ni, compare: ni, chmod: ni, pack: ni, backupDir: ni, unpack: ni, search: ni, searchContent: ni, pastePlan: ni, paste: ni, stats: ni, checksum: ni, owners: ni, chown: ni, sudoAuth: ni, sudoForget: ni, editExternal: ni }
   transfer: AppClient['transfer'] = { upload: ni, download: ni, downloadMany: ni, cancel: ni, list: ni, retry: ni, clearFinished: ni, revealLocal: ni, reorder: ni, uploadConflicts: ni, uploadDirect: ni, pause: ni, discard: ni }
   templates: AppClient['templates'] = { list: ni, save: ni, delete: ni }
   runbooks: AppClient['runbooks'] = { list: ni, save: ni, delete: ni }

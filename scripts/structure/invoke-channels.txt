@@ -141,6 +141,7 @@ fileLinks:open
 fileLinks:vscodeOpen
 fileLinks:vscodePlan
 firewall:list
+fs:backupDir
 fs:checksum
 fs:chmod
 fs:chown

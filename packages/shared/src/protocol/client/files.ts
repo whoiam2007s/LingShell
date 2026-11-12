@@ -27,6 +27,8 @@ export interface FilesApi {
     // 以下仅远程：服务器命令走独立 exec channel，记执行记录 file_chmod / file_archive / file_extract（搜索只读不记）
     chmod(scope: FsScope, paths: string[], mode: number, recursive: boolean): Promise<void>
     pack(scope: FsScope, paths: string[]): Promise<string>     // 同目录下的项 → tar.gz，返回压缩包路径
+    // 目录备份：打包到 ~/lingshell-backups/<目录名>-时间.tar.gz（默认排除 .git / node_modules / 日志），返回备份文件路径
+    backupDir(scope: FsScope, path: string, opts?: import('../../files/dirBackup.js').DirBackupOpts): Promise<string>
     unpack(scope: FsScope, path: string): Promise<string>      // 解压到所在目录（不覆盖同名），返回该目录
     // 按名称搜索（本地也支持）；按内容搜索返回每个文件第一处匹配的行
     search(scope: FsScope, root: string, query: string): Promise<{ hits: SearchHit[]; truncated: boolean; timedOut: boolean }>
