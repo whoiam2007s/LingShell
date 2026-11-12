@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    # 任意分支推送都跑：feature 分支推上来就能看到 check / test 结果，不用再手动 dispatch。
+    # 打包 job 另有 if 限制，只在 master / PR 上跑，避免 feature 分支浪费 Actions 分钟。
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -72,6 +74,8 @@ jobs:
   package-linux:
     name: Linux 打包验证
     runs-on: ubuntu-latest
+    # 打包要 10+ 分钟：只在 master 推送、PR、手动触发时跑；feature 分支推送只跑 check + test
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     # Linux 产物此前从未真正构建过（release.yml 只出 Windows）。这里只验证「能不能打出
     # AppImage」并留档 artifact，不发布；真正发布在 release.yml 里接。
     steps:
@@ -137,7 +141,7 @@ jobs:
     # macOS 只在「首个 mac 版本」和「系统兼容性调整」时需要验证（产品决定）。
     # 因此不阻塞 PR：PR 时跳过，只在 master 推送 / 手动触发时跑 —— 否则每次 PR 都会被
     # macOS runner 排队拖住（实测连续三次排队后被取消）。需要时用 workflow_dispatch 手动跑。
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'))
     # macOS 产物从未被真正构建过（README 一直标"未在 macOS 上验证"）。这里只验证
     # 能不能打出 DMG 并留档 artifact，不发布、不签名（identity: null，见
     # apps/desktop/electron-builder.config.cjs）。
