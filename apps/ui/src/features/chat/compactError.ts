@@ -13,7 +13,12 @@ export function compactErrorText(raw?: string): string {
     return tr('较早的对话已经压不动了（摘要不会比原文更短）。建议新开一个会话，或从某条消息「从这里分叉」继续')
   if (/surface changed/i.test(s))
     return tr('压缩时对话又变了（有新消息进来），再点一次压缩就好')
-  if (/not idle|is busy|turn.*running/i.test(s))
+  if (/not idle|is busy|already running|in progress|turn.*running/i.test(s))
     return tr('本轮还在跑，等结束再点一次压缩')
-  return s
+  if (/timed? ?out|etimedout/i.test(s))
+    return tr('压缩超时（历史太长或模型响应慢），可以再点一次；反复超时建议新开一个会话')
+  if (/abort|cancel/i.test(s))
+    return tr('压缩被中断，再点一次就好')
+  // 不认识的原因：保留原文（方便复制给开发者），前面加一句说明
+  return tr('压缩失败（可复制给开发者）：{error}', { error: s })
 }

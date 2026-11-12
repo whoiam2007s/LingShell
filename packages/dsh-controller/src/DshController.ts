@@ -160,6 +160,7 @@ interface Live {
   suggested?: boolean     // 已弹过「建议开新会话」，同一会话不再重复打扰
   lastUsed: number        // 最近使用时间（LRU 释放用）
   turning: boolean        // 有一轮正在跑
+  compacting?: boolean    // 正在（自动）压缩：手动压缩要避开，否则引擎会判 busy / surface changed
   turn?: unknown          // 正在跑的 dsh 轮次（turn/start 记、turn/end 清）：执行记录据此标 turnId（按回合撤销）
 }
 
@@ -927,9 +928,10 @@ export class DshController {
       }
     }
     if (ev.type === 'step/start') { s.steps++; if (live) this.maybeSuggestReset(id, s) }
-    else if (ev.type === 'compaction/start' && live) this.emit({ type: 'agent:contextCompacting', sessionId: id })
+    else if (ev.type === 'compaction/start' && live) { s.compacting = true; this.emit({ type: 'agent:contextCompacting', sessionId: id }) }
     else if (ev.type === 'compaction/summary') s.lastSummary = textBlocks(ev.data?.summary) || s.lastSummary
     else if (ev.type === 'compaction/end') {
+      s.compacting = false
       const error = ev.data?.error ? String(ev.data.error) : undefined
       if (!error) s.compactions++
       if (!live) return
@@ -1419,12 +1421,25 @@ export class DshController {
     await this.waitIdle(sessionId)
     const live = this.sessions.get(sessionId)
     if (!live) return false
+    // 自动压缩正在进行：引擎这时会判 busy / surface changed（用户看到的就是「有时候报错」）。
+    // 等它结束再压，最多等 30 秒，仍没结束就给明确提示。
+    if (live.compacting) {
+      const deadline = Date.now() + 30_000
+      while (live.compacting && Date.now() < deadline) await new Promise((r) => setTimeout(r, 300))
+      if (live.compacting) throw new Error(tr('自动压缩正在进行，等它结束再点一次'))
+    }
     // 历史本来就很短（刚压缩过 / 才几轮）：引擎会在「摘要不比原文短」时抛英文错误，
     // 这里提前拦下并说清楚原因，免得用户对着看不懂的报错反复点。
     if (live.ctxTokens > 0 && live.ctxTokens < 8_000)
       throw new Error(tr('上下文还很短（约 {n}K tokens），不用压缩', { n: Math.max(1, Math.round(live.ctxTokens / 1000)) }))
-    const out = await engine.compactNow(live.handle.agent as any, new AbortController().signal)
-    return !!out
+    try {
+      const out = await engine.compactNow(live.handle.agent as any, new AbortController().signal)
+      return !!out
+    } catch (e) {
+      // 失败原因原样抛给界面（界面负责翻译），同时留一条 warn 日志便于排查
+      this.cfg.log?.('warn', 'manual compaction failed', { sessionId, error: String(e).slice(0, 300) })
+      throw e
+    }
   }
 
   /** 等这个会话的回合结束（没有会话 / 已空闲立即返回）。轮询 500ms，代价可忽略；超时给明确错误，别让界面一直转 */
