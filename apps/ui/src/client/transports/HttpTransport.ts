@@ -88,7 +88,7 @@ export class HttpTransport implements AppClient {
   probe: AppClient['probe'] = { run: ni, cancel: ni }
   git: AppClient['git'] = { status: ni, diff: ni, stage: ni, commit: ni, suggest: ni, refs: ni, log: ni, show: ni, commitDiff: ni, stashes: ni, stashFiles: ni, stashDiff: ni, progress: ni, op: ni, blame: ni, readFile: ni, compare: ni, compareDiff: ni, changelog: ni, review: ni, remotes: ni, rebasePlan: ni }
   api: AppClient['api'] = { load: ni, save: ni, send: ni, clearHistory: ni }
-  db: AppClient['db'] = { list: ni, save: ni, delete: ni, ping: ni, view: ni, explain: ni, query: ni, databases: ni, schemaTables: ni, schemaTable: ni, redisScan: ni, redisKey: ni, redisDel: ni, kill: ni, script: ni, backupPlan: ni, backupStart: ni, backupStatus: ni, backupCancel: ni, backupList: ni, backupDelete: ni, backupScheduleGet: ni, backupScheduleSave: ni, backupScheduleRun: ni }
+  db: AppClient['db'] = { list: ni, save: ni, delete: ni, ping: ni, view: ni, explain: ni, query: ni, databases: ni, schemaTables: ni, schemaTable: ni, redisScan: ni, redisKey: ni, redisDel: ni, redisSet: ni, redisDelMany: ni, kill: ni, script: ni, backupPlan: ni, backupStart: ni, backupStatus: ni, backupCancel: ni, backupList: ni, backupDelete: ni, backupScheduleGet: ni, backupScheduleSave: ni, backupScheduleRun: ni }
   k8s: AppClient['k8s'] = { probe: ni, namespaces: ni, list: ni, text: ni, logs: ni, restart: ni, health: ni, openTerminal: ni, forward: ni, forwards: ni, stopForward: ni }
   diskUsage: AppClient['diskUsage'] = { level: ni, bigFiles: ni, common: ni, deleted: ni }
   fileLinks: AppClient['fileLinks'] = { open: ni, vscodePlan: ni, vscodeOpen: ni }

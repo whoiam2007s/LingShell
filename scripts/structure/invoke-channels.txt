@@ -101,8 +101,10 @@ db:list
 db:ping
 db:query
 db:redisDel
+db:redisDelMany
 db:redisKey
 db:redisScan
+db:redisSet
 db:save
 db:schemaTable
 db:schemaTables

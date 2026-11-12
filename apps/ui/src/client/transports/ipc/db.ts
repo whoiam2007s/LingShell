@@ -17,6 +17,8 @@ export function createDbIpc(): DbApi {
       redisScan: (id, db, p, cur) => window.electronAPI.invoke('db:redisScan', id, db, p, cur) as ReturnType<AppClient['db']['redisScan']>,
       redisKey: (id, db, k) => window.electronAPI.invoke('db:redisKey', id, db, k) as ReturnType<AppClient['db']['redisKey']>,
       redisDel: (id, db, k, prod) => window.electronAPI.invoke('db:redisDel', id, db, k, prod) as ReturnType<AppClient['db']['redisDel']>,
+      redisSet: (id, db, k, v, prod) => window.electronAPI.invoke('db:redisSet', id, db, k, v, prod) as ReturnType<AppClient['db']['redisSet']>,
+      redisDelMany: (id, db, ks, prod) => window.electronAPI.invoke('db:redisDelMany', id, db, ks, prod) as ReturnType<AppClient['db']['redisDelMany']>,
       kill: (id, sid, about, prod) => window.electronAPI.invoke('db:kill', id, sid, about, prod) as Promise<void>,
       script: (id, sc, tx, prod, db) => window.electronAPI.invoke('db:script', id, sc, tx, prod, db) as ReturnType<AppClient['db']['script']>,
       backupPlan: (id, o) => window.electronAPI.invoke('db:backupPlan', id, o) as ReturnType<AppClient['db']['backupPlan']>,
