@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // 历史图片裁剪：只保留最近 N 条消息里的图片原图，更早的在「发给模型的请求」里替换成
 // 占位文字（占位里带附件 id 与本地路径，模型可以自己用 read_image 读回来）。
 //
