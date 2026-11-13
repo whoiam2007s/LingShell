@@ -138,7 +138,7 @@ describe('模型配置随 model 节往返', () => {
     expect(st.resolveProfile('b').apiKey).toBe('')
     expect(st.get().modelProfiles).toHaveLength(2)
   })
-  it('接口协议随配置导出导入；缺省（旧文件）= anthropic，非法值规整，非 DeepSeek 不落', () => {
+  it('接口协议随配置导出导入；缺省（旧文件）= 该提供商默认值，非法值规整，偏离默认值才落盘', () => {
     const dir = tmp()
     new SettingsStore(dir, A).save({ modelProfiles: [{ id: 'a', name: '网关', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: 'http://gw', protocol: 'openai' }] } as never)
     const b = exportConfig(dir, A, { sections: ['model'] }, '1.0.0')
@@ -154,7 +154,8 @@ describe('模型配置随 model 节往返', () => {
     ]
     importConfig(dst, B, b, { model: true })
     const raw = JSON.parse(readFileSync(join(dst, 'settings.json'), 'utf8'))
-    expect(raw.profiles.map((x: { protocol?: string }) => x.protocol)).toEqual(['anthropic', 'anthropic', undefined])
+    // a、c 都规整成 deepseek 的默认值 anthropic → 不落盘；q 的 anthropic 偏离 qwen 默认的 openai → 落盘
+    expect(raw.profiles.map((x: { id: string; protocol?: string }) => [x.id, x.protocol])).toEqual([['a', undefined], ['c', undefined], ['q', 'anthropic']])
   })
   it('旧版文件（单套 + 按 provider 的 key）导入：换算成配置表', () => {
     const b: ConfigBundle = { format: 'lingshell-config', version: 1, exportedAt: '', appVersion: '0.9', sections: { model: { provider: 'qwen', model: 'qwen-plus', baseUrl: 'https://q' } },
