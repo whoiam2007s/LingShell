@@ -866,7 +866,7 @@ export function TerminalPane({ info, active, focused, style, onFocus, onInput, b
 
   return (
     <div onMouseDownCapture={onFocus} style={active ? style : undefined}
-      className={active ? `relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden ${focused === false ? 'opacity-70' : ''}` : 'hidden'}>
+      className={active ? `relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden ${focused === false ? 'opacity-90' : ''}` : 'hidden'}>
       {/* 分屏焦点窗格：内描边浮层（盖在内容上、不占布局，不会被分割线/相邻窗格挡住）；其余窗格调暗 */}
       {/* 往里缩 2px：贴边会和分割线（在窗格边界上）、窗口边缘重叠；落在终端内边距里，不挡字、不压命令成败点 */}
       {focused && <div className="pointer-events-none absolute inset-[2px] z-30 rounded-sm ring-1 ring-[color:color-mix(in_srgb,var(--color-accent)_35%,transparent)]" />}
