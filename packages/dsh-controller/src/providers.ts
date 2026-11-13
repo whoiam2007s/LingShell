@@ -111,14 +111,17 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
   const responses = protocol === 'openai-responses'
   const ds = s.provider === 'deepseek' && !responses
   const contextWindow = contextWindowOf(s.provider, s.model, s.contextWindow)
-  // Responses 第一版不声明推理档位：各家该发哪个字段还不一致，先不自造（界面上思考深度对它不生效）
-  const efforts = responses ? undefined : effortsOf(s.provider, s.model)
+  // Responses 也声明推理档位：pi-ai 只有在拿到 reasoningEffort 时才会发
+  // { reasoning: { effort, summary: "auto" } }（见 pi-ai openai-responses.js 的 params.reasoning）；
+  // 不声明则 dsh 把模型标成 reasoning:false，请求里连 reasoning 字段都没有，模型不返回思考摘要，
+  // 界面上永远看不到 thinking。无档位表的厂商 / 非推理模型仍然不声明（宁可不发也不瞎发）。
+  const efforts = effortsOf(s.provider, s.model)
   const model: PiModel = { id: s.model, name: s.model, contextWindow, maxTokens: maxTokensOf(contextWindow), input: inputOf(s.multimodal), ...(efforts ? { reasoningEfforts: efforts } : {}) }
   // 用户选的档位 → 实际派发值（'off' = 支持但什么都不发，pi-ai 用它表示"不思考"）。
-  // 没选时保持原有行为：DeepSeek 一直默认按 high 发（= 界面上的「中」）；
-  // 其它厂商以前不发这个参数，没选就不发 —— 免得给不认识它的端点添麻烦。
-  const level = s.thinking ?? (s.provider === 'deepseek' ? 'medium' : undefined)
-  const wire = responses ? undefined : thinkingWireOfModel(s.provider, s.model, level)
+  // 没选时：DeepSeek 一直默认按 high 发（= 界面上的「中」）；Responses 有档位表时默认 medium
+  // （不发 reasoning 会走 pi-ai 的「显式关闭」分支，等于主动让模型别思考）；其它厂商没选就不发。
+  const level = s.thinking ?? (s.provider === 'deepseek' || (responses && efforts !== undefined) ? 'medium' : undefined)
+  const wire = thinkingWireOfModel(s.provider, s.model, level)
   const others = (routes[route]?.models ?? []).filter((m) => m.id !== s.model)
   return {
     ...routes,
@@ -133,7 +136,7 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
       // 传给 pi-ai 的是**档位名**（low/medium/high），不是线上值：pi-ai 会再用模型声明的
       // reasoningEfforts（档位 → 厂商线上值）翻译一次。之前传了翻译后的值，等于翻了两次
       // （DeepSeek「中」→ high → 又被当成 high 档 → max，和官方语义不符）。
-      ...(responses || !level || wire === undefined ? {} : { reasoning: level }),
+      ...(efforts === undefined || level === undefined || wire === undefined ? {} : { reasoning: level }),
       models: [...others, model],
     },
   }

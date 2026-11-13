@@ -82,20 +82,28 @@ describe('withRoute', () => {
     expect(volc).not.toHaveProperty('reasoning')
     expect(volc.models[0]).not.toHaveProperty('reasoningEfforts')
   })
-  it('Responses 协议：独立路由 + 本协议白名单内的 compat，不声明推理档位', () => {
+  it('Responses 协议：独立路由 + 本协议白名单内的 compat，声明推理档位并把档位名传下去', () => {
     const r = withRoute({}, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai-responses', thinking: 'high' })
     const route = r['lingshell-r-gpt']
     expect(route).toMatchObject({
-      api: 'openai-responses', baseURL: 'https://api.openai.com/v1',
+      api: 'openai-responses', baseURL: 'https://api.openai.com/v1', reasoning: 'high',
       compat: { supportsDeveloperRole: false, supportsMaxOutputTokens: true, supportsStrictMode: false },
-      models: [{ id: 'gpt-5', name: 'gpt-5' }],
+      models: [{ id: 'gpt-5', name: 'gpt-5', reasoningEfforts: { low: 'low', medium: 'medium', high: 'high' } }],
     })
     // completions 那套字段不能混进 Responses 路由（pi-ai 的 compat 按协议白名单校验）
     expect(route.compat).not.toHaveProperty('supportsStore')
     expect(route.compat).not.toHaveProperty('maxTokensField')
-    // 第一版不发思考参数、也不声明档位（各家字段名还不一致，先不自造）
-    expect(route).not.toHaveProperty('reasoning')
-    expect(route.models[0]).not.toHaveProperty('reasoningEfforts')
+    // 没选档位时默认 medium：pi-ai 只有拿到 reasoningEffort 才会发 { reasoning: { effort, summary: "auto" } }
+    const def = withRoute({}, { profileId: 'g2', provider: 'openai', model: 'gpt-5', baseUrl: '', protocol: 'openai-responses' })['lingshell-r-g2']
+    expect(def.reasoning).toBe('medium')
+    // 非推理模型（gpt-4o）不声明、不发，否则可能被端点 400
+    const g4 = withRoute({}, { profileId: 'g4', provider: 'openai', model: 'gpt-4o', baseUrl: '', protocol: 'openai-responses' })['lingshell-r-g4']
+    expect(g4).not.toHaveProperty('reasoning')
+    expect(g4.models[0]).not.toHaveProperty('reasoningEfforts')
+    // 没有档位表的自定义端点（openai-compatible）：宁可不发也不瞎发
+    const gw = withRoute({}, { profileId: 'gw', provider: 'openai-compatible', model: 'gpt-5', baseUrl: 'https://gw', protocol: 'openai-responses' })['lingshell-r-gw']
+    expect(gw).not.toHaveProperty('reasoning')
+    expect(gw.models[0]).not.toHaveProperty('reasoningEfforts')
     // 同一套配置切回 Chat Completions 走另一条路由，互不覆盖
     const back = withRoute(r, { profileId: 'gpt', provider: 'openai', model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', protocol: 'openai' })
     expect(Object.keys(back).sort()).toEqual(['lingshell-p-gpt', 'lingshell-r-gpt'])
