@@ -609,10 +609,11 @@ export function importConfig(dir: string, enc: Encryptor, bundle: ConfigBundle, 
         const old = local.find((o) => o.id === x.id && o.provider === x.provider)
         const slot: KeySlot = key ? (enc.available() ? { apiKeyCipher: enc.encrypt(key) } : { apiKeyPlain: key }) : { apiKeyCipher: old?.apiKeyCipher, apiKeyPlain: old?.apiKeyPlain }
         if (key) n++
-        // 接口协议：只有 DeepSeek 带（旧文件没有 = anthropic），非法值规整
+        // 接口协议：三种都认（旧文件没有 = 该提供商默认值），非法值规整成默认值；偏离默认值才落盘
         // 支持图片：只认布尔值（旧文件没有 = 按模型名猜）
         // 缺 model / baseUrl / name 的旧文件记录补默认值；认不出的整条丢弃（别写进磁盘把设置页读崩）
-        const norm = sanitizeProfile({ ...x, ...(x.provider === 'deepseek' ? { protocol: protocolOf(x.provider, protocol) } : {}), ...(typeof multimodal === 'boolean' ? { multimodal } : {}), ...slot })
+        const proto = protocolOf(x.provider, protocol)
+        const norm = sanitizeProfile({ ...x, ...(proto !== protocolOf(x.provider) ? { protocol: proto } : {}), ...(typeof multimodal === 'boolean' ? { multimodal } : {}), ...slot })
         if (norm) profiles.push(norm)
       }
       if (profiles.length) {

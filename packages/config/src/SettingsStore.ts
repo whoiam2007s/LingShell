@@ -18,7 +18,7 @@ export interface KeySlot { apiKeyCipher?: string; apiKeyPlain?: string }
 // 一套模型配置（磁盘形态）：key 按配置单独存
 export interface PersistedProfile extends KeySlot {
   id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number
-  protocol?: ModelProtocol   // 只有 DeepSeek 落盘；缺省按 protocolOf 解读（DeepSeek = anthropic，其它 = openai）
+  protocol?: ModelProtocol   // 偏离提供商默认值时才落盘；缺省按 protocolOf 解读（DeepSeek = anthropic，其它 = openai）
   multimodal?: boolean       // 支持图片；缺省按模型名猜（multimodalOf）
   thinking?: ThinkingLevel   // 思考深度（低/中/高）；缺省 = 不设，DeepSeek 按「中」发
 }
@@ -248,12 +248,16 @@ export class SettingsStore {
       // 没填新 key：沿用同 id 的；复制出的新配置沿用来源配置的（keyFrom）
       const old = prev.find((o) => o.id === id) ?? (x.keyFrom ? prev.find((o) => o.id === x.keyFrom) : undefined)
       const slot = x.apiKey ? this.seal(x.apiKey) : old && old.provider === provider ? pickSlot(old) : {}
+      // 接口协议三种对任何提供商都放开（DeepSeek 缺省 anthropic、其它缺省 openai）：
+      // 非法 / 缺省值规整成该提供商的默认值，只有偏离默认值时才落盘。
+      // 以前这里写成「只对 DeepSeek 落盘」，导致选了 OpenAI Responses 的配置存盘后被丢掉，
+      // 读回来按 protocolOf 回落到 openai（界面显示成「OpenAI 兼容」）。
+      const proto = protocolOf(provider, x.protocol)
       return {
         id, name: String(x.name ?? '').trim().slice(0, 60) || model, provider, model,
         baseUrl: String(x.baseUrl ?? '').trim() || meta.defaultBaseUrl,
         ...(Number.isFinite(cw) && cw > 0 ? { contextWindow: Math.floor(cw) } : {}),
-        // 协议只对 DeepSeek 有意义：非法 / 缺省规整成 anthropic；其它提供商不落盘
-        ...(provider === 'deepseek' ? { protocol: protocolOf(provider, x.protocol) } : {}),
+        ...(proto !== protocolOf(provider) ? { protocol: proto } : {}),
         ...(typeof x.multimodal === 'boolean' ? { multimodal: x.multimodal } : {}),
         ...(x.thinking && THINKING_LEVELS.includes(x.thinking) ? { thinking: x.thinking } : {}),
         ...slot,

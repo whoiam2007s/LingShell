@@ -183,7 +183,7 @@ describe('SettingsStore', () => {
     expect(() => s.save({ ...s.get(), modelProfiles: [] })).toThrow()
   })
 
-  it('接口协议：已存配置缺省 → DeepSeek 视为 anthropic、其它 openai；DeepSeek 可存 openai；非法值规整；其它提供商不落盘', () => {
+  it('接口协议：已存配置缺省 → DeepSeek 视为 anthropic、其它 openai；三种协议都保留；非法值规整；只有偏离默认值才落盘', () => {
     // 升级前已有的配置（没有 protocol 字段）
     writeFileSync(join(dir, 'settings.json'), JSON.stringify({
       provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', defaultProfileId: 'a',
@@ -197,10 +197,22 @@ describe('SettingsStore', () => {
       { id: 'b', name: 'B', provider: 'qwen', model: 'qwen-max', baseUrl: '', protocol: 'anthropic' },
       { id: 'c', name: 'C', provider: 'deepseek', model: 'deepseek-v4-pro', baseUrl: '', protocol: 'bogus' as never },
     ], defaultProfileId: 'a' } as never)
-    expect(s.get().modelProfiles!.map((x) => [x.id, x.protocol])).toEqual([['a', 'openai'], ['b', 'openai'], ['c', 'anthropic']])
+    expect(s.get().modelProfiles!.map((x) => [x.id, x.protocol])).toEqual([['a', 'openai'], ['b', 'anthropic'], ['c', 'anthropic']])
     expect(s.resolveProfile('a').protocol).toBe('openai')
     const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))
-    expect(raw.profiles.map((x: { protocol?: string }) => x.protocol)).toEqual(['openai', undefined, 'anthropic'])
+    // a、b 都偏离了各自提供商的默认值 → 落盘；c 规整成默认值 anthropic → 不落盘
+    expect(raw.profiles.map((x: { protocol?: string }) => x.protocol)).toEqual(['openai', 'anthropic', undefined])
+  })
+
+  it('OpenAI Responses：非 DeepSeek 提供商保存后能读回（以前存盘时被丢掉，读回来回落成 OpenAI 兼容）', () => {
+    const s = new SettingsStore(dir, mockEnc)
+    s.save({ modelProfiles: [
+      { id: 'r', name: 'Responses 网关', provider: 'openai-compatible', model: 'gpt-5', baseUrl: 'https://gw', protocol: 'openai-responses' },
+    ], defaultProfileId: 'r' } as never)
+    expect(s.get().modelProfiles!.map((x) => [x.id, x.protocol])).toEqual([['r', 'openai-responses']])
+    expect(s.resolveProfile('r').protocol).toBe('openai-responses')
+    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))
+    expect(raw.profiles[0].protocol).toBe('openai-responses')
   })
 
   it('坏配置记录 / 坏 system 字段：过滤、补默认，不把设置页读崩', () => {

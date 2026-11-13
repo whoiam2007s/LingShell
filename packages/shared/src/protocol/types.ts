@@ -422,7 +422,7 @@ export interface ModelProfile {
   apiKey?: string
   hasApiKey?: boolean
   keyFrom?: string          // 仅保存 / 测试方向：「复制」出的新配置沿用这套已存的 key（同提供商才生效）
-  // 接口协议：仅 DeepSeek 可选（缺省 = anthropic），其它提供商固定 openai。按 protocolOf 解读，别直接读
+  // 接口协议：三种都可选（DeepSeek 缺省 anthropic，其它提供商缺省 openai；非法值按该提供商默认值解读）。按 protocolOf 解读，别直接读
   protocol?: ModelProtocol
   // 支持图片（多模态）：开了才能在对话里附图片。缺省按模型名猜（multimodalDefault）；读取时总有值
   multimodal?: boolean
