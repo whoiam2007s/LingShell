@@ -105,6 +105,7 @@ db:redisDelMany
 db:redisKey
 db:redisScan
 db:redisSet
+db:restore
 db:save
 db:schemaTable
 db:schemaTables

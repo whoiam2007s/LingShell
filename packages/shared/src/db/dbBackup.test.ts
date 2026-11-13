@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backupFileName, backupListCommand, backupSpaceCheck, backupsToPrune, checkBackupOpts, isBackupDir, parseBackupList, sanitizeBackupSchedule } from './dbBackup.js'
+import { backupFileName, backupListCommand, backupSpaceCheck, backupsToPrune, checkBackupOpts, isBackupDir, isBackupName, parseBackupList, sanitizeBackupSchedule, canRestore, preRestoreFileName, restoreCommand } from './dbBackup.js'
 import type { DbConn } from './dbQuick.js'
 
 const my: DbConn = { id: 'm', name: '订单库', hostKey: 'h', kind: 'mysql', via: 'client', database: 'shop' }
@@ -39,5 +39,43 @@ describe('数据库备份（纯逻辑）', () => {
     expect(sanitizeBackupSchedule({ enabled: true, when: { kind: 'daily', time: '03:00' }, keep: 7, opts: { dir: '~/b' } }, my)).toMatchObject({ connId: 'm', enabled: true, keep: 7, opts: { database: 'shop' } })
     expect(sanitizeBackupSchedule({ when: { kind: 'daily', time: '25:00' }, keep: 7, opts: { dir: '~/b' } }, my)).toMatch(/HH:MM/)
     expect(sanitizeBackupSchedule({ when: { kind: 'interval', hours: 6 }, keep: 0, opts: { dir: '~/b' } }, my)).toMatch(/保留份数/)
+  })
+})
+
+describe('数据库还原（纯逻辑）', () => {
+  it('本版只放开 MySQL', () => {
+    expect(canRestore('mysql')).toBe(true)
+    expect(canRestore('postgres')).toBe(false)
+    expect(canRestore('mongo')).toBe(false)
+    expect(canRestore('redis')).toBe(false)
+  })
+
+  it('还原前快照命名仍符合备份文件名规则，且带 prerestore', () => {
+    const n = preRestoreFileName(my, 'shop', new Date(2026, 9, 18, 3, 4, 5))
+    expect(n).toBe('shop-prerestore-20261018-030405.sql.gz')
+    expect(isBackupName(n)).toBe(true)
+  })
+
+  it('还原命令：gunzip 管道进 mysql，密码走 stdin 不进命令行', () => {
+    const cmd = restoreCommand(my, '~/bak/shop-20261018-030405.sql.gz', 'shop')
+    expect(cmd).toContain('gunzip -c')
+    expect(cmd).toContain('mysql')
+    expect(cmd).toContain("'shop'")
+    expect(cmd).toContain('MYSQL_PWD')
+    expect(cmd).not.toMatch(/--password=/)
+    expect(cmd).toContain('started $f')
+  })
+
+  it('还原命令：docker 连接走 docker exec -i 并转发环境变量', () => {
+    const c: DbConn = { ...my, via: 'docker', container: 'db1' }
+    const cmd = restoreCommand(c, '/b/shop-20261018-030405.sql.gz', 'shop')
+    expect(cmd).toContain('docker exec -i')
+    expect(cmd).toContain('db1')
+  })
+
+  it('还原命令：非 MySQL / 非法文件名 / 非法库名都拒绝', () => {
+    expect(() => restoreCommand({ ...my, kind: 'postgres' } as DbConn, '/b/x-20261018-030405.dump', 'shop')).toThrow(/MySQL/)
+    expect(() => restoreCommand(my, '/b/notes.txt', 'shop')).toThrow(/文件名/)
+    expect(() => restoreCommand(my, '/b/shop-20261018-030405.sql.gz', 'shop; rm -rf /')).toThrow(/库名/)
   })
 })

@@ -36,6 +36,8 @@ export interface DbApi {
     backupCancel(id: string, path: string): Promise<void>
     backupList(id: string, dir: string): Promise<import('../../db/index.js').BackupFile[]>
     backupDelete(id: string, dir: string, name: string): Promise<void>
+    /** 还原（本版只支持 MySQL）：先做「还原前快照」再执行 gunzip | mysql；返回 { file, snapshot }，进度用 backupStatus 查 */
+    restore(id: string, file: string, database: string): Promise<{ file: string; snapshot: string }>
     // 定时备份：每个连接一个计划（null = 删除）；scheduleRun 立即跑一次、跑完返回最新计划
     backupScheduleGet(id: string): Promise<import('../../db/index.js').BackupSchedule | null>
     backupScheduleSave(id: string, s: { enabled: boolean; when: import('../../ops/index.js').ScheduleWhen; keep: number; opts: Partial<import('../../db/index.js').BackupOpts> } | null): Promise<import('../../db/index.js').BackupSchedule | null>

@@ -32,6 +32,7 @@ function describe(d: string): { label: string; tone: 'ok' | 'warn' | 'bad' | 'mu
   if (d === 'file_rename') return { label: tr('重命名'), tone: 'warn' }
   if (d === 'mcp_call') return { label: tr('MCP 调用'), tone: 'warn' }
   if (d === 'db_backup') return { label: tr('数据库备份'), tone: 'muted' }
+  if (d === 'db_restore') return { label: tr('数据库·还原'), tone: 'warn' }
   if (d === 'dir_backup') return { label: tr('目录备份'), tone: 'muted' }
   if (d === 'db_key_set') return { label: tr('数据库·改值'), tone: 'warn' }
   if (d === 'db_key_del_many') return { label: tr('数据库·批量删除 key'), tone: 'bad' }

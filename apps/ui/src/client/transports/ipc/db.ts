@@ -27,6 +27,7 @@ export function createDbIpc(): DbApi {
       backupCancel: (id, p) => window.electronAPI.invoke('db:backupCancel', id, p) as Promise<void>,
       backupList: (id, dir) => window.electronAPI.invoke('db:backupList', id, dir) as ReturnType<AppClient['db']['backupList']>,
       backupDelete: (id, dir, name) => window.electronAPI.invoke('db:backupDelete', id, dir, name) as Promise<void>,
+      restore: (id, file, database) => window.electronAPI.invoke('db:restore', id, file, database) as ReturnType<AppClient['db']['restore']>,
       backupScheduleGet: (id) => window.electronAPI.invoke('db:backupScheduleGet', id) as ReturnType<AppClient['db']['backupScheduleGet']>,
       backupScheduleSave: (id, s) => window.electronAPI.invoke('db:backupScheduleSave', id, s) as ReturnType<AppClient['db']['backupScheduleSave']>,
       backupScheduleRun: (id) => window.electronAPI.invoke('db:backupScheduleRun', id) as ReturnType<AppClient['db']['backupScheduleRun']>,

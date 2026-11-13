@@ -100,6 +100,7 @@ db.redisDelMany → db:redisDelMany
 db.redisKey → db:redisKey
 db.redisScan → db:redisScan
 db.redisSet → db:redisSet
+db.restore → db:restore
 db.save → db:save
 db.schemaTable → db:schemaTable
 db.schemaTables → db:schemaTables
