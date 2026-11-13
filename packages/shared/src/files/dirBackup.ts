@@ -74,3 +74,66 @@ export function dirBackupCommand(plan: DirBackupPlan): string {
     `tar -czf ${qPath(plan.out)} -C ${shq(parent)} ${ex} ${shq(`./${name}`)}`,
   )
 }
+
+// ── 还原（把 .tar.gz 解回原目录）─────────────────────────────────────
+// 还原是破坏性操作：执行前先把目标目录现状态打包成 <目录名>-prerestore-时间.tar.gz（放统一备份目录）。
+// 不允许还原到根 / 一级系统目录——那些位置一解压就是整机覆盖。
+const RESTORE_DENY = new Set([
+  '/', '~', '/etc', '/usr', '/bin', '/sbin', '/lib', '/lib64', '/boot', '/dev', '/proc', '/sys',
+  '/var', '/opt', '/root', '/home', '/srv', '/tmp', '/mnt', '/media',
+])
+
+/** 还原目标校验：/ 或 ~ 开头、不能是根或一级系统目录。返回错误文案，undefined = 通过 */
+export function checkRestoreTarget(target: string): string | undefined {
+  const s = (target ?? '').trim()
+  if (!s) return tr('请填写要还原到的目录')
+  if (!s.startsWith('/') && !s.startsWith('~')) return tr('目录要以 / 或 ~ 开头')
+  const hasControl = [...s].some((ch) => { const c = ch.charCodeAt(0); return c > 0 && c < 32 })
+  if (s.includes(ZERO) || hasControl) return tr('目录名里有不可见字符')
+  const norm = s.replace(/\/+$/, '')
+  if (RESTORE_DENY.has(norm || '/')) return tr('不能直接还原到 {dir}：请还原到具体的项目目录', { dir: norm || '/' })
+  return undefined
+}
+
+/** 还原前快照的文件名：<目录名>-prerestore-YYYYMMDD-HHMMSS.tar.gz */
+export function dirRestoreSnapshotName(target: string, now = new Date()): string {
+  return dirBackupFileName(target, now).replace(/-(\d{8}-\d{6})\.tar\.gz$/, '-prerestore-$1.tar.gz')
+}
+
+export interface DirRestorePlan {
+  /** 备份文件（.tar.gz）完整路径 */
+  file: string
+  /** 还原到的目录（按传入的去尾斜杠） */
+  target: string
+  /** 还原前快照的完整路径（统一备份目录下） */
+  snapshot: string
+}
+
+/** 生成还原计划：目标目录 → 解压位置 + 还原前快照路径 */
+export function planDirRestore(file: string, target: string, now = new Date()): DirRestorePlan {
+  const t = target.trim().replace(/\/+$/, '')
+  return {
+    file: file.trim(),
+    target: t,
+    snapshot: `${DIR_BACKUP_DIR}/${dirRestoreSnapshotName(t, now)}`,
+  }
+}
+
+/** `~` 要让 shell 展开 $HOME；`/` 原样 */
+const qDir = (p: string): string => (p === '~' ? '"$HOME"' : p === '/' ? '/' : qPath(p))
+
+/**
+ * 还原命令：目标存在则先打包成快照（失败就停，不动数据）→ tar -xzf 到父目录。
+ * 备份是 `tar -C parent ./name` 打的，所以解压同样到 parent，还原出 parent/name。
+ */
+export function dirRestoreCommand(plan: DirRestorePlan): string {
+  const t = plan.target
+  const parent = t.slice(0, t.lastIndexOf('/')) || '/'
+  const name = t.slice(t.lastIndexOf('/') + 1)
+  const snapDir = plan.snapshot.slice(0, plan.snapshot.lastIndexOf('/'))
+  return shScript(
+    `mkdir -p ${qDir(parent)} ${qPath(snapDir)}; command -v tar >/dev/null 2>&1 || { echo ${NO_TOOL}tar; exit 127; }; ` +
+    `if [ -e ${qDir(parent)}/${shq(name)} ]; then tar -czf ${qPath(plan.snapshot)} -C ${qDir(parent)} ${shq(`./${name}`)} || { echo SNAPSHOT_FAILED; exit 3; }; fi; ` +
+    `tar -xzf ${qPath(plan.file)} -C ${qDir(parent)}`,
+  )
+}

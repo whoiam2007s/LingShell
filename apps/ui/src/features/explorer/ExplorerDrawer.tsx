@@ -396,6 +396,16 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
   const doUnpack = (path: string) => runBusy(tr('正在解压…'), client.fs.unpack(scope, path).finally(() => refresh(dirOf(path))))
   // 目录备份：确认后打包到 ~/lingshell-backups/<目录名>-时间.tar.gz（默认排除 .git / node_modules / 日志），完成后刷新备份目录
   const [backupFor, setBackupFor] = useState<string>()
+  // 还原：选 .tar.gz → 填目标目录（默认按文件名猜一个 ~/ 下的位置）
+  const [restoreFor, setRestoreFor] = useState<string>()
+  const [restoreTarget, setRestoreTarget] = useState('')
+  const doRestore = (file: string, target: string) => {
+    setRestoreFor(undefined)
+    runBusy(tr('正在还原…'), client.fs.restoreDir(scope, file, target).then((r) => {
+      setNote(tr('已还原到 {target}；还原前快照 {snap}', { target: r.target, snap: baseName(r.snapshot) }))
+      refresh(dirOf(r.target))
+    }))
+  }
   const doBackup = (p: string) => {
     setBackupFor(undefined)
     runBusy(tr('正在备份…'), client.fs.backupDir(scope, p).then((out) => {
@@ -907,6 +917,7 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
                 {isRemote && !winHost && <MI onClick={() => setChownFor([e])}>{tr('修改属主…')}</MI>}
                 {isRemote && !winHost && <MI onClick={() => doPack([e.path])}>{tr('压缩为 tar.gz')}</MI>}
                 {isRemote && !winHost && e.isDir && <MI data-menu-backup onClick={() => setBackupFor(e.path)}>{tr('备份为 tar.gz')}</MI>}
+                {isRemote && !winHost && !e.isDir && e.name.endsWith('.tar.gz') && <MI data-menu-restore onClick={() => { setRestoreTarget(`~/${e.name.replace(/-\d{8}-\d{6}\.tar\.gz$/, '').replace(/\.tar\.gz$/, '') || 'restore'}`); setRestoreFor(e.path) }}>{tr('还原到目录…')}</MI>}
                 {isRemote && !winHost && !e.isDir && archiveKind(e.name) && <MI onClick={() => doUnpack(e.path)}>{tr('解压到此处')}</MI>}
                 <Sep />
                 {!isRemote && onUpload && <MI onClick={() => onUpload([e.path])}>{tr('上传到服务器…')}</MI>}
@@ -960,6 +971,18 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
           path: backupFor ?? '', dir: DIR_BACKUP_DIR, name: baseName(backupFor ?? ''), list: DIR_BACKUP_EXCLUDES.join(' '),
         })}
         onConfirm={() => backupFor && doBackup(backupFor)} onCancel={() => setBackupFor(undefined)} />
+      <ConfirmDialog open={!!restoreFor} title={tr('还原到目录')} confirmText={tr('开始还原')}
+        confirmDisabled={!/^(\/|~)/.test(restoreTarget.trim())}
+        message={tr('把「{name}」解压到下面的目录。目标已存在时会先打一份 {name}-prerestore 快照。', { name: baseName(restoreFor ?? '') })}
+        onConfirm={() => restoreFor && doRestore(restoreFor, restoreTarget.trim())} onCancel={() => setRestoreFor(undefined)}>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{tr('还原到')}</span>
+            <input data-restore-target value={restoreTarget} onChange={(e) => setRestoreTarget(e.target.value)} placeholder="/var/www/app" className="min-w-0 flex-1 rounded border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-text-primary)]" />
+          </div>
+          <div className="rounded border border-[var(--color-warn)] bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-[11px] text-[var(--color-warn)]">{tr('备份里的同名文件会覆盖目标目录；不能还原到 /、/etc 这类系统目录。')}</div>
+        </div>
+      </ConfirmDialog>
       {chmodFor && (
         <ChmodDialog names={chmodFor.paths.map((p) => byPath.get(p)?.name ?? p)} initial={chmodFor.mode} anyDir={chmodFor.anyDir} prod={prod}
           onConfirm={doChmod} onCancel={() => setChmodFor(null)} />

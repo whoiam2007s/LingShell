@@ -159,6 +159,7 @@ fs.places → fs:places
 fs.readText → fs:readText
 fs.remove → fs:remove
 fs.rename → fs:rename
+fs.restoreDir → fs:restoreDir
 fs.search → fs:search
 fs.searchContent → fs:search
 fs.showInFolder → fs:showItemInFolder
