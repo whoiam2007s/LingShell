@@ -107,15 +107,18 @@ export interface DirRestorePlan {
   target: string
   /** 还原前快照的完整路径（统一备份目录下） */
   snapshot: string
+  /** true = 快照后先清空目标目录再解压（真正回到备份时的状态）；false = 只覆盖同名文件、保留备份之后新增的文件 */
+  clean: boolean
 }
 
-/** 生成还原计划：目标目录 → 解压位置 + 还原前快照路径 */
-export function planDirRestore(file: string, target: string, now = new Date()): DirRestorePlan {
+/** 生成还原计划：目标目录 → 解压位置 + 还原前快照路径；clean 决定要不要先清空目标目录 */
+export function planDirRestore(file: string, target: string, opts: { clean?: boolean } = {}, now = new Date()): DirRestorePlan {
   const t = target.trim().replace(/\/+$/, '')
   return {
     file: file.trim(),
     target: t,
     snapshot: `${DIR_BACKUP_DIR}/${dirRestoreSnapshotName(t, now)}`,
+    clean: opts.clean === true,
   }
 }
 
@@ -123,17 +126,21 @@ export function planDirRestore(file: string, target: string, now = new Date()): 
 const qDir = (p: string): string => (p === '~' ? '"$HOME"' : p === '/' ? '/' : qPath(p))
 
 /**
- * 还原命令：目标存在则先打包成快照（失败就停，不动数据）→ tar -xzf 到父目录。
+ * 还原命令：目标存在则先打包成快照（失败就停，不动数据）→（可选）清空目标目录 → tar -xzf 到父目录。
  * 备份是 `tar -C parent ./name` 打的，所以解压同样到 parent，还原出 parent/name。
+ * clean 模式下 rm -rf 只作用于「父目录/名字」这一层，且一定在快照成功之后执行。
  */
 export function dirRestoreCommand(plan: DirRestorePlan): string {
   const t = plan.target
   const parent = t.slice(0, t.lastIndexOf('/')) || '/'
   const name = t.slice(t.lastIndexOf('/') + 1)
   const snapDir = plan.snapshot.slice(0, plan.snapshot.lastIndexOf('/'))
+  const targetQ = `${qDir(parent)}/${shq(name)}`
+  const snap = `if [ -e ${targetQ} ]; then tar -czf ${qPath(plan.snapshot)} -C ${qDir(parent)} ${shq(`./${name}`)} || { echo SNAPSHOT_FAILED; exit 3; }; fi; `
+  const wipe = plan.clean ? `rm -rf ${targetQ}; ` : ''
   return shScript(
     `mkdir -p ${qDir(parent)} ${qPath(snapDir)}; command -v tar >/dev/null 2>&1 || { echo ${NO_TOOL}tar; exit 127; }; ` +
-    `if [ -e ${qDir(parent)}/${shq(name)} ]; then tar -czf ${qPath(plan.snapshot)} -C ${qDir(parent)} ${shq(`./${name}`)} || { echo SNAPSHOT_FAILED; exit 3; }; fi; ` +
+    snap + wipe +
     `tar -xzf ${qPath(plan.file)} -C ${qDir(parent)}`,
   )
 }

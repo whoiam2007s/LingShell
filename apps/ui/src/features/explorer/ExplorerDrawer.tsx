@@ -8,6 +8,7 @@ import {
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { ConfirmDialog } from '../common/index.js'
+import { Checkbox } from '../../components/ui/Checkbox.js'
 import { FileEditor } from './FileEditor.js'
 import { ChmodDialog } from './ChmodDialog.js'
 import { openDirSync } from './DirSyncDialog.js'
@@ -399,9 +400,11 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
   // 还原：选 .tar.gz → 填目标目录（默认按文件名猜一个 ~/ 下的位置）
   const [restoreFor, setRestoreFor] = useState<string>()
   const [restoreTarget, setRestoreTarget] = useState('')
+  // clean = 快照后先清空目标目录（真正回到备份时的状态）；默认只覆盖同名文件
+  const [restoreClean, setRestoreClean] = useState(false)
   const doRestore = (file: string, target: string) => {
     setRestoreFor(undefined)
-    runBusy(tr('正在还原…'), client.fs.restoreDir(scope, file, target).then((r) => {
+    runBusy(tr('正在还原…'), client.fs.restoreDir(scope, file, target, restoreClean).then((r) => {
       setNote(tr('已还原到 {target}；还原前快照 {snap}', { target: r.target, snap: baseName(r.snapshot) }))
       refresh(dirOf(r.target))
     }))
@@ -917,7 +920,7 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
                 {isRemote && !winHost && <MI onClick={() => setChownFor([e])}>{tr('修改属主…')}</MI>}
                 {isRemote && !winHost && <MI onClick={() => doPack([e.path])}>{tr('压缩为 tar.gz')}</MI>}
                 {isRemote && !winHost && e.isDir && <MI data-menu-backup onClick={() => setBackupFor(e.path)}>{tr('备份为 tar.gz')}</MI>}
-                {isRemote && !winHost && !e.isDir && e.name.endsWith('.tar.gz') && <MI data-menu-restore onClick={() => { setRestoreTarget(`~/${e.name.replace(/-\d{8}-\d{6}\.tar\.gz$/, '').replace(/\.tar\.gz$/, '') || 'restore'}`); setRestoreFor(e.path) }}>{tr('还原到目录…')}</MI>}
+                {isRemote && !winHost && !e.isDir && e.name.endsWith('.tar.gz') && <MI data-menu-restore onClick={() => { setRestoreTarget(`~/${e.name.replace(/-\d{8}-\d{6}\.tar\.gz$/, '').replace(/\.tar\.gz$/, '') || 'restore'}`); setRestoreClean(false); setRestoreFor(e.path) }}>{tr('还原到目录…')}</MI>}
                 {isRemote && !winHost && !e.isDir && archiveKind(e.name) && <MI onClick={() => doUnpack(e.path)}>{tr('解压到此处')}</MI>}
                 <Sep />
                 {!isRemote && onUpload && <MI onClick={() => onUpload([e.path])}>{tr('上传到服务器…')}</MI>}
@@ -981,6 +984,10 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
             <input data-restore-target value={restoreTarget} onChange={(e) => setRestoreTarget(e.target.value)} placeholder="/var/www/app" className="min-w-0 flex-1 rounded border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-text-primary)]" />
           </div>
           <div className="rounded border border-[var(--color-warn)] bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-[11px] text-[var(--color-warn)]">{tr('备份里的同名文件会覆盖目标目录；不能还原到 /、/etc 这类系统目录。')}</div>
+          <label className="flex items-start gap-1.5 text-[11px] text-[var(--color-text-secondary)]">
+            <span className="mt-0.5"><Checkbox checked={restoreClean} onCheckedChange={setRestoreClean} /></span>
+            <span>{tr('先清空目标目录（真正回到备份时的状态；备份之后新增的文件也会被删掉）')}</span>
+          </label>
         </div>
       </ConfirmDialog>
       {chmodFor && (

@@ -117,6 +117,7 @@ export const chat: Record<string, string> = {
   '还原到': 'Restore into',
   '把「{name}」解压到下面的目录。目标已存在时会先打一份 {name}-prerestore 快照。': 'Extract "{name}" into the folder below. If the target exists, a {name}-prerestore snapshot is taken first.',
   '备份里的同名文件会覆盖目标目录；不能还原到 /、/etc 这类系统目录。': 'Files in the backup overwrite same-named files in the target; restoring into system folders such as / or /etc is not allowed.',
+  '先清空目标目录（真正回到备份时的状态；备份之后新增的文件也会被删掉）': 'Empty the target folder first (return to the exact backup state; files added after the backup are deleted too)',
   '还原前快照没做成，数据未改动（目标目录可能需要更多磁盘空间）': 'The pre-restore snapshot failed; no data was changed (the target may need more free space)',
   '请填写要还原到的目录': 'Enter the folder to restore into',
   '不能直接还原到 {dir}：请还原到具体的项目目录': 'Can\'t restore directly into {dir}: pick a specific project folder',

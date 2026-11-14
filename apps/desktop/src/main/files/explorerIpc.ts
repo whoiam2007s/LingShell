@@ -112,14 +112,14 @@ export function registerExplorer(d: ExplorerIpcDeps): void {
     return plan.out
   })
   // 还原（把 .tar.gz 解回原目录）：目标存在则先打「还原前快照」，再解压；记执行记录（dir_restore）
-  d.handle('fs:restoreDir', async (_e, s, file, target) => {
+  d.handle('fs:restoreDir', async (_e, s, file, target, clean) => {
     const sc = remote(s)
     await noWin(sc, tr('还原目录'))
     const f = str(file, tr('arg|备份文件'))
     const t = str(target, tr('arg|目录'))
     const bad = checkBackupSource(f) ?? checkRestoreTarget(t)
     if (bad) throw new Error(bad)
-    const plan = planDirRestore(f, t)
+    const plan = planDirRestore(f, t, { clean: clean === true })
     const command = dirRestoreCommand(plan)
     const r = await run(sc)(command, ARCHIVE_TIMEOUT_MS * 3)
     const tool = missingTool(r.output)
