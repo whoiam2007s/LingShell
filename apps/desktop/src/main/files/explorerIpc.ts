@@ -1,7 +1,7 @@
 // 资源管理器的写操作 IPC：新建 / 重命名 / 删除（本地进回收站、远程 SFTP 递归）/ 多项下载 / 取消传输；
 // 远程专用的改权限 / 压缩 / 解压 / 按名称搜索。
 // 渲染层参数一律当不可信，逐个校验类型。远程删除、重命名、改权限、压缩、解压记执行记录（本地的不记：可从回收站找回，且不涉及服务器）。
-import { tr, checkBackupSource, planDirBackup, dirBackupCommand, missingTool, type FsScope, type ConflictPolicy, type HashAlgo, type DirBackupOpts } from '@lingshell/shared'
+import { tr, checkBackupSource, planDirBackup, dirBackupCommand, checkRestoreTarget, planDirRestore, dirRestoreCommand, missingTool, type FsScope, type ConflictPolicy, type HashAlgo, type DirBackupOpts } from '@lingshell/shared'
 import { pastePlan, paste, localStats, remoteStats, localChecksum, remoteChecksum, remoteOwners, remoteChown, localSearchNames, localSearchContent, remoteSearchContent, treeStats, treeChecksum, treeSearchNames, winUnsupported } from './explorerOps.js'
 import { assertDeletable, createEntry, deleteTree, planDelete, renameEntry, chmodEntry, packEntries, unpackEntry, searchNames, isFsError, ARCHIVE_TIMEOUT_MS, type TreeOps, type ExecResult, type RunCmd } from './fileOps.js'
 import { SudoError } from './explorerSudo.js'
@@ -110,6 +110,27 @@ export function registerExplorer(d: ExplorerIpcDeps): void {
     }
     audit(sc, { command, decision: 'dir_backup', filePath: plan.out })
     return plan.out
+  })
+  // 还原（把 .tar.gz 解回原目录）：目标存在则先打「还原前快照」，再解压；记执行记录（dir_restore）
+  d.handle('fs:restoreDir', async (_e, s, file, target, clean) => {
+    const sc = remote(s)
+    await noWin(sc, tr('还原目录'))
+    const f = str(file, tr('arg|备份文件'))
+    const t = str(target, tr('arg|目录'))
+    const bad = checkBackupSource(f) ?? checkRestoreTarget(t)
+    if (bad) throw new Error(bad)
+    const plan = planDirRestore(f, t, { clean: clean === true })
+    const command = dirRestoreCommand(plan)
+    const r = await run(sc)(command, ARCHIVE_TIMEOUT_MS * 3)
+    const tool = missingTool(r.output)
+    if (tool) throw new Error(tr('服务器上没有 {tool}', { tool }))
+    if (/SNAPSHOT_FAILED/.test(r.output)) throw new Error(tr('还原前快照没做成，数据未改动（目标目录可能需要更多磁盘空间）'))
+    if (r.code !== 0) {
+      const msg = r.output.trim().slice(-300) || tr('tar 返回 {code}', { code: String(r.code ?? 'null') })
+      throw new Error(tr('还原失败：{msg}', { msg }))
+    }
+    audit(sc, { command, decision: 'dir_restore', filePath: plan.snapshot })
+    return { snapshot: plan.snapshot, target: plan.target }
   })
   d.handle('fs:unpack', async (_e, s, p) => {
     const sc = remote(s), path = str(p, tr('arg|路径'))

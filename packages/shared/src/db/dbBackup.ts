@@ -229,3 +229,55 @@ export function backupsToPrune(files: BackupFile[], c: DbConn, base: string | un
   const mine = files.filter((f) => f.name.startsWith(prefix) && f.name.endsWith(BACKUP_EXT[c.kind]) && /^\d{8}-\d{6}$/.test(f.name.slice(prefix.length, prefix.length + 15)))
   return [...mine].sort((a, b) => b.name.localeCompare(a.name)).slice(Math.max(1, keep)).map((f) => f.name)
 }
+
+// ── 还原（本版只支持 MySQL）──────────────────────────────────────────
+// 还原是破坏性操作：调用方必须在执行前先给当前库做一份「还原前快照」，并在执行记录里留痕。
+export const RESTORE_DECISION = 'db_restore'
+
+/** 本版支持还原的数据库类型（PG / Mongo / Redis 的导入工具与风险各不相同，暂不提供） */
+const RESTORE_KINDS = ['mysql'] as const
+export const canRestore = (kind: string): boolean => (RESTORE_KINDS as readonly string[]).includes(kind)
+
+/** 还原前快照的文件名：复用备份命名规则，slug 里带 prerestore（列表里一眼能看出） */
+export function preRestoreFileName(c: DbConn, database: string, now = new Date()): string {
+  return backupFileName(c, `${database}-prerestore`, now)
+}
+
+/**
+ * 还原命令（MySQL）：gunzip 解压后灌进 mysql 客户端。
+ * 与备份同一套后台任务：旁边仍是 .done / .err / .rc / .pid，输出 `started <文件>`；
+ * 进度看备份文件大小没意义（读的是它），所以界面只显示「进行中 / 完成 / 失败」。
+ */
+export function restoreCommand(c: DbConn, file: string, database: string): string {
+  if (!canRestore(c.kind)) throw new Error(tr('本版只支持还原 MySQL 的 .sql.gz 备份'))
+  const base = file.slice(file.lastIndexOf('/') + 1)
+  if (!isBackupName(base)) throw new Error(tr('非法的备份文件名'))
+  if (!IDENT.test(database)) throw new Error(tr('非法的数据库名'))
+  const argv = [
+    'mysql',
+    ...(c.host ? ['-h', shq(c.host)] : []),
+    ...(c.port ? ['-P', String(c.port)] : []),
+    ...(c.user ? ['-u', shq(c.user)] : []),
+    shq(database),
+  ]
+  // 容器内执行：把环境变量一起带进去（密码走 stdin → 环境变量，不进命令行）
+  const run = c.via === 'docker' && c.container
+    ? ['docker', 'exec', '-i', `\${${PW_ENV[c.kind]}+-e ${PW_ENV[c.kind]}}`, shq(c.container), ...argv]
+    : argv
+  const job = [
+    `{ gunzip -c "$1" | ${run.join(' ')}; echo $? > "$1.rc"; } 2>"$1.err"`,
+    'r=$(cat "$1.rc" 2>/dev/null)',
+    'if [ "$r" = 0 ]; then echo ok > "$1.done"; else echo "fail ${r:-?}" > "$1.done"; fi',
+    'rm -f "$1.rc"',
+  ].join('\n')
+  const script = [
+    ...readPw(c),
+    `f=${shq(file)}`,
+    '[ -f "$f" ] || { echo "missing $f"; exit 5; }',
+    'rm -f "$f.done" "$f.err"',
+    `nohup sh -c ${shq(job)} _ "$f" </dev/null >/dev/null 2>&1 &`,
+    'echo $! > "$f.pid"',
+    'echo "started $f"',
+  ].join('\n')
+  return `sh -c ${shq(script)}`
+}

@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   terminalToolDefs, decideFor, commitGrant, terminalIdOf, type TerminalToolDeps,
   buildStartBackgroundCommand, buildCheckBackgroundCommand, parseStartBackgroundOutput, parseCheckBackgroundOutput,
-  newJobId, isJobId, JOB_DIR, applyEdit, sliceLines, groupSameOutput, approvalView, explainOf, describeCall,
+  newJobId, isJobId, JOB_DIR, applyEdit, editModeOf, sliceLines, groupSameOutput, approvalView, explainOf, describeCall,
   rollbackOf, missingRollback, rollbackDeny,
 } from './terminalTools.js'
 
@@ -270,11 +270,27 @@ describe('文件工具', () => {
     expect(() => applyEdit('x\nx\n', { old_text: 'x', new_text: 'y' })).toThrow(/多次/)
     expect(() => applyEdit('abc', { old_text: 'zzz', new_text: 'y' })).toThrow(/未找到/)
     expect(() => applyEdit(undefined, { old_text: 'a', new_text: 'b' })).toThrow(/不存在/)
-    // content 与 old_text/new_text 同时给：必须报错，不能静默把整个文件换成 content
-    expect(() => applyEdit('a=1\n', { content: 'x', old_text: 'a=1', new_text: 'a=2' })).toThrow(/不能同时给/)
-    expect(() => applyEdit('a=1\n', { content: 'x', old_text: 'a=1' })).toThrow(/不能同时给/)
-    expect(() => applyEdit('a=1\n', { content: 'x', new_text: 'a=2' })).toThrow(/不能同时给/)
+    // GPT 常见形态：整文件写入时把用不到的字段填成空串 → 必须按整文件覆盖处理，不能报「冲突」
+    expect(applyEdit('a=1\n', { content: 'new', old_text: '', new_text: '' })).toBe('new')
+    // 有 old_text 就是替换：new_text 缺失时退 content 当替换内容
+    expect(applyEdit('a=1\n', { content: 'a=2', old_text: 'a=1' })).toBe('a=2\n')
+    // old_text + 空 new_text = 删除这一段
+    expect(applyEdit('a\nb\n', { old_text: 'b\n', new_text: '' })).toBe('a\n')
+    // 只有 new_text、没有 old_text：不能兜底成整文件覆盖（否则整个文件被换成那一小段）
+    expect(() => applyEdit('a=1\nb=2\n', { new_text: 'x' })).toThrow(/old_text/)
+    // 三个都没有：明确报缺参
+    expect(() => applyEdit('a=1\n', {})).toThrow(/需要 content/)
+    // content 空串但带了 new_text：拒绝，避免静默清空文件
+    expect(() => applyEdit('a=1\n', { content: '', new_text: 'x' })).toThrow(/清空/)
+    // 有 content、还多了 new_text 但没有 old_text：按整文件覆盖处理（多余字段忽略）
+    expect(applyEdit('a=1\n', { content: 'x', new_text: 'a=2' })).toBe('x')
     expect(applyEdit('a=1\r\nb=2\r\n', { old_text: 'a=1\nb=2', new_text: 'a=1\nb=3' })).toBe('a=1\r\nb=3\r\n')
+  })
+
+  it('editModeOf：有 old_text 是替换，否则是覆盖（空串算没给）', () => {
+    expect(editModeOf({ old_text: 'a' })).toBe('replace')
+    expect(editModeOf({ old_text: '' })).toBe('overwrite')
+    expect(editModeOf({})).toBe('overwrite')
   })
 
   it('sliceLines：行号区间 1 起含两端，超行数截断', () => {
@@ -298,13 +314,23 @@ describe('文件工具', () => {
     const d = deps({ readFile: async () => disk, writeFile, takeUserOverride: () => ({ base: 'a=1\n' }) })
     const out = JSON.parse(await defOf(d, 'write_file').execute({ terminal_id: 'term_1', path: '/etc/a', old_text: 'a=1', new_text: 'a=2' } as never, exec({ callId: 'w1' }) as never))
     expect(disk).toBe('a=2\n')
-    expect(out).toMatchObject({ ok: true, created: false, backup_path: '/home/u/.lingshell/backups/x' })
+    expect(out).toMatchObject({ ok: true, mode: 'replace', created: false, backup_path: '/home/u/.lingshell/backups/x' })
+    expect(out.summary).toContain('已替换')
     expect(out.diff).toContain('-a=1')   // 结果带 diff：免弹卡时工具卡里也能看到改了什么
     expect(out.diff).toContain('+a=2')
     expect(d.audit).toHaveBeenCalledWith(expect.objectContaining({ decision: 'write_allowed', filePath: '/etc/a', backupPath: '/home/u/.lingshell/backups/x' }))
     // 现在磁盘是 a=2，但用户批的 diff 基于 a=1 → 拒写
     await expect(defOf(d, 'write_file').execute({ terminal_id: 'term_1', path: '/etc/a', content: 'z' } as never, exec({ callId: 'w2' }) as never)).rejects.toThrow(/授权后被改动/)
     expect(writeFile).toHaveBeenCalledTimes(1)
+    // 新建 / 整文件重写：结果里的 mode 与 summary 要能区分开（模型下一轮靠它判断刚才做了什么）
+    const d2 = deps({ readFile: async () => undefined, writeFile: async (_t, p) => ({ path: p }), takeUserOverride: () => undefined })
+    const created = JSON.parse(await defOf(d2, 'write_file').execute({ terminal_id: 'term_1', path: '/n', content: 'x\ny\n' } as never, exec({ callId: 'w3' }) as never))
+    expect(created).toMatchObject({ ok: true, mode: 'create', created: true })
+    expect(created.summary).toContain('已新建')
+    const d3 = deps({ readFile: async () => 'a\n', writeFile: async (_t, p) => ({ path: p }), takeUserOverride: () => ({ base: 'a\n' }) })
+    const over = JSON.parse(await defOf(d3, 'write_file').execute({ terminal_id: 'term_1', path: '/o', content: 'b\n', old_text: '', new_text: '' } as never, exec({ callId: 'w4' }) as never))
+    expect(over).toMatchObject({ ok: true, mode: 'overwrite' })
+    expect(over.summary).toContain('已整文件重写')
   })
 
   it('授权前预览失败（fail）原样抛给模型，不写', async () => {

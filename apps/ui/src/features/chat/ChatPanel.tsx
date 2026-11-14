@@ -277,14 +277,22 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     const el = scrollRef.current
     if (!el) return
     const mark = () => { userScrollUntil.current = Date.now() + 600 }
-    const onWheel = (e: WheelEvent) => { if (e.deltaY < 0) mark() }
+    // 用户一上滚就立即脱离跟随。以前要等离底超过 120px 才算，滚一格（约 100px）还在阈值内，
+    // 下一帧又被钉回底部 → 表现为「滚上去又自动回来」。
+    const unpin = () => { pinnedRef.current = false; setAtBottom(false) }
+    const onWheel = (e: WheelEvent) => {
+      mark()   // 两个方向都算用户操作：向下滚回底部时要能恢复跟随
+      if (e.deltaY < 0) unpin()
+    }
     const onDown = () => { pointerDown.current = true }
     const onUp = () => { if (pointerDown.current) { pointerDown.current = false; mark() } }
     const onKey = (e: KeyboardEvent) => {
-      if (!['PageUp', 'ArrowUp', 'Home'].includes(e.key)) return
+      const up = ['PageUp', 'ArrowUp', 'Home']
+      if (![...up, 'PageDown', 'ArrowDown', 'End'].includes(e.key)) return
       const a = document.activeElement
       if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a?.closest('.xterm')) return
       mark()
+      if (up.includes(e.key)) unpin()
     }
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('pointerdown', onDown)
@@ -302,7 +310,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     if (!el) return
     const dist = Math.round(el.scrollHeight - el.scrollTop - el.clientHeight)
     const user = pointerDown.current || Date.now() < userScrollUntil.current
-    if (dist <= 120) pinnedRef.current = true
+    if (dist <= 120) { if (user) pinnedRef.current = true }
     else if (user) pinnedRef.current = false
     else if (pinnedRef.current && !keepHeightRef.current) el.scrollTop = el.scrollHeight   // 布局造成的偏移：钉回底部
     trail.current = [...trail.current.slice(-7), `d=${dist} h=${el.scrollHeight} u=${user ? 1 : 0} p=${pinnedRef.current ? 1 : 0}`]

@@ -20,6 +20,7 @@ export function createFilesIpc(): FilesApi {
       chmod: (scope: FsScope, paths: string[], mode: number, recursive: boolean) => window.electronAPI.invoke('fs:chmod', scope, paths, mode, recursive) as Promise<void>,
       pack: (scope: FsScope, paths: string[]) => window.electronAPI.invoke('fs:pack', scope, paths) as Promise<string>,
       backupDir: (scope: FsScope, path: string, opts?: DirBackupOpts) => window.electronAPI.invoke('fs:backupDir', scope, path, opts) as Promise<string>,
+      restoreDir: (scope: FsScope, file: string, target: string, clean?: boolean) => window.electronAPI.invoke('fs:restoreDir', scope, file, target, clean) as ReturnType<AppClient['fs']['restoreDir']>,
       unpack: (scope: FsScope, path: string) => window.electronAPI.invoke('fs:unpack', scope, path) as Promise<string>,
       search: ((scope, root, query) => window.electronAPI.invoke('fs:search', scope, root, query)) as AppClient['fs']['search'],
       searchContent: ((scope, root, query) => window.electronAPI.invoke('fs:search', scope, root, query, 'content')) as AppClient['fs']['searchContent'],

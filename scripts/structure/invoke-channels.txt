@@ -105,6 +105,7 @@ db:redisDelMany
 db:redisKey
 db:redisScan
 db:redisSet
+db:restore
 db:save
 db:schemaTable
 db:schemaTables
@@ -163,6 +164,7 @@ fs:places
 fs:readText
 fs:remove
 fs:rename
+fs:restoreDir
 fs:search
 fs:showItemInFolder
 fs:stats

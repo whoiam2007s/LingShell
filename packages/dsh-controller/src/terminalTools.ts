@@ -267,32 +267,50 @@ export function sliceLines(text: string, start?: number, end?: number) {
   return { total_lines: total, start_line: s, end_line: e, content, ...(truncated ? { truncated: true } : {}) }
 }
 
+/** write_file 的执行方式：新建 / 整文件重写 / 局部替换（结果里回给模型，让它知道刚才实际做了什么） */
+export type EditMode = 'create' | 'overwrite' | 'replace'
+
+/** 空串等同「没给」：模型（尤其 GPT）习惯把 schema 里所有字段都填上，用不到的填 "" */
+export const hasText = (v: unknown): v is string => typeof v === 'string' && v !== ''
+
+/** 这次写入会用哪种方式：有 old_text 就是精确替换，否则是整文件覆盖（新建由文件是否存在决定） */
+export const editModeOf = (args: { old_text?: unknown }): Exclude<EditMode, 'create'> =>
+  hasText(args.old_text) ? 'replace' : 'overwrite'
+
 /**
  * write_file 的新内容：content=整文件；old_text+new_text=精确替换（须唯一命中）。
+ * 判据只有一条：**old_text 非空 = 替换，否则 = 整文件覆盖**。
+ * 以前是「content 与 old_text/new_text 同时给就报错」，而模型（尤其 GPT）会把用不到的
+ * 字段填成 ""，于是每次整文件写入都被误判成冲突、直接失败。
  * 模型给的片段是 \n 换行，文件若是 CRLF 则按 CRLF 再试一次。
  */
 export function applyEdit(old: string | undefined, args: { content?: unknown; old_text?: unknown; new_text?: unknown }): string {
-  // content 与 old_text/new_text 互斥：同时给曾经会静默以 content 为准、把整个文件覆盖掉
-  // （模型一个笔误就丢内容，只剩备份能救）。这里直接报错，让人/模型立刻改正。
-  if (typeof args.content === 'string' && (typeof args.old_text === 'string' || typeof args.new_text === 'string')) {
-    throw new Error(tr('content 与 old_text/new_text 不能同时给：整文件重写用 content，局部替换用 old_text + new_text'))
+  if (hasText(args.old_text)) {
+    const from = args.old_text
+    if (old === undefined) throw new Error(tr('文件不存在，不能用 old_text/new_text 编辑；新建文件请传 content'))
+    // new_text 缺失时退 content（模型有时把替换内容放进 content 里）；两者都空 = 删除这一段
+    const to = typeof args.new_text === 'string' ? args.new_text
+      : typeof args.content === 'string' ? args.content
+        : ''
+    const tryWith = (f: string, t: string): string | undefined => {
+      const i = old.indexOf(f)
+      if (i < 0) return undefined
+      if (old.indexOf(f, i + 1) >= 0) throw new Error(tr('old_text 在文件中出现多次，请多带几行上下文使其唯一'))
+      return old.slice(0, i) + t + old.slice(i + f.length)
+    }
+    const crlf = (s: string) => s.replace(/\r?\n/g, '\r\n')
+    const r = tryWith(from, to) ?? (old.includes('\r\n') ? tryWith(crlf(from), crlf(to)) : undefined)
+    if (r === undefined) throw new Error(tr('old_text 在文件中未找到（须逐字一致，含缩进与换行）；可先 read_file 确认原文'))
+    return r
   }
-  if (typeof args.content === 'string') return args.content
-  if (typeof args.old_text !== 'string' || typeof args.new_text !== 'string') {
-    throw new Error(tr('write_file 需要 content（整文件新内容）或 old_text + new_text（精确替换）'))
+  // 整文件覆盖：必须是显式给出的 content。**不拿 new_text 兜底**——模型漏了 old_text 却给了
+  // new_text 时，那多半是想改一段，兜底会把整个文件换成那一小段（静默毁文件）。
+  if (typeof args.content === 'string') {
+    if (args.content === '' && hasText(args.new_text)) throw new Error(tr('要清空文件请只传 content: ""；想局部替换请提供 old_text'))
+    return args.content
   }
-  if (old === undefined) throw new Error(tr('文件不存在，不能用 old_text/new_text 编辑；新建文件请传 content'))
-  if (!args.old_text) throw new Error(tr('old_text 不能为空'))
-  const tryWith = (from: string, to: string): string | undefined => {
-    const i = old.indexOf(from)
-    if (i < 0) return undefined
-    if (old.indexOf(from, i + 1) >= 0) throw new Error(tr('old_text 在文件中出现多次，请多带几行上下文使其唯一'))
-    return old.slice(0, i) + to + old.slice(i + from.length)
-  }
-  const crlf = (s: string) => s.replace(/\r?\n/g, '\r\n')
-  const r = tryWith(args.old_text, args.new_text) ?? (old.includes('\r\n') ? tryWith(crlf(args.old_text), crlf(args.new_text)) : undefined)
-  if (r === undefined) throw new Error(tr('old_text 在文件中未找到（须逐字一致，含缩进与换行）；可先 read_file 确认原文'))
-  return r
+  if (hasText(args.new_text)) throw new Error(tr('只有 new_text 没有 old_text：想局部替换请补上 old_text；整文件重写请用 content'))
+  throw new Error(tr('write_file 需要 content（整文件新内容）或 old_text + new_text（精确替换）'))
 }
 
 const assertText = (t: string, path: string) => {
@@ -999,17 +1017,17 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
     },
     {
       name: 'write_file',
-      description: '修改或新建终端所在主机（本地或 SSH）上的文本文件。二选一：content=整文件新内容（新建/重写）；'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        + 'old_text+new_text=把文件里唯一出现的 old_text 换成 new_text（改局部首选，old_text 须逐字一致并带足上下文）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      description: '修改或新建终端所在主机（本地或 SSH）上的文本文件。判据只有一条：**有 old_text 就按局部替换处理，没有 old_text 就是整文件覆盖**；用不到的字段请直接省略，不要传空字符串；'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + 'old_text=要被替换的原文片段（须逐字一致、在文件中唯一出现，改局部首选）；new_text=替换成的新片段，省略表示删除这一段（缺失时也可用 content 代替）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '父目录不存在会自动创建，**不要先跑 mkdir、也不要拆成「mkdir + 写文件」两步**（那样用户要点两次授权卡）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '首次写入该主机、或会话为「确认」档 / 生产主机时会把 diff 给用户确认；覆盖前自动备份原文件，用户可在执行记录里一键还原。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '改文件请用本工具，不要在终端里用 sed -i / echo > / cat <<EOF 改。需该主机的写入授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
         terminal_id: str('终端 id，据此确定主机'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         path: str('文件绝对路径（远程可用 ~/ 开头）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        content: optStr('整文件新内容（与 old_text/new_text 互斥，同时给会报错）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        old_text: optStr('要被替换的原文片段（须在文件中唯一出现）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        new_text: optStr('替换成的新片段'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        content: optStr('整文件新内容：没有 old_text 时必填（新建或整体重写）；给了 old_text 但没给 new_text 时也可代替替换内容'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        old_text: optStr('要被替换的原文片段（须在文件中唯一出现）。给了它就按局部替换处理'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        new_text: optStr('替换成的新片段；省略或空串表示删除 old_text 这一段'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
       output: textOut,
       async execute(args: any, exec: any) {
@@ -1027,7 +1045,15 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         })
         // diff 随结果回给 UI（工具卡展开可看改了什么，免弹卡时也看得到）；截断控制进模型的长度
         const diff = truncateLines(unifiedDiff(plan.old ?? '', plan.next, r.path), DIFF_MAX_LINES)
-        return JSON.stringify({ ok: true, path: r.path, created: plan.old === undefined, ...(r.backupPath ? { backup_path: r.backupPath } : {}), diff })
+        // 结果里讲清楚这次实际用的是哪种方式（模型下一轮据此判断，不用靠猜）
+        const mode: EditMode = plan.old === undefined ? 'create' : editModeOf(args)
+        const n = (s: string) => s.split('\n').length
+        const summary = mode === 'create'
+          ? tr('已新建文件（{n} 行）', { n: n(plan.next) })
+          : mode === 'overwrite'
+            ? tr('已整文件重写（{before} 行 → {after} 行）', { before: n(plan.old ?? ''), after: n(plan.next) })
+            : tr('已替换 1 处片段（{before} 行 → {after} 行）', { before: n(plan.old ?? ''), after: n(plan.next) })
+        return JSON.stringify({ ok: true, mode, summary, path: r.path, created: plan.old === undefined, ...(r.backupPath ? { backup_path: r.backupPath } : {}), diff })
       },
     },
     {

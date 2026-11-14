@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   DIR_BACKUP_DIR, DIR_BACKUP_EXCLUDES, checkBackupSource, dirBackupFileName, planDirBackup, dirBackupCommand,
+  checkRestoreTarget, planDirRestore, dirRestoreCommand, dirRestoreSnapshotName,
 } from './dirBackup.js'
 
 describe('目录备份：源路径校验', () => {
@@ -65,5 +66,48 @@ describe('目录备份：命令拼装', () => {
     const cmd = dirBackupCommand(planDirBackup('/opt/my app'))
     expect(cmd).toContain('/opt')
     expect(cmd).toContain('./my app')
+  })
+})
+
+describe('目录还原', () => {
+  it('目标校验：拒绝根 / 一级系统目录，接受具体项目目录', () => {
+    for (const bad of ['/', '~', '/etc', '/var', '/usr', '/home', '/root']) {
+      expect(checkRestoreTarget(bad)).toBeTruthy()
+    }
+    expect(checkRestoreTarget('/opt/app')).toBeUndefined()
+    expect(checkRestoreTarget('~/projects/app')).toBeUndefined()
+    expect(checkRestoreTarget('relative/path')).toMatch(/\/ 或 ~/)
+    expect(checkRestoreTarget('')).toMatch(/请填写/)
+  })
+
+  it('还原前快照名带 prerestore 且回到统一备份目录', () => {
+    expect(dirRestoreSnapshotName('/opt/app', new Date(2026, 9, 18, 3, 4, 5))).toBe('app-prerestore-20261018-030405.tar.gz')
+    const plan = planDirRestore('/tmp/a.tar.gz', '/opt/app', {}, new Date(2026, 9, 18, 3, 4, 5))
+    expect(plan.snapshot).toBe(`${DIR_BACKUP_DIR}/app-prerestore-20261018-030405.tar.gz`)
+    expect(plan.clean).toBe(false)
+  })
+
+  it('默认只覆盖同名：命令里没有 rm -rf，解压到父目录', () => {
+    const cmd = dirRestoreCommand(planDirRestore('/bak/app-20261018-030405.tar.gz', '/opt/app'))
+    expect(cmd).toContain('tar -xzf')
+    expect(cmd).toContain("'/opt'")
+    expect(cmd).not.toContain('rm -rf')
+    // 快照必须先于解压
+    expect(cmd.indexOf('tar -czf')).toBeGreaterThan(-1)
+    expect(cmd.indexOf('tar -czf')).toBeLessThan(cmd.indexOf('tar -xzf'))
+  })
+
+  it('clean 模式：快照之后才 rm -rf，且只删目标目录这一层', () => {
+    const cmd = dirRestoreCommand(planDirRestore('/bak/app-20261018-030405.tar.gz', '/opt/app', { clean: true }))
+    expect(cmd).toMatch(/rm -rf [^\n]*app/)   // 删的是目标目录本身（shScript 会把路径再包一层引号，按片段匹配）
+    expect(cmd).toContain('/opt')
+    expect(cmd.indexOf('SNAPSHOT_FAILED')).toBeLessThan(cmd.indexOf('rm -rf'))
+    expect(cmd.indexOf('rm -rf')).toBeLessThan(cmd.indexOf('tar -xzf'))
+  })
+
+  it('~ 路径在命令里展开成 $HOME', () => {
+    const cmd = dirRestoreCommand(planDirRestore('/bak/app-20261018-030405.tar.gz', '~/projects/app'))
+    expect(cmd).toContain('"$HOME/projects"')
+    expect(cmd).toContain('./app')
   })
 })

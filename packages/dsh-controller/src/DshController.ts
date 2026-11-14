@@ -53,6 +53,7 @@ import { secretError } from './secretVault.js'
 import { repairLegacyLog, failureSummary } from './legacyRepair.js'
 import { TurnTimesStore } from './turnTimes.js'
 import { LocalImageStore, readStoredImage } from './attachments.js'
+import * as imagePrune from './imagePrune.js'
 import { withPathsBlock, withContextBlocks, type TurnAttachment, type ContextAttachment, type AskRequest, type AskAnswer, type ChatSearchDoc } from '@lingshell/shared'
 import { askUserToolDef, ASK_GUIDANCE } from './askUser.js'
 import { searchDocs, sessionDigest } from './chatIndex.js'
@@ -220,6 +221,9 @@ export class DshController {
       await ctx.plugin(JsonlPersistence as any, { root: join(this.cfg.baseDir, 'dsh-sessions') })
       // 图片附件存档（ctx.attachments）：用户消息里的图片块只存引用，适配器发请求时经它读字节（见 attachments.ts）
       await ctx.plugin(LocalImageStore as any, { root: this.attachmentRoot })
+      // 历史图片裁剪：每次发送前只保留最近几条消息的原图（见 imagePrune.ts）。
+      // 与官方 image-offload 插件的区别：不响应超预算自动卸载，超限只提示不删图。
+      await ctx.plugin(imagePrune as any)
       // provider 适配器不是 default 导出——模块命名空间本身就是插件（导出 name/apply/inject）。
       // DeepSeek 不挂插件（它只能注册唯一路由），用到哪套配置由 applySettings 按配置注册适配器实例。
       // OpenAI 兼容端点（千问/Kimi/Ollama/自定义）：先空路由「休眠」挂载，用到哪套配置再由 applySettings 加路由
@@ -1118,6 +1122,10 @@ export class DshController {
     const live = this.sessions.get(sessionId)
     if (!live) throw new Error('session_not_found')
     live.lastUsed = Date.now()
+    // 历史图片裁剪：只保留最近几条消息的原图，更早的在请求投影里换成占位文字
+    //（sendTurn 与 steer 都经过这里；失败只记日志，不影响发送）
+    try { imagePrune.pruneOldImages((live.handle.agent as any)?.session, imagePrune.IMAGE_KEEP_MESSAGES) }
+    catch (e) { this.cfg.log?.('warn', 'image prune failed', { sessionId, err: String(e).slice(0, 200) }) }
     const msg = createUserMessage({ content: content as any, source: { kind: 'user' } }) as any
     if (mode === 'steer') live.handle.agent.steer(msg)
     else live.handle.agent.followup(msg)

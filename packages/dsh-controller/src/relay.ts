@@ -159,6 +159,15 @@ export function isNormalEnd(reason: { kind?: string; reason?: { kind?: string };
   return k === 'completed' || k === 'interrupted' || (k === 'aborted' && by === 'user')
 }
 
+// 回合失败的原因文案。图片超出模型限制（适配器报 IMAGE_OFFLOAD_REQUIRED）时不自动删图，
+// 给用户可执行的建议（我们自己的裁剪策略见 imagePrune.ts；这里只负责把报错翻译成人话）。
+const turnErrorText = (reason: any): string => {
+  if (String(reason?.error?.code ?? '') === 'IMAGE_OFFLOAD_REQUIRED') {
+    return tr('这次请求的图片太多，超出模型限制：可以压缩上下文，或只重发最近需要的图片')
+  }
+  return friendlyError(String(reason?.error?.message ?? reason?.kind ?? 'unknown'))
+}
+
 export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, opts: RelayOptions = {}) {
   const openBlocks = new Map<string, ItemKind>()   // 已发过 itemStarted、还没收尾的块 → kind
   // 进行中的思考块：itemId → 侧车键 + 开始时刻（block-start）。块结束 / 流中止时回调 onReasoning 落侧车
@@ -239,14 +248,13 @@ export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, o
         blockStart.clear(); blockCall.clear(); seenAt.clear(); reasoning.clear()
         if (opts.replay) {
           // 历史里出错的轮也要显示错误（用户主动停止的不算错，实时时也不显示）
-          if (!isNormalEnd(reason)) emit({ type: 'agent:turnFailed', sessionId, turnId, error: friendlyError(String(reason.error?.message ?? reason.kind ?? 'unknown')) })
+          if (!isNormalEnd(reason)) emit({ type: 'agent:turnFailed', sessionId, turnId, error: turnErrorText(reason) })
           openBlocks.clear(); doneBlocks.clear(); break
         }
         if (reason.kind === 'completed') emit({ type: 'agent:turnCompleted', sessionId, turnId })
         else {
           // reason.kind 见过 'error'（带 error.message）与取消类；一律走 turnFailed，把 kind 兜底成错因
-          const error = reason.error?.message ?? reason.kind ?? 'unknown'
-          emit({ type: 'agent:turnFailed', sessionId, turnId, error: friendlyError(String(error)), ...(isNormalEnd(reason) ? { stopped: true } : {}) })
+          emit({ type: 'agent:turnFailed', sessionId, turnId, error: turnErrorText(reason), ...(isNormalEnd(reason) ? { stopped: true } : {}) })
         }
         openBlocks.clear()
         doneBlocks.clear()
