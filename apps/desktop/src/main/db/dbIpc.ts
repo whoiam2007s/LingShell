@@ -490,7 +490,7 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
   }
   const tag = (c: DbConn) => `  # ${DB_KIND_LABEL[c.kind]}「${c.name}」`   // i18n-ignore 执行记录（测试按中文断言）
   // 发起一次备份（手动 / 定时共用）：返回备份文件完整路径，任务记进 jobs
-  async function startBackup(c: DbConn, o: BackupOpts, run: DbRun, by = ''): Promise<string> {
+  async function startBackup(c: DbConn, o: BackupOpts, run: DbRun, by = '', nameBase?: string): Promise<string> {
     // 同一连接同时只能有一个备份：双击「开始备份」/ 手动与定时撞车时，两个进程会写同一个 .part
     if (starting.has(c.id) || [...jobs.values()].some((j) => j.connId === c.id && j.status.state === 'running')) {
       throw new Error(tr('这个数据库已有备份在进行，等它结束再开始'))
@@ -499,7 +499,8 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     try {
       const pw = c.secret ? d.password(c.hostKey, c.secret) : ''
       if (/[\r\n]/.test(pw)) throw new Error(tr('密钥保险箱里的这个密码含换行，不能用作数据库密码'))
-      const out = await runWith(run, backupStartCommand(c, o, backupFileName(c, o.database)), `${pw}\n`)
+      // nameBase：文件名前缀（缺省用库名）。还原前快照传「库名-prerestore」，在备份列表里一眼能认出是回滚点
+      const out = await runWith(run, backupStartCommand(c, o, backupFileName(c, nameBase ?? o.database)), `${pw}\n`)
       const m = /^started (.+)$/m.exec(out)
       if (!m) throw new Error(/^exists /m.test(out) ? tr('同名备份文件已存在，稍后再试') : tr('没能启动备份：{err}', { err: out.trim().slice(0, 500) || tr('没有输出') }))
       const path = m[1].trim()
@@ -587,7 +588,7 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     const run = d.run(c.hostKey)
     const dir = path.slice(0, path.lastIndexOf('/')) || '.'
     // 1) 还原前快照（当前库现状）：快照失败/空间不足都不动数据
-    const snap = await startBackup(c, { dir, database: snapDb, tables: [] }, run, '[还原前快照] ')   // i18n-ignore 执行记录里的标签
+    const snap = await startBackup(c, { dir, database: snapDb, tables: [] }, run, '[还原前快照] ', `${snapDb}-prerestore`)   // i18n-ignore 执行记录里的标签
     const snapJob = jobs.get(snap)
     if (snapJob) {
       for (;;) {
