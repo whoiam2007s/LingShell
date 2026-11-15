@@ -54,7 +54,7 @@
 | [主机与连接](guide/zh/hosts.md) | 主机与分组、导入、密钥与凭据、跳板 / 代理 / ProxyCommand、端口转发、OTP、断线重连 |
 | [文件与传输](guide/zh/files.md) | 资源管理器、SFTP 上传下载、断点续传、双栏、sudo 模式、外部编辑器、目录同步 |
 | [Git](guide/zh/git.md) | 改动与差异、暂存提交、分支 / 合并 / rebase / stash、blame、AI 提交说明 |
-| [数据库](guide/zh/database.md) | MySQL / PostgreSQL / Redis / MongoDB 查询、结果导出、备份、慢日志 |
+| [数据库](guide/zh/database.md) | MySQL / PostgreSQL / Redis / MongoDB 查询、结果导出、备份与还原、慢日志 |
 | [容器与 K8s](guide/zh/containers.md) | 本机 / 远程 Docker、Compose、Kubernetes |
 | [运维与排障](guide/zh/ops.md) | 主机体检、配置漂移、日志、端口 / 进程 / 服务、磁盘、连通性、部署评审、批量执行 |
 | [自动化与巡检](guide/zh/automation.md) | 定时巡检、看门狗、证书巡检、基线合规、群机器人推送、快速命令、运维手册 |

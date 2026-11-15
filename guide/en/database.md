@@ -16,6 +16,7 @@ Quick access and backups for MySQL / PostgreSQL / Redis / MongoDB: connect, quer
 - **Redis**: INFO sections, `CLIENT LIST`, `--bigkeys` digest, key browsing (hash / zset pairs, SSCAN paging), client `kill`.
 - **Slow logs**: fetch MySQL / PostgreSQL slow logs and digest them (grouping, time distribution).
 - **Backups**: MySQL (`mysqldump` + gzip), PostgreSQL (`pg_dump -Fc`), Mongo (`mongodump`) — run in the background, with size and free-space estimation and a retention policy.
+- **Restores**: hit the restore button on a backup row to restore it directly (MySQL / PostgreSQL / MongoDB). Restoring is direct by default; tick "back up the current database first" in the dialog if you want a rollback point (the snapshot is named `*-prerestore-*`). When done, the app reports how many objects the target database holds.
 - **Exports**: save query results to files.
 - **Error translation**: common failures (insufficient privilege, bad credentials, unreachable) get human-readable explanations instead of raw errors.
 
@@ -24,13 +25,16 @@ Quick access and backups for MySQL / PostgreSQL / Redis / MongoDB: connect, quer
 1. Add a connection: host / port / database / user, store the password in the vault; pick a jump host if needed.
 2. Write the statement in the query panel, check the result grid, then decide whether to export.
 3. For backups, pick database and tables, choose a target directory, and let it run in the background.
-4. For slow queries, pull the slow-log digest and let the AI combine it with execution plans.
+4. For restores, hit the restore button on a backup row: confirm the overwrite warning, and optionally tick "back up the current database first" to keep a rollback point.
+5. For slow queries, pull the slow-log digest and let the AI combine it with execution plans.
 
 ## Notes
 
 - Passwords never appear on the command line (env / stdin) and never reach the model context.
 - Writes (UPDATE / DELETE / DDL) require approval; validate your conditions with a SELECT in a read-only transaction first.
 - Backups land in `~/lingshell-backups/<connection>/` by default; low disk space is reported beforehand.
+- A restore overwrites the target database and cannot be undone; a `*-prerestore-*` snapshot only appears if you tick "back up the current database first".
+- **Backups and restores work on Windows too** (through the bundled Git Bash) — no need to find a Linux host; if `mysqldump` / `pg_dump` / `mongodump` is missing, the app says "this machine doesn't have xxx".
 
 ## Related
 

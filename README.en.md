@@ -54,7 +54,7 @@ Each area has its own page with usage details and caveats (Chinese and English):
 | [Hosts & connections](guide/en/hosts.md) | Hosts & groups, imports, keys & credentials, jump / proxy / ProxyCommand, port forwarding, OTP, reconnect |
 | [Files & transfer](guide/en/files.md) | Explorer, SFTP upload/download, resume, dual pane, sudo mode, external editor, directory sync |
 | [Git](guide/en/git.md) | Changes & diffs, stage & commit, branches / merge / rebase / stash, blame, AI commit messages |
-| [Database](guide/en/database.md) | MySQL / PostgreSQL / Redis / MongoDB queries, exports, backups, slow logs |
+| [Database](guide/en/database.md) | MySQL / PostgreSQL / Redis / MongoDB queries, exports, backups & restores, slow logs |
 | [Containers & K8s](guide/en/containers.md) | Local & remote Docker, Compose, Kubernetes |
 | [Ops & troubleshooting](guide/en/ops.md) | Host checkup, config drift, logs, ports / processes / services, disk, connectivity, deploy review, batch execution |
 | [Automation & inspections](guide/en/automation.md) | Scheduled inspections, watchdog, certificate checks, baseline compliance, chat-bot alerts, quick commands, runbooks |
