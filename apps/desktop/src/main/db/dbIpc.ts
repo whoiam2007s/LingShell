@@ -568,9 +568,9 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     await runOn(c, backupDeleteCommand(dir, name))
     d.audit(c.hostKey, { command: `[删除备份] ${dir}/${name}${tag(c)}`, decision: BACKUP_DECISION })   // i18n-ignore 执行记录
   })
-  // 还原（MySQL / PostgreSQL / MongoDB）：先给当前库做一份「还原前快照」，成功后再执行导入。
+  // 还原（MySQL / PostgreSQL / MongoDB）：默认直接导入；只有用户勾了「先备份」才做还原前快照。
   // 快照失败就停，不动数据；进度与结果复用备份任务（kind='restore'），界面照常轮询 backupStatus。
-  d.handle('db:restore', async (_e, id, file, database) => {
+  d.handle('db:restore', async (_e, id, file, database, preBackup = false) => {
     const c = connOf(id); unixOnly(c)
     if (!canRestore(c.kind)) throw new Error(tr('本版还不支持还原这类数据库的备份'))
     const path = String(file ?? '')
@@ -579,24 +579,27 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     const db = String(database ?? c.database ?? '').trim()
     // MongoDB 的 archive 自带库名，还原不需要指定目标库；MySQL / PG 必须给
     if (c.kind !== 'mongo' && !db) throw new Error(tr('请填写要还原到的库名'))
-    // 快照仍按连接上的库做（mongodump 需要库名）
+    // 快照仍按连接上的库做（mongodump 需要库名）；只有勾选了「先备份」才用得上
     const snapDb = db || c.database || ''
-    if (c.kind === 'mongo' && !snapDb) throw new Error(tr('还原前快照需要库名：请在连接里填上数据库'))
+    if (preBackup && c.kind === 'mongo' && !snapDb) throw new Error(tr('还原前快照需要库名：请在连接里填上数据库'))
     if (starting.has(c.id) || [...jobs.values()].some((j) => j.connId === c.id && j.status.state === 'running')) {
       throw new Error(tr('这个数据库已有备份/还原在进行，等它结束再开始'))
     }
     const run = d.run(c.hostKey)
     const dir = path.slice(0, path.lastIndexOf('/')) || '.'
-    // 1) 还原前快照（当前库现状）：快照失败/空间不足都不动数据
-    const snap = await startBackup(c, { dir, database: snapDb, tables: [] }, run, '[还原前快照] ', `${snapDb}-prerestore`)   // i18n-ignore 执行记录里的标签
-    const snapJob = jobs.get(snap)
-    if (snapJob) {
-      for (;;) {
-        await pollJob(c, snapJob, run)
-        if (snapJob.status.state !== 'running') break
-        await new Promise((r) => setTimeout(r, 500))
+    // 1) 还原前快照：只在用户勾选时做（默认直接还原）。快照失败/空间不足都不动数据
+    let snap = ''
+    if (preBackup) {
+      snap = await startBackup(c, { dir, database: snapDb, tables: [] }, run, '[还原前快照] ', `${snapDb}-prerestore`)   // i18n-ignore 执行记录里的标签
+      const snapJob = jobs.get(snap)
+      if (snapJob) {
+        for (;;) {
+          await pollJob(c, snapJob, run)
+          if (snapJob.status.state !== 'running') break
+          await new Promise((r) => setTimeout(r, 500))
+        }
+        if (snapJob.status.state !== 'ok') throw new Error(tr('还原前快照没做成（{err}），数据未改动', { err: snapJob.status.error ?? snapJob.status.state }))
       }
-      if (snapJob.status.state !== 'ok') throw new Error(tr('还原前快照没做成（{err}），数据未改动', { err: snapJob.status.error ?? snapJob.status.state }))
     }
     // 2) 执行还原：后台跑，进度走同一个 backupStatus
     const pw = c.secret ? d.password(c.hostKey, c.secret) : ''
@@ -604,7 +607,7 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     const out = await runWith(run, restoreCommand(c, path, db), `${pw}\n`)
     if (!/^started /m.test(out)) throw new Error(tr('没能启动还原：{err}', { err: out.trim().slice(0, 500) || tr('没有输出') }))
     jobs.set(path, { connId: c.id, path, kind: 'restore', label: `${db || snapDb}（← ${name}）`, status: { state: 'running', bytes: 0, file: path, startedAt: Date.now() } })   // i18n-ignore 执行记录里的标签
-    d.audit(c.hostKey, { command: `[还原开始] ${db || snapDb} ← ${path}（还原前快照 ${snap}）${tag(c)}`, decision: RESTORE_DECISION })   // i18n-ignore 执行记录
+    d.audit(c.hostKey, { command: `[还原开始] ${db || snapDb} ← ${path}（${snap ? `还原前快照 ${snap}` : '未做还原前快照'}）${tag(c)}`, decision: RESTORE_DECISION })   // i18n-ignore 执行记录
     return { file: path, snapshot: snap }
   })
   // 数一下这个库里有几个对象（只读）：还原结束后用来确认结果。失败返回 -1，界面不显示。
