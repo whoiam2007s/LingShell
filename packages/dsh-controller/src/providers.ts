@@ -118,9 +118,11 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
   const efforts = effortsOf(s.provider, s.model)
   const model: PiModel = { id: s.model, name: s.model, contextWindow, maxTokens: maxTokensOf(contextWindow), input: inputOf(s.multimodal), ...(efforts ? { reasoningEfforts: efforts } : {}) }
   // 用户选的档位 → 实际派发值（'off' = 支持但什么都不发，pi-ai 用它表示"不思考"）。
-  // 没选时：DeepSeek 一直默认按 high 发（= 界面上的「中」）；Responses 有档位表时默认 medium
-  // （不发 reasoning 会走 pi-ai 的「显式关闭」分支，等于主动让模型别思考）；其它厂商没选就不发。
-  const level = s.thinking ?? (s.provider === 'deepseek' || (responses && efforts !== undefined) ? 'medium' : undefined)
+  // 没选时：DeepSeek 一直默认按 high 发（= 界面上的「中」）；Responses 有档位表时默认「关」
+  // （档位表里 off = null 表示「支持这一档但不发参数」，pi-ai 拿到 off 就不给服务端发 reasoning，
+  // 行为与 0.1.11 一致；想让 GPT 思考的用户自己在「思考深度」里选一档）。
+  // 其它厂商没选就不发 —— 免得给不认识它的端点添麻烦。
+  const level = s.thinking ?? (s.provider === 'deepseek' ? 'medium' : responses && efforts !== undefined ? 'off' : undefined)
   const wire = thinkingWireOfModel(s.provider, s.model, level)
   const others = (routes[route]?.models ?? []).filter((m) => m.id !== s.model)
   return {
