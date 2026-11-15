@@ -472,7 +472,12 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
   // ── 备份（见 shared/db/dbBackup.ts）：在数据库所在机器上后台导出，这里只发起、查进度、取消、列 / 删文件 ──
   const runWith = (run: DbRun, cmd: string, stdin?: string, timeoutMs = DB_TIMEOUT_MS) => run(cmd, { timeoutMs, maxBytes: 256 * 1024, ...(stdin !== undefined ? { stdin } : {}) }).then((r) => d.mask(r.output))
   const runOn = (c: DbConn, cmd: string, stdin?: string, timeoutMs = DB_TIMEOUT_MS) => runWith(d.run(c.hostKey), cmd, stdin, timeoutMs)
-  const unixOnly = (c: DbConn) => { if (c.hostKey === 'local' && process.platform === 'win32') throw new Error(tr('本机是 Windows：备份请在数据库所在的 Linux 主机上做（连接选那台主机）')) }
+  // 本机 Windows 也能备份 / 还原（0.1.14 起）：
+  // 这里以前对「本机 + Windows」直接抛错，等于 Windows 用户连本机数据库永远做不了备份。
+  // 应用用的是 Git Bash 跑命令，nohup / gzip / mysqldump / pg_dump / mongodump 本地都有；
+  // 真缺工具时由各 handler 里的 missingTool 提示（「这台机器上没有 xxx」）兜住，不需要在这一层拦。
+  // 保留函数与调用点，将来要按平台细分（例如仅对某些 via 放行）时改这里即可。
+  const unixOnly = (_c: DbConn): void => {}
   const defaultDir = (c: DbConn) => `~/lingshell-backups/${c.name.replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/^[._-]+/, '').slice(0, 40) || c.kind}`
   type Job = { connId: string; path: string; status: BackupStatus; audited?: boolean; label: string; kind?: 'backup' | 'restore' }
   const jobs = new Map<string, Job>()   // 完整路径 → 任务（本次运行期间；应用重启后列表里仍能看到已完成的文件）
