@@ -1,0 +1,18 @@
+diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
+index 3901bfc4bc6dee0eb45a209dbcbdb59d6c55d054..528251c8d00ce901eac2182280c30b9a69e31f03 100644
+--- a/dist/api/openai-responses-shared.js
++++ b/dist/api/openai-responses-shared.js
+@@ -630,7 +630,12 @@ export async function processResponsesStream(openaiStream, output, stream, model
+             if (item.type === "reasoning" && slot?.type === "thinking") {
+                 const summaryText = item.summary?.map((s) => s.text).join("\n\n") || "";
+                 const contentText = item.content?.map((c) => c.text).join("\n\n") || "";
+-                slot.block.thinking = summaryText || contentText || slot.block.thinking;
++                // LingShell patch: item.summary in output_item.done is not guaranteed to be the
++                // full text (some OpenAI implementations send only the last summary part), so
++                // never let it overwrite reasoning already streamed via summary_text.delta.
++                const doneText = summaryText || contentText;
++                if (!slot.block.thinking) slot.block.thinking = doneText;
++                else if (doneText.startsWith(slot.block.thinking)) slot.block.thinking = doneText;
+                 slot.block.thinkingSignature = JSON.stringify(item);
+                 reasoningBlocksById.set(item.id, slot.block);
+                 stream.push({
