@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backupFileName, backupListCommand, backupSpaceCheck, backupsToPrune, checkBackupOpts, isBackupDir, isBackupName, parseBackupList, sanitizeBackupSchedule, canRestore, preRestoreFileName, restoreCommand } from './dbBackup.js'
+import { backupFileName, backupListCommand, backupSpaceCheck, backupsToPrune, checkBackupOpts, isBackupDir, isBackupName, parseBackupList, sanitizeBackupSchedule, canRestore, preRestoreFileName, restoreCommand, countObjectsCommand } from './dbBackup.js'
 import type { DbConn } from './dbQuick.js'
 
 const my: DbConn = { id: 'm', name: '订单库', hostKey: 'h', kind: 'mysql', via: 'client', database: 'shop' }
@@ -95,6 +95,21 @@ describe('数据库还原（纯逻辑）', () => {
     expect(cmd).toContain('MONGO_PWD')
     expect(cmd).toContain('mktemp')       // 密码走临时 YAML（同备份），不拼进命令行
     expect(cmd).not.toMatch(/--password=/)
+  })
+
+  it('统计对象数：三种类型各自查表/集合，Redis 拒绝', () => {
+    const myCnt = countObjectsCommand(my, 'shop')
+    expect(myCnt).toContain('information_schema.tables')
+    expect(myCnt).toContain('MYSQL_PWD')
+    const pgCnt = countObjectsCommand({ ...my, kind: 'postgres' } as DbConn, 'shop')
+    expect(pgCnt).toContain('psql')
+    expect(pgCnt).toContain('public')
+    expect(pgCnt).toContain('PGPASSWORD')
+    const mgCnt = countObjectsCommand({ ...my, kind: 'mongo' } as DbConn, 'shop')
+    expect(mgCnt).toContain('mongosh')
+    expect(mgCnt).toContain('getCollectionNames')
+    expect(mgCnt).toContain('MONGO_PWD')
+    expect(() => countObjectsCommand({ ...my, kind: 'redis' } as DbConn, 'shop')).toThrow(/不支持/)
   })
 
   it('还原命令：类型不支持 / 扩展名对不上 / 非法文件名 / 非法库名都拒绝', () => {

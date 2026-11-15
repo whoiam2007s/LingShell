@@ -105,6 +105,8 @@ export const chat: Record<string, string> = {
   '本版还不支持还原这类数据库的备份': 'This version can\'t restore backups of this database type',
   '备份文件和数据库类型对不上': 'The backup file doesn\'t match this database type',
   '还原前快照需要库名：请在连接里填上数据库': 'The pre-restore snapshot needs a database name: fill it in on the connection',
+  '还原完成：当前库有 {n} 个对象': 'Restore finished: the database now has {n} objects',
+  '还原失败：{err}': 'Restore failed: {err}',
   '非法的数据库名': 'Invalid database name',
   '请填写要还原到的库名': 'Enter the database to restore into',
   '这个数据库已有备份/还原在进行，等它结束再开始': 'A backup or restore is already running for this database; wait for it to finish',

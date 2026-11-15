@@ -57,8 +57,20 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
     const t = setInterval(tick, 1500)
     return () => { alive = false; clearInterval(t) }
   }, [conn.id, running])
-  // 跑完刷新备份实际写到的那个目录
-  useEffect(() => { if (prevRunning.current && !running) loadFiles(jobs[0] ? dirOf(jobs[0].file) : filesDir); prevRunning.current = running }, [running])
+  // 跑完刷新备份实际写到的那个目录；如果刚结束的是还原，再数一下库里的对象数，直接告诉用户恢复了多少
+  useEffect(() => {
+    if (prevRunning.current && !running) {
+      loadFiles(jobs[0] ? dirOf(jobs[0].file) : filesDir)
+      const done = jobs.find((j) => j.kind === 'restore')
+      if (done?.state === 'ok') {
+        const db = (database.trim() || conn.database || '').trim()
+        if (db) client.db.countObjects(conn.id, db).then((n) => { if (n >= 0) setNote(tr('还原完成：当前库有 {n} 个对象', { n })) }, () => {})
+      } else if (done?.state === 'fail') {
+        setErr(tr('还原失败：{err}', { err: done.error ?? '—' }))
+      }
+    }
+    prevRunning.current = running
+  }, [running])
 
   const start = () => {
     setErr('')

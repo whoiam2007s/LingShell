@@ -18,7 +18,7 @@ const IDENT = /^[A-Za-z0-9_$.-]{1,64}$/
 export interface BackupOpts { dir: string; database?: string; tables?: string[]; routines?: boolean }
 export interface BackupPlan { dir: string; freeBytes?: number; estimateBytes?: number; tool: boolean; blocked?: string; warn?: string }
 export interface BackupFile { name: string; size: number; at: number }
-export interface BackupStatus { state: 'running' | 'ok' | 'fail' | 'canceled'; bytes: number; file: string; error?: string; startedAt: number; endedAt?: number }
+export interface BackupStatus { state: 'running' | 'ok' | 'fail' | 'canceled'; bytes: number; file: string; error?: string; startedAt: number; endedAt?: number; kind?: 'backup' | 'restore' }
 
 /** 备份文件名：<库名或连接名>-YYYYMMDD-HHMMSS<扩展名>（本地时间） */
 export function backupFileName(c: DbConn, base: string | undefined, now = new Date()): string {
@@ -241,6 +241,41 @@ export const canRestore = (kind: string): boolean => (RESTORE_KINDS as readonly 
 /** 还原前快照的文件名：复用备份命名规则，slug 里带 prerestore（列表里一眼能看出） */
 export function preRestoreFileName(c: DbConn, database: string, now = new Date()): string {
   return backupFileName(c, `${database}-prerestore`, now)
+}
+
+/**
+ * 「数一下这个库里有几个对象」：还原结束后用来确认结果（MySQL/PG 数表，Mongo 数集合）。
+ * 只读查询，不进执行记录；命令只输出一个数字。Redis 不在还原范围，直接拒绝。
+ * 密码同样走 stdin 第一行（与备份/还原一致），不拼进命令行。
+ */
+export function countObjectsCommand(c: DbConn, database: string): string {
+  if (c.kind === 'redis') throw new Error(tr('本版还不支持还原这类数据库的备份'))
+  if (!IDENT.test(database)) throw new Error(tr('非法的数据库名'))
+  const docker = c.via === 'docker' && !!c.container
+  const wrap = (argv: string[]): string[] =>
+    docker ? ['docker', 'exec', '-i', `\${${PW_ENV[c.kind]}+-e ${PW_ENV[c.kind]}}`, shq(c.container!), ...argv] : argv
+  let argv: string[]
+  if (c.kind === 'mysql') {
+    const q = `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=${shq(database)}`
+    argv = ['mysql', '-N', '-B', ...(c.host ? ['-h', shq(c.host)] : []), ...(c.port ? ['-P', String(c.port)] : []), ...(c.user ? ['-u', shq(c.user)] : []), '-e', shq(q)]
+  } else if (c.kind === 'postgres') {
+    // 只数 public schema 里的普通表和视图；pg_restore --clean 也是按它恢复的
+    const q = "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
+    argv = ['psql', '-tA', '-w', ...(c.host ? ['-h', shq(c.host)] : []), ...(c.port ? ['-p', String(c.port)] : []), ...(c.user ? ['-U', shq(c.user)] : []), '-d', shq(database), '-c', shq(q)]
+  } else {
+    // mongo：数集合；密码写临时 YAML（同备份/还原）
+    argv = ['mongosh', '--quiet', '--host', shq(c.host || '127.0.0.1'), '--port', String(c.port || 27017),
+      ...(c.user ? ['--username', shq(c.user), '--authenticationDatabase', 'admin'] : []),
+      shq(database), '--eval', shq('db.getCollectionNames().length')]
+    const run = docker ? ['docker', 'exec', '-i', '${MONGO_PWD+-e MONGO_PWD}', shq(c.container!), ...argv] : argv
+    return ['sh', '-c', shq([
+      ...readPw(c),
+      'umask 077; __cf=$(mktemp) || exit 1; trap \'rm -f "$__cf"\' EXIT',
+      'if [ -n "$MONGO_PWD" ]; then printf "password: \'%s\'\\n" "$(printf %s "$MONGO_PWD" | sed "s/\'/\\\'\\\'/g")" > "$__cf"; fi',
+      `${run.join(' ')} ${'${MONGO_PWD:+--config="$__cf"}'}`,
+    ].join('\n'))].join(' ')
+  }
+  return ['sh', '-c', shq([...readPw(c), wrap(argv).join(' ')].join('\n'))].join(' ')
 }
 
 /**

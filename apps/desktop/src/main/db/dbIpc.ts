@@ -14,7 +14,7 @@ import {
   BACKUP_DECISION, DB_KIND_LABEL, backupCancelCommand, backupCleanupCommand, backupDeleteCommand, backupErrorText, backupEstimateSql, backupFileName, backupListCommand, backupProbeCommand,
   backupSpaceCheck, backupStartCommand, backupStatusCommand, checkBackupOpts, isBackupDir, isBackupName, parseBackupList, parseBackupProbe, parseBackupStatus,
   backupsToPrune, sanitizeBackupSchedule,
-  RESTORE_DECISION, canRestore, restoreCommand,
+  RESTORE_DECISION, canRestore, restoreCommand, countObjectsCommand,
   DB_LIST_SQL, REDIS_KEY_DEL_DECISION, REDIS_KEY_SET_DECISION, REDIS_KEY_DEL_MANY_DECISION, REDIS_DEL_MANY_MAX, isRedisValue, isRedisCursor, isRedisKey, parseCsvTable, parseRedisClients, pgDdl, queryInput, redisErrorOf, redisKeyCmds, redisKeyspace,
   redisPreviewTable, schemaTableSql, schemaTablesSql, shq, withDatabase,
   MONGO_SCRIPT_MAX, MONGO_VIEW_JS, docsToTable, isDbIdent, mongoExplain, mongoJs, mongoPageable, mongoParseOut, mongoQueryBody, mongoQueryText, mongoSchemaDetail, mongoViewResult, parseMongoQuery,
@@ -542,7 +542,7 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     const c = connOf(id)
     const mine = [...jobs.values()].filter((j) => j.connId === c.id)
     for (const j of mine.filter((x) => x.status.state === 'running' && !sched.running.has(x.path))) await pollJob(c, j, d.run(c.hostKey))
-    return mine.map((j) => j.status).sort((a, b) => b.startedAt - a.startedAt)
+    return mine.map((j) => ({ ...j.status, kind: j.kind ?? 'backup' })).sort((a, b) => b.startedAt - a.startedAt)
   })
   d.handle('db:backupCancel', async (_e, id, path) => {
     const c = connOf(id)
@@ -600,6 +600,21 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     jobs.set(path, { connId: c.id, path, kind: 'restore', label: `${db || snapDb}（← ${name}）`, status: { state: 'running', bytes: 0, file: path, startedAt: Date.now() } })   // i18n-ignore 执行记录里的标签
     d.audit(c.hostKey, { command: `[还原开始] ${db || snapDb} ← ${path}（还原前快照 ${snap}）${tag(c)}`, decision: RESTORE_DECISION })   // i18n-ignore 执行记录
     return { file: path, snapshot: snap }
+  })
+  // 数一下这个库里有几个对象（只读）：还原结束后用来确认结果。失败返回 -1，界面不显示。
+  d.handle('db:countObjects', async (_e, id, database) => {
+    const c = connOf(id)
+    const db = String(database ?? c.database ?? '').trim()
+    if (c.kind === 'redis' || !db) return -1
+    const pw = c.secret ? d.password(c.hostKey, c.secret) : ''
+    if (/[\r\n]/.test(pw)) return -1
+    try {
+      const out = await runWith(d.run(c.hostKey), countObjectsCommand(c, db), `${pw}\n`)
+      const n = Number(String(out).trim().split(/\s+/).pop())
+      return Number.isFinite(n) ? n : -1
+    } catch {
+      return -1
+    }
   })
 
   // ── 定时备份：每个连接一个计划，存 schedulesFile；主进程里每分钟看一次到点没有（只在应用开着时跑，错过的启动后补跑一次）──
