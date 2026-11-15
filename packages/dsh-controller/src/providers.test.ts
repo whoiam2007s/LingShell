@@ -49,13 +49,18 @@ describe('withRoute', () => {
       compat: { thinkingFormat: 'deepseek', requiresReasoningContentOnAssistantMessages: true, supportsStore: false },
       models: [{ id: 'deepseek-v4-pro', reasoningEfforts: { off: null, low: 'low', medium: 'high', high: 'max' } }],
     })
-    // 其它提供商不带 DeepSeek 专属项
+    // 其它提供商不带 DeepSeek 专属项（reasoning_content 回放要求）
     const q = withRoute({}, { profileId: 'q', provider: 'qwen', model: 'qwen-max', baseUrl: '' })['lingshell-p-q']
-    expect(q.compat).not.toHaveProperty('thinkingFormat')
+    expect(q.compat).not.toHaveProperty('requiresReasoningContentOnAssistantMessages')
+    // 但通义有自己的思考开关格式：不思考时 pi-ai 会发 enable_thinking:false（真关闭）
+    expect(q.compat).toHaveProperty('thinkingFormat', 'qwen')
+    // 智谱用 zai 格式：不思考时发 thinking:{type:'disabled'}
+    const z = withRoute({}, { profileId: 'z', provider: 'glm', model: 'glm-5', baseUrl: '' })['lingshell-p-z']
+    expect(z.compat).toHaveProperty('thinkingFormat', 'zai')
     // 没选过思考深度就不发这个参数（以前各厂商都不发，这里必须保持）
     expect(q).not.toHaveProperty('reasoning')
-    // 但档位要声明出来，界面才能让用户选（低/中/高）
-    expect(q.models[0]).toHaveProperty('reasoningEfforts', { low: 'low', medium: 'medium', high: 'high' })
+    // 但档位要声明出来，界面才能让用户选（关/低/中/高）
+    expect(q.models[0]).toHaveProperty('reasoningEfforts', { off: null, low: 'low', medium: 'medium', high: 'high' })
   })
   it('不支持思考深度的厂商不声明档位；选了档位就按厂商派发', () => {
     // ollama：本地端点不认识 reasoningEffort，不声明
