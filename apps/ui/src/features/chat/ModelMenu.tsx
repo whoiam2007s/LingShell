@@ -16,8 +16,9 @@ export function ThinkingRow({ provider, model, level, fallback, onPick }: {
   const levels = thinkingLevelsOfModel(provider, model)
   const ok = thinkingSupportedModel(provider, model)
   const has = (lv: ThinkingLevel) => levels.includes(lv)
-  // 本会话设过就用本会话的；没设过跟随模型配置；两者都没有就落在「中」（该厂商没有「中」就取第一个可用档）
-  const effective = level ?? fallback ?? (has('medium') ? 'medium' : levels[0] ?? 'medium')
+  // 本会话设过就用本会话的；没设过跟随模型配置；两者都没有就落在「关」（可用档里没有「关」就取第一个）
+  // 默认「关」与运行时一致：不选就不发 reasoning 参数，不会悄悄让模型开始思考
+  const effective = level ?? fallback ?? (has('off') ? 'off' : levels[0] ?? 'off')
   const name = (lv: ThinkingLevel) => (lv === 'off' ? tr('关') : lv === 'low' ? tr('低') : lv === 'medium' ? tr('中') : tr('高'))
   const wire = thinkingWireOfModel(provider, model, effective)
   const sent = wire === null ? tr('不发思考参数（关闭思考）') : tr('实际发送：{wire}', { wire: wire ?? '' })
@@ -40,7 +41,7 @@ export function ThinkingRow({ provider, model, level, fallback, onPick }: {
         ))}
         {ok && level !== undefined && (
           <button data-thinking="inherit" onClick={() => onPick(undefined)}
-            title={tr('恢复为跟随模型配置（{lv}）', { lv: name(fallback ?? 'medium') })}
+            title={tr('恢复为跟随模型配置（{lv}）', { lv: name(fallback ?? 'off') })}
             className="h-6 shrink-0 rounded border border-[var(--color-border-default)] px-1.5 text-[11px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
             {tr('跟随配置')}
           </button>
