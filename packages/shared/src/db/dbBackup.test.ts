@@ -81,6 +81,7 @@ describe('数据库还原（纯逻辑）', () => {
     expect(cmd).toContain('--if-exists')
     expect(cmd).toContain('-d ')
     expect(cmd).toContain('shop')
+    expect(cmd).not.toMatch(/-d .* - /)   // 不能把 "-" 当文件名传给 pg_restore（会报「无法打开输入文件 "-"」）
     expect(cmd).toContain('< "$1"')
     expect(cmd).toContain('PGPASSWORD')
     expect(cmd).not.toContain('gunzip')   // -Fc 自带压缩，不需要解压
@@ -92,6 +93,7 @@ describe('数据库还原（纯逻辑）', () => {
     expect(cmd).toContain('mongorestore')
     expect(cmd).toContain('--gzip')
     expect(cmd).toContain('--drop')
+    expect(cmd).not.toMatch(/--archive\s+-\s/)   // --archive 不跟值才是 stdin；加单独的 "-" 会报 cannot restore from "-"
     expect(cmd).toContain('MONGO_PWD')
     expect(cmd).toContain('mktemp')       // 密码走临时 YAML（同备份），不拼进命令行
     expect(cmd).not.toMatch(/--password=/)

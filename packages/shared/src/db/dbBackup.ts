@@ -310,19 +310,21 @@ export function restoreCommand(c: DbConn, file: string, database: string): strin
     // gunzip 在宿主机解，解完灌进客户端（docker 时灌进容器）
     job = `{ gunzip -c "$1" | ${wrap(argv).join(' ')}; echo $? > "$1.rc"; } 2>"$1.err"`
   } else if (c.kind === 'postgres') {
-    // -Fc 备份必须用 pg_restore 读；末尾的 - 表示从 stdin 读（文件由外层重定向）
+    // -Fc 备份必须用 pg_restore 读；**不传文件参数**时它从 stdin 读
+    // （写成 `-` 会被当成文件名：无法打开输入文件 "-"），文件由外层重定向喂进来
     const argv = [
       'pg_restore', '--clean', '--if-exists', '--no-owner', '-w',
       ...(c.host ? ['-h', shq(c.host)] : []),
       ...(c.port ? ['-p', String(c.port)] : []),
       ...(c.user ? ['-U', shq(c.user)] : []),
-      '-d', shq(database), '-',
+      '-d', shq(database),
     ]
     job = `{ ${wrap(argv).join(' ')} < "$1"; echo $? > "$1.rc"; } 2>"$1.err"`
   } else {
-    // mongo：密码写临时 YAML（同备份，不走命令行），--archive - 表示从 stdin 读
+    // mongo：密码写临时 YAML（同备份，不走命令行），--archive **不跟值** = 从 stdin 读
+    // （写成 `--archive -` 会被拒绝：cannot restore from "-" when --archive is specified）
     const argv = [
-      'mongorestore', '--gzip', '--archive', '-', '--drop',
+      'mongorestore', '--gzip', '--archive', '--drop',
       '--host', shq(c.host || '127.0.0.1'), '--port', String(c.port || 27017),
       ...(c.user ? ['--username', shq(c.user), '--authenticationDatabase', 'admin'] : []),
       '${MONGO_PWD:+--config="$__cf"}',
