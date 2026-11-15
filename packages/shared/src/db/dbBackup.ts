@@ -234,8 +234,8 @@ export function backupsToPrune(files: BackupFile[], c: DbConn, base: string | un
 // 还原是破坏性操作：调用方必须在执行前先给当前库做一份「还原前快照」，并在执行记录里留痕。
 export const RESTORE_DECISION = 'db_restore'
 
-/** 本版支持还原的数据库类型（PG / Mongo / Redis 的导入工具与风险各不相同，暂不提供） */
-const RESTORE_KINDS = ['mysql'] as const
+/** 本版支持还原的数据库类型（Redis 的 rdb 要停服务替换文件，风险太高，仍不提供） */
+const RESTORE_KINDS = ['mysql', 'postgres', 'mongo'] as const
 export const canRestore = (kind: string): boolean => (RESTORE_KINDS as readonly string[]).includes(kind)
 
 /** 还原前快照的文件名：复用备份命名规则，slug 里带 prerestore（列表里一眼能看出） */
@@ -244,32 +244,61 @@ export function preRestoreFileName(c: DbConn, database: string, now = new Date()
 }
 
 /**
- * 还原命令（MySQL）：gunzip 解压后灌进 mysql 客户端。
+ * 还原命令：把备份文件喂回对应的客户端。
+ * - MySQL `.sql.gz`：gunzip 后走管道灌进 mysql；
+ * - PostgreSQL `.dump`（pg_dump -Fc）：pg_restore --clean --if-exists 先删再建，回到备份时的状态；
+ * - MongoDB `.archive.gz`（mongodump --archive --gzip）：mongorestore --drop 先删同名集合。
+ * 三者的文件都从 **stdin** 喂给客户端（`"$1"` 用重定向），这样 docker 连接也能用——宿主机上的文件路径进不到容器里。
  * 与备份同一套后台任务：旁边仍是 .done / .err / .rc / .pid，输出 `started <文件>`；
  * 进度看备份文件大小没意义（读的是它），所以界面只显示「进行中 / 完成 / 失败」。
  */
 export function restoreCommand(c: DbConn, file: string, database: string): string {
-  if (!canRestore(c.kind)) throw new Error(tr('本版只支持还原 MySQL 的 .sql.gz 备份'))
+  if (!canRestore(c.kind)) throw new Error(tr('本版还不支持还原这类数据库的备份'))
   const base = file.slice(file.lastIndexOf('/') + 1)
   if (!isBackupName(base)) throw new Error(tr('非法的备份文件名'))
-  if (!IDENT.test(database)) throw new Error(tr('非法的数据库名'))
-  const argv = [
-    'mysql',
-    ...(c.host ? ['-h', shq(c.host)] : []),
-    ...(c.port ? ['-P', String(c.port)] : []),
-    ...(c.user ? ['-u', shq(c.user)] : []),
-    shq(database),
-  ]
-  // 容器内执行：把环境变量一起带进去（密码走 stdin → 环境变量，不进命令行）
-  const run = c.via === 'docker' && c.container
-    ? ['docker', 'exec', '-i', `\${${PW_ENV[c.kind]}+-e ${PW_ENV[c.kind]}}`, shq(c.container), ...argv]
-    : argv
-  const job = [
-    `{ gunzip -c "$1" | ${run.join(' ')}; echo $? > "$1.rc"; } 2>"$1.err"`,
-    'r=$(cat "$1.rc" 2>/dev/null)',
-    'if [ "$r" = 0 ]; then echo ok > "$1.done"; else echo "fail ${r:-?}" > "$1.done"; fi',
-    'rm -f "$1.rc"',
-  ].join('\n')
+  if (!base.endsWith(BACKUP_EXT[c.kind])) throw new Error(tr('备份文件和数据库类型对不上'))
+  // Mongo 的 archive 自带库名，不按库还原；其余类型必须给目标库
+  if (c.kind !== 'mongo' && !IDENT.test(database)) throw new Error(tr('非法的数据库名'))
+  const docker = c.via === 'docker' && !!c.container
+  const wrap = (argv: string[]): string[] =>
+    docker ? ['docker', 'exec', '-i', `\${${PW_ENV[c.kind]}+-e ${PW_ENV[c.kind]}}`, shq(c.container!), ...argv] : argv
+
+  let job: string
+  if (c.kind === 'mysql') {
+    const argv = [
+      'mysql',
+      ...(c.host ? ['-h', shq(c.host)] : []),
+      ...(c.port ? ['-P', String(c.port)] : []),
+      ...(c.user ? ['-u', shq(c.user)] : []),
+      shq(database),
+    ]
+    // gunzip 在宿主机解，解完灌进客户端（docker 时灌进容器）
+    job = `{ gunzip -c "$1" | ${wrap(argv).join(' ')}; echo $? > "$1.rc"; } 2>"$1.err"`
+  } else if (c.kind === 'postgres') {
+    // -Fc 备份必须用 pg_restore 读；末尾的 - 表示从 stdin 读（文件由外层重定向）
+    const argv = [
+      'pg_restore', '--clean', '--if-exists', '--no-owner', '-w',
+      ...(c.host ? ['-h', shq(c.host)] : []),
+      ...(c.port ? ['-p', String(c.port)] : []),
+      ...(c.user ? ['-U', shq(c.user)] : []),
+      '-d', shq(database), '-',
+    ]
+    job = `{ ${wrap(argv).join(' ')} < "$1"; echo $? > "$1.rc"; } 2>"$1.err"`
+  } else {
+    // mongo：密码写临时 YAML（同备份，不走命令行），--archive - 表示从 stdin 读
+    const argv = [
+      'mongorestore', '--gzip', '--archive', '-', '--drop',
+      '--host', shq(c.host || '127.0.0.1'), '--port', String(c.port || 27017),
+      ...(c.user ? ['--username', shq(c.user), '--authenticationDatabase', 'admin'] : []),
+      '${MONGO_PWD:+--config="$__cf"}',
+    ]
+    job = [
+      'umask 077; __cf=$(mktemp) || exit 1; trap \'rm -f "$__cf"\' EXIT',
+      // YAML 单引号字符串：值里的 ' 写成 ''
+      'if [ -n "$MONGO_PWD" ]; then printf "password: \'%s\'\\n" "$(printf %s "$MONGO_PWD" | sed "s/\'/\\\'\\\'/g")" > "$__cf"; fi',
+      `{ ${wrap(argv).join(' ')} < "$1"; echo $? > "$1.rc"; } 2>"$1.err"`,
+    ].join('\n')
+  }
   const script = [
     ...readPw(c),
     `f=${shq(file)}`,

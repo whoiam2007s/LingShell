@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CalendarClock, CheckCircle2, Download, HardDriveDownload, Loader2, Play, RefreshCw, RotateCcw, Trash2, XCircle } from 'lucide-react'
-import { canRestore, dateLocale, tr, type BackupFile, type BackupPlan, type BackupSchedule, type BackupStatus, type DbConn } from '@lingshell/shared'
+import { BACKUP_EXT, canRestore, dateLocale, tr, type BackupFile, type BackupPlan, type BackupSchedule, type BackupStatus, type DbConn } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { trx } from '../../lib/trx.js'
 import { Input } from '../../components/ui/Input.js'
@@ -143,7 +143,7 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
                   <td className="whitespace-nowrap text-right">
                     {/* 悬停才显示，免得满屏图标 */}
                     <span className="invisible inline-flex group-hover:visible">
-                      {canRestore(conn.kind) && f.name.endsWith('.sql.gz') && <button data-bk-restore onClick={() => { setRestoreAck(false); setRestoreTarget(f) }} title={tr('用这个备份还原数据库（会覆盖当前数据；开始前自动先备份一份）')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-warn)]"><RotateCcw className="h-3.5 w-3.5" /></button>}
+                      {canRestore(conn.kind) && f.name.endsWith(BACKUP_EXT[conn.kind]) && <button data-bk-restore onClick={() => { setRestoreAck(false); setRestoreTarget(f) }} title={tr('用这个备份还原数据库（会覆盖当前数据；开始前自动先备份一份）')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-warn)]"><RotateCcw className="h-3.5 w-3.5" /></button>}
                       {conn.hostKey !== 'local' && <button data-bk-download onClick={() => void download(f)} title={tr('下载到本机（走传输队列）')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"><Download className="h-3.5 w-3.5" /></button>}
                       <button data-bk-delete onClick={() => setDel(f)} title={tr('删除这个备份文件')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"><Trash2 className="h-3.5 w-3.5" /></button>
                     </span>
@@ -154,8 +154,8 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
           </table>
         )}
         <div className={`mt-1 text-[10.5px] ${MUTED}`}>{canRestore(conn.kind)
-          ? tr('MySQL 备份可以点行尾的还原按钮直接还原（开始前会先把当前库自动备份一份）。')
-          : tr('恢复会覆盖现有数据，这里不提供；需要时用 {cmd} 在终端里手动恢复。', { cmd: conn.kind === 'postgres' ? tr('pg_restore -d 库名 文件') : conn.kind === 'mongo' ? tr('mongorestore --gzip --archive=文件') : tr('gunzip -c 备份文件 > dump.rdb，停掉 Redis 后替换并重启') })}</div>
+          ? tr('{kind} 的备份可以点行尾的还原按钮直接还原（开始前会先把当前库自动备份一份）。', { kind: conn.kind === 'mysql' ? 'MySQL' : conn.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB' })
+          : tr('恢复会覆盖现有数据，这里不提供；需要时在终端里停掉 Redis，用备份的 rdb 替换 dump.rdb 再启动。')}</div>
       </div>
 
       <ConfirmDialog open={askProd} title={tr('生产库：开始备份')} confirmText={tr('开始备份')}
@@ -164,11 +164,13 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
         <div className={`flex items-center gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{conn.kind === 'mysql' ? tr('MySQL 用 --single-transaction 一致性快照，InnoDB 表不锁表；MyISAM 表会被锁到导出结束。') : conn.kind === 'postgres' ? tr('pg_dump 不阻塞读写，但长时间运行会推迟 VACUUM 回收。') : conn.kind === 'mongo' ? tr('mongodump 逐个集合读取，不是一致性快照（副本集可在从节点上做）；会占用缓存和磁盘 IO。') : tr('Redis 会 fork 子进程生成快照，内存紧张时有风险。')}</div>
       </ConfirmDialog>
       <ConfirmDialog open={!!restoreTarget} title={tr('还原数据库')} confirmText={tr('开始还原')} confirmDisabled={!restoreAck}
-        message={tr('把「{name}」还原到库「{db}」？这会覆盖该库现在的数据。', { name: restoreTarget?.name ?? '', db: database.trim() || conn.database || '' })}
+        message={conn.kind === 'mongo'
+          ? tr('用「{name}」还原？备份里记着原来的库名，会按它恢复，并先删掉同名集合。', { name: restoreTarget?.name ?? '' })
+          : tr('把「{name}」还原到库「{db}」？这会覆盖该库现在的数据。', { name: restoreTarget?.name ?? '', db: database.trim() || conn.database || '' })}
         onCancel={() => { setRestoreTarget(null); setRestoreAck(false) }} onConfirm={doRestore}>
         <div className="space-y-1.5">
-          <div className={`flex items-start gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{tr('开始前会先把「{db}」当前数据备份成 {db}-prerestore…，还原失败可以用它回退；还原过程中请不要关闭应用。', { db: database.trim() || conn.database || '' })}</div>
-          <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]"><Checkbox checked={restoreAck} onCheckedChange={setRestoreAck} />{tr('我了解这会覆盖「{db}」现在的全部数据', { db: database.trim() || conn.database || '' })}</label>
+          <div className={`flex items-start gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{tr('开始前会先把「{db}」当前数据备份成一份 prerestore 快照，还原失败可以用它回退；还原过程中请不要关闭应用。', { db: database.trim() || conn.database || tr('这个库') })}</div>
+          <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]"><Checkbox checked={restoreAck} onCheckedChange={setRestoreAck} />{tr('我了解这会覆盖「{db}」现在的全部数据', { db: database.trim() || conn.database || tr('这个库') })}</label>
         </div>
       </ConfirmDialog>
       <ConfirmDialog open={!!del} title={tr('删除备份文件')} confirmText={tr('删除')}

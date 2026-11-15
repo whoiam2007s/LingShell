@@ -43,10 +43,10 @@ describe('数据库备份（纯逻辑）', () => {
 })
 
 describe('数据库还原（纯逻辑）', () => {
-  it('本版只放开 MySQL', () => {
+  it('MySQL / PostgreSQL / MongoDB 放开，Redis 仍不支持（rdb 要停服务替换文件）', () => {
     expect(canRestore('mysql')).toBe(true)
-    expect(canRestore('postgres')).toBe(false)
-    expect(canRestore('mongo')).toBe(false)
+    expect(canRestore('postgres')).toBe(true)
+    expect(canRestore('mongo')).toBe(true)
     expect(canRestore('redis')).toBe(false)
   })
 
@@ -73,8 +73,33 @@ describe('数据库还原（纯逻辑）', () => {
     expect(cmd).toContain('db1')
   })
 
-  it('还原命令：非 MySQL / 非法文件名 / 非法库名都拒绝', () => {
-    expect(() => restoreCommand({ ...my, kind: 'postgres' } as DbConn, '/b/x-20261018-030405.dump', 'shop')).toThrow(/MySQL/)
+  it('还原命令：PG 走 pg_restore --clean，文件从 stdin 读（docker 也能用）', () => {
+    const pg: DbConn = { ...my, kind: 'postgres', port: 5432 }
+    const cmd = restoreCommand(pg, '/b/shop-20261018-030405.dump', 'shop')
+    expect(cmd).toContain('pg_restore')
+    expect(cmd).toContain('--clean')
+    expect(cmd).toContain('--if-exists')
+    expect(cmd).toContain('-d ')
+    expect(cmd).toContain('shop')
+    expect(cmd).toContain('< "$1"')
+    expect(cmd).toContain('PGPASSWORD')
+    expect(cmd).not.toContain('gunzip')   // -Fc 自带压缩，不需要解压
+  })
+
+  it('还原命令：Mongo 走 mongorestore --drop，密码写临时配置不进命令行', () => {
+    const mg: DbConn = { ...my, kind: 'mongo', port: 27017 }
+    const cmd = restoreCommand(mg, '/b/shop-20261018-030405.archive.gz', '')
+    expect(cmd).toContain('mongorestore')
+    expect(cmd).toContain('--gzip')
+    expect(cmd).toContain('--drop')
+    expect(cmd).toContain('MONGO_PWD')
+    expect(cmd).toContain('mktemp')       // 密码走临时 YAML（同备份），不拼进命令行
+    expect(cmd).not.toMatch(/--password=/)
+  })
+
+  it('还原命令：类型不支持 / 扩展名对不上 / 非法文件名 / 非法库名都拒绝', () => {
+    expect(() => restoreCommand({ ...my, kind: 'redis' } as DbConn, '/b/x-20261018-030405.rdb.gz', '')).toThrow(/不支持/)
+    expect(() => restoreCommand({ ...my, kind: 'postgres' } as DbConn, '/b/x-20261018-030405.sql.gz', 'shop')).toThrow(/对不上/)
     expect(() => restoreCommand(my, '/b/notes.txt', 'shop')).toThrow(/文件名/)
     expect(() => restoreCommand(my, '/b/shop-20261018-030405.sql.gz', 'shop; rm -rf /')).toThrow(/库名/)
   })

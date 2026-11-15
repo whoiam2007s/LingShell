@@ -562,23 +562,27 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     await runOn(c, backupDeleteCommand(dir, name))
     d.audit(c.hostKey, { command: `[删除备份] ${dir}/${name}${tag(c)}`, decision: BACKUP_DECISION })   // i18n-ignore 执行记录
   })
-  // 还原（MySQL）：先给当前库做一份「还原前快照」，成功后再执行 gunzip | mysql。
+  // 还原（MySQL / PostgreSQL / MongoDB）：先给当前库做一份「还原前快照」，成功后再执行导入。
   // 快照失败就停，不动数据；进度与结果复用备份任务（kind='restore'），界面照常轮询 backupStatus。
   d.handle('db:restore', async (_e, id, file, database) => {
     const c = connOf(id); unixOnly(c)
-    if (!canRestore(c.kind)) throw new Error(tr('本版只支持还原 MySQL 的 .sql.gz 备份'))
+    if (!canRestore(c.kind)) throw new Error(tr('本版还不支持还原这类数据库的备份'))
     const path = String(file ?? '')
     const name = path.slice(path.lastIndexOf('/') + 1)
     if (!isBackupName(name)) throw new Error(tr('非法的备份文件名'))
     const db = String(database ?? c.database ?? '').trim()
-    if (!db) throw new Error(tr('请填写要还原到的库名'))
+    // MongoDB 的 archive 自带库名，还原不需要指定目标库；MySQL / PG 必须给
+    if (c.kind !== 'mongo' && !db) throw new Error(tr('请填写要还原到的库名'))
+    // 快照仍按连接上的库做（mongodump 需要库名）
+    const snapDb = db || c.database || ''
+    if (c.kind === 'mongo' && !snapDb) throw new Error(tr('还原前快照需要库名：请在连接里填上数据库'))
     if (starting.has(c.id) || [...jobs.values()].some((j) => j.connId === c.id && j.status.state === 'running')) {
       throw new Error(tr('这个数据库已有备份/还原在进行，等它结束再开始'))
     }
     const run = d.run(c.hostKey)
     const dir = path.slice(0, path.lastIndexOf('/')) || '.'
     // 1) 还原前快照（当前库现状）：快照失败/空间不足都不动数据
-    const snap = await startBackup(c, { dir, database: db, tables: [] }, run, '[还原前快照] ')   // i18n-ignore 执行记录里的标签
+    const snap = await startBackup(c, { dir, database: snapDb, tables: [] }, run, '[还原前快照] ')   // i18n-ignore 执行记录里的标签
     const snapJob = jobs.get(snap)
     if (snapJob) {
       for (;;) {
@@ -593,8 +597,8 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     if (/[\r\n]/.test(pw)) throw new Error(tr('密钥保险箱里的这个密码含换行，不能用作数据库密码'))
     const out = await runWith(run, restoreCommand(c, path, db), `${pw}\n`)
     if (!/^started /m.test(out)) throw new Error(tr('没能启动还原：{err}', { err: out.trim().slice(0, 500) || tr('没有输出') }))
-    jobs.set(path, { connId: c.id, path, kind: 'restore', label: `${db}（← ${name}）`, status: { state: 'running', bytes: 0, file: path, startedAt: Date.now() } })   // i18n-ignore 执行记录里的标签
-    d.audit(c.hostKey, { command: `[还原开始] ${db} ← ${path}（还原前快照 ${snap}）${tag(c)}`, decision: RESTORE_DECISION })   // i18n-ignore 执行记录
+    jobs.set(path, { connId: c.id, path, kind: 'restore', label: `${db || snapDb}（← ${name}）`, status: { state: 'running', bytes: 0, file: path, startedAt: Date.now() } })   // i18n-ignore 执行记录里的标签
+    d.audit(c.hostKey, { command: `[还原开始] ${db || snapDb} ← ${path}（还原前快照 ${snap}）${tag(c)}`, decision: RESTORE_DECISION })   // i18n-ignore 执行记录
     return { file: path, snapshot: snap }
   })
 
