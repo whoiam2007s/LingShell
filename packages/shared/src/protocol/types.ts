@@ -460,9 +460,12 @@ export const THINKING_WIRE: Record<string, Partial<Record<ThinkingLevel, string 
   // 不补这一档的话，只要声明了档位表，GPT 每次请求都会思考、界面上还关不掉。
   openai: { off: null, low: 'low', medium: 'medium', high: 'high' },
   xai: { low: 'low', medium: 'medium', high: 'high' },
-  glm: { low: 'low', medium: 'high', high: 'max' },   // GLM-5.x 官方只有 low/high/max（见 docs/思考深度-厂商对照.md）
+  // 智谱 GLM / 通义 Qwen 补上「关」：pi-ai 对这两家有内置的思考开关格式
+  // （compat.thinkingFormat = 'zai' / 'qwen'，见 providers.ts），不发 effort 时会主动下发
+  // thinking:{type:'disabled'} / enable_thinking:false —— 是真正的关闭，不是「不发参数碰运气」。
+  glm: { off: null, low: 'low', medium: 'high', high: 'max' },   // GLM-5.x 官方只有 low/high/max（见 docs/思考深度-厂商对照.md）
   minimax: { low: 'low', medium: 'medium', high: 'high' },
-  qwen: { low: 'low', medium: 'medium', high: 'high' },
+  qwen: { off: null, low: 'low', medium: 'medium', high: 'high' },
   moonshot: { low: 'low', medium: 'high', high: 'max' },   // Kimi 官方 reasoning_effort = low/high/max（默认 max）
   gemini: { low: 'low', medium: 'medium', high: 'high' },
   mistral: { low: 'low', medium: 'medium', high: 'high' },

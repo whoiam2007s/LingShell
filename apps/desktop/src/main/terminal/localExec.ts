@@ -1,6 +1,6 @@
 // 本机独立通道：Git 助手 / 本机视图 / 接口调试的只读查询与手动操作在本机跑的子进程，不进用户看得见的终端。
 // runSh：Windows 用 Git Bash（同本地终端），其它系统 /bin/sh；runFile：直接起程序（netstat / tasklist / taskkill，不经 shell）。
-import { execFile, spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -49,16 +49,56 @@ export function decodeConsole(b: Buffer): string {
   try { return new TextDecoder('gbk').decode(b) } catch { return u }
 }
 
+/** 注册表里最新的 PATH 目录（进程环境可能是旧快照）；按进程生命周期缓存，避免每次执行命令都起 reg.exe */
+let regPathCache: string[] | undefined
+function registryPathDirs(): string[] {
+  if (regPathCache) return regPathCache
+  const keys = [
+    'HKCU\\Environment',
+    'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
+  ]
+  const out: string[] = []
+  for (const key of keys) {
+    try {
+      const raw = execFileSync('reg', ['query', key, '/v', 'Path'], { encoding: 'utf8', windowsHide: true })
+      const m = /Path\s+REG_(?:EXPAND_)?SZ\s+(.+)/.exec(raw)
+      if (!m) continue
+      // %SystemRoot% 这类变量展开；展开不了的原样保留（后面 existsSync 会自然筛掉）
+      const expanded = m[1].trim().replace(/%([^%]+)%/g, (_, n: string) => process.env[n] ?? process.env[n.toUpperCase()] ?? '')
+      out.push(...expanded.split(';').map((s) => s.trim()).filter(Boolean))
+    } catch {
+      // 读不到注册表就跳过：不能因为这一步让数据库功能不可用
+    }
+  }
+  regPathCache = out
+  return out
+}
+
 /**
  * 本机数据库客户端：Windows 上 MySQL / PostgreSQL 安装程序默认不把 bin 加进 PATH（装了却找不到 mysql）。
- * 跑本机数据库命令时把标准安装目录里找到的 bin 补到 PATH 前面；其它系统照旧
+ * 跑本机数据库命令时把这些目录补到 PATH 前面；其它系统照旧。
+ *
+ * 除了标准安装目录，还读**注册表里的最新 PATH**：应用进程的环境变量是启动时的快照，
+ * 改完用户 PATH 不重启 explorer 就一直是旧值——只看进程 PATH 会漏掉装在 D 盘的便携版。
  */
-export function dbClientDirs(root = process.env.ProgramFiles ?? 'C:\\Program Files'): string[] {
+export function dbClientDirs(root = process.env.ProgramFiles ?? 'C:\\Program Files', opts: { registry?: boolean } = {}): string[] {
   if (process.platform !== 'win32') return []
   const out: string[] = []
   const sub = (dir: string) => { try { return readdirSync(dir) } catch { return [] } }
   for (const v of sub(join(root, 'MySQL')).sort().reverse()) { const b = join(root, 'MySQL', v, 'bin'); if (existsSync(join(b, 'mysql.exe'))) out.push(b) }
   for (const v of sub(join(root, 'PostgreSQL')).sort((a, b) => Number(b) - Number(a))) { const b = join(root, 'PostgreSQL', v, 'bin'); if (existsSync(join(b, 'psql.exe'))) out.push(b) }
+  // MongoDB 的 bin 里通常同时有 mongod 和 mongosh（mongosh 也可能单独装，走下面的注册表路径）
+  for (const v of sub(join(root, 'MongoDB', 'Server')).sort().reverse()) {
+    const b = join(root, 'MongoDB', 'Server', v, 'bin')
+    if (existsSync(join(b, 'mongosh.exe')) || existsSync(join(b, 'mongod.exe'))) out.push(b)
+  }
+  // 注册表 PATH 里真实存在、且确实含数据库客户端的目录（便携安装常只靠这一条）
+  if (opts.registry !== false) {
+    const need = ['mysql.exe', 'mysqldump.exe', 'psql.exe', 'pg_dump.exe', 'mongosh.exe', 'mongodump.exe', 'redis-cli.exe']
+    for (const d of registryPathDirs()) {
+      if (!out.includes(d) && need.some((n) => existsSync(join(d, n)))) out.push(d)
+    }
+  }
   return out
 }
 export const DB_LOCAL_SHELL = {

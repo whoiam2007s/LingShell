@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CalendarClock, CheckCircle2, Download, HardDriveDownload, Loader2, Play, RefreshCw, RotateCcw, Trash2, XCircle } from 'lucide-react'
-import { canRestore, dateLocale, tr, type BackupFile, type BackupPlan, type BackupSchedule, type BackupStatus, type DbConn } from '@lingshell/shared'
+import { BACKUP_EXT, canRestore, dateLocale, tr, type BackupFile, type BackupPlan, type BackupSchedule, type BackupStatus, type DbConn } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { trx } from '../../lib/trx.js'
 import { Input } from '../../components/ui/Input.js'
@@ -30,9 +30,10 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
   const [files, setFiles] = useState<BackupFile[]>()
   const [askProd, setAskProd] = useState(false)
   const [del, setDel] = useState<BackupFile | null>(null)
-  // 还原（本版只支持 MySQL）：确认框里要显式勾选，主进程会先做「还原前快照」再执行
+  // 还原：确认框里要显式勾选；「先备份当前库」由用户勾选决定，不勾就直接还原
   const [restoreTarget, setRestoreTarget] = useState<BackupFile | null>(null)
   const [restoreAck, setRestoreAck] = useState(false)
+  const [preBackup, setPreBackup] = useState(false)   // 还原前先备份当前库（默认关：用户勾了才做，否则直接还原）
   const [note, setNote] = useState('')
   const opts = () => ({ dir: dir || undefined, ...(redis ? {} : { database: database.trim(), tables: tables.split(/[\s,，]+/).filter(Boolean) }), routines })
   // 文件列表实际列的是哪个目录（下载 / 删除都按它，不跟着「保存到」输入框里还没检查的值走）
@@ -57,8 +58,20 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
     const t = setInterval(tick, 1500)
     return () => { alive = false; clearInterval(t) }
   }, [conn.id, running])
-  // 跑完刷新备份实际写到的那个目录
-  useEffect(() => { if (prevRunning.current && !running) loadFiles(jobs[0] ? dirOf(jobs[0].file) : filesDir); prevRunning.current = running }, [running])
+  // 跑完刷新备份实际写到的那个目录；如果刚结束的是还原，再数一下库里的对象数，直接告诉用户恢复了多少
+  useEffect(() => {
+    if (prevRunning.current && !running) {
+      loadFiles(jobs[0] ? dirOf(jobs[0].file) : filesDir)
+      const done = jobs.find((j) => j.kind === 'restore')
+      if (done?.state === 'ok') {
+        const db = (database.trim() || conn.database || '').trim()
+        if (db) client.db.countObjects(conn.id, db).then((n) => { if (n >= 0) setNote(tr('还原完成：当前库有 {n} 个对象', { n })) }, () => {})
+      } else if (done?.state === 'fail') {
+        setErr(tr('还原失败：{err}', { err: done.error ?? '—' }))
+      }
+    }
+    prevRunning.current = running
+  }, [running])
 
   const start = () => {
     setErr('')
@@ -76,10 +89,11 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
     const f = restoreTarget
     if (!f) return
     const db = (database.trim() || conn.database || '').trim()
-    setRestoreTarget(null); setRestoreAck(false); setErr(''); setNote('')
-    client.db.restore(conn.id, `${filesDir}/${f.name}`, db).then((r) => {
-      const snapName = r.snapshot.slice(r.snapshot.lastIndexOf('/') + 1)
-      setNote(tr('已开始还原「{name}」→ {db}；还原前快照 {snap}', { name: f.name, db, snap: snapName }))
+    setRestoreTarget(null); setRestoreAck(false); setPreBackup(false); setErr(''); setNote('')
+    client.db.restore(conn.id, `${filesDir}/${f.name}`, db, preBackup).then((r) => {
+      setNote(r.snapshot
+        ? tr('已开始还原「{name}」→ {db}；还原前快照 {snap}', { name: f.name, db, snap: r.snapshot.slice(r.snapshot.lastIndexOf('/') + 1) })
+        : tr('已开始还原「{name}」→ {db}（未做还原前快照）', { name: f.name, db }))
       client.db.backupStatus(conn.id).then(setJobs, () => {})
     }, (e) => setErr(errText(e)))
   }
@@ -143,7 +157,7 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
                   <td className="whitespace-nowrap text-right">
                     {/* 悬停才显示，免得满屏图标 */}
                     <span className="invisible inline-flex group-hover:visible">
-                      {canRestore(conn.kind) && f.name.endsWith('.sql.gz') && <button data-bk-restore onClick={() => { setRestoreAck(false); setRestoreTarget(f) }} title={tr('用这个备份还原数据库（会覆盖当前数据；开始前自动先备份一份）')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-warn)]"><RotateCcw className="h-3.5 w-3.5" /></button>}
+                      {canRestore(conn.kind) && f.name.endsWith(BACKUP_EXT[conn.kind]) && <button data-bk-restore onClick={() => { setRestoreAck(false); setRestoreTarget(f) }} title={tr('用这个备份还原数据库（会覆盖当前数据）')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-warn)]"><RotateCcw className="h-3.5 w-3.5" /></button>}
                       {conn.hostKey !== 'local' && <button data-bk-download onClick={() => void download(f)} title={tr('下载到本机（走传输队列）')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"><Download className="h-3.5 w-3.5" /></button>}
                       <button data-bk-delete onClick={() => setDel(f)} title={tr('删除这个备份文件')} className="rounded p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"><Trash2 className="h-3.5 w-3.5" /></button>
                     </span>
@@ -154,8 +168,8 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
           </table>
         )}
         <div className={`mt-1 text-[10.5px] ${MUTED}`}>{canRestore(conn.kind)
-          ? tr('MySQL 备份可以点行尾的还原按钮直接还原（开始前会先把当前库自动备份一份）。')
-          : tr('恢复会覆盖现有数据，这里不提供；需要时用 {cmd} 在终端里手动恢复。', { cmd: conn.kind === 'postgres' ? tr('pg_restore -d 库名 文件') : conn.kind === 'mongo' ? tr('mongorestore --gzip --archive=文件') : tr('gunzip -c 备份文件 > dump.rdb，停掉 Redis 后替换并重启') })}</div>
+          ? tr('{kind} 的备份可以点行尾的还原按钮直接还原（可勾选先备份当前库）。', { kind: conn.kind === 'mysql' ? 'MySQL' : conn.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB' })
+          : tr('恢复会覆盖现有数据，这里不提供；需要时在终端里停掉 Redis，用备份的 rdb 替换 dump.rdb 再启动。')}</div>
       </div>
 
       <ConfirmDialog open={askProd} title={tr('生产库：开始备份')} confirmText={tr('开始备份')}
@@ -164,11 +178,14 @@ export function BackupPanel({ conn, prod }: { conn: DbConn; prod: boolean }) {
         <div className={`flex items-center gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{conn.kind === 'mysql' ? tr('MySQL 用 --single-transaction 一致性快照，InnoDB 表不锁表；MyISAM 表会被锁到导出结束。') : conn.kind === 'postgres' ? tr('pg_dump 不阻塞读写，但长时间运行会推迟 VACUUM 回收。') : conn.kind === 'mongo' ? tr('mongodump 逐个集合读取，不是一致性快照（副本集可在从节点上做）；会占用缓存和磁盘 IO。') : tr('Redis 会 fork 子进程生成快照，内存紧张时有风险。')}</div>
       </ConfirmDialog>
       <ConfirmDialog open={!!restoreTarget} title={tr('还原数据库')} confirmText={tr('开始还原')} confirmDisabled={!restoreAck}
-        message={tr('把「{name}」还原到库「{db}」？这会覆盖该库现在的数据。', { name: restoreTarget?.name ?? '', db: database.trim() || conn.database || '' })}
-        onCancel={() => { setRestoreTarget(null); setRestoreAck(false) }} onConfirm={doRestore}>
+        message={conn.kind === 'mongo'
+          ? tr('用「{name}」还原？备份里记着原来的库名，会按它恢复，并先删掉同名集合。', { name: restoreTarget?.name ?? '' })
+          : tr('把「{name}」还原到库「{db}」？这会覆盖该库现在的数据。', { name: restoreTarget?.name ?? '', db: database.trim() || conn.database || '' })}
+        onCancel={() => { setRestoreTarget(null); setRestoreAck(false); setPreBackup(false) }} onConfirm={doRestore}>
         <div className="space-y-1.5">
-          <div className={`flex items-start gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{tr('开始前会先把「{db}」当前数据备份成 {db}-prerestore…，还原失败可以用它回退；还原过程中请不要关闭应用。', { db: database.trim() || conn.database || '' })}</div>
-          <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]"><Checkbox checked={restoreAck} onCheckedChange={setRestoreAck} />{tr('我了解这会覆盖「{db}」现在的全部数据', { db: database.trim() || conn.database || '' })}</label>
+          <div className={`flex items-start gap-1.5 ${DANGER_BOX}`}><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{tr('还原过程中请不要关闭应用。')}</div>
+          <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]"><Checkbox checked={preBackup} onCheckedChange={setPreBackup} data-bk-prebackup />{tr('还原前先备份「{db}」当前数据（prerestore 快照，出错可回退）；不勾选则直接还原', { db: database.trim() || conn.database || tr('这个库') })}</label>
+          <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]"><Checkbox checked={restoreAck} onCheckedChange={setRestoreAck} />{tr('我了解这会覆盖「{db}」现在的全部数据', { db: database.trim() || conn.database || tr('这个库') })}</label>
         </div>
       </ConfirmDialog>
       <ConfirmDialog open={!!del} title={tr('删除备份文件')} confirmText={tr('删除')}

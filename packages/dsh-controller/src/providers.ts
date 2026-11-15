@@ -100,6 +100,14 @@ export function deepseekModels<M extends { id: string; inputModalities?: string[
   return cur ? models.map((m) => (m === cur ? next : m)) : [...models, next]
 }
 
+// 厂商级的「思考开关格式」（pi-ai 的 compat.thinkingFormat）：决定『不思考』时向服务端发什么关。
+// 只写 pi-ai **内置支持**的那几家：zai（智谱）→ thinking:{type:'disabled'}；qwen（通义）→ enable_thinking:false。
+// 没写在这张表里的厂商，compat 不带这个字段，行为保持原样（不发开关，由厂商默认值决定）——
+// 对 Kimi（默认 max）、MiniMax 这类「默认就思考」的模型，不发参数不等于关闭，宁可不给假开关。
+const THINKING_FORMAT_OF: Record<string, string> = { glm: 'zai', qwen: 'qwen' }
+/** 该厂商的思考开关格式（没有则 undefined） */
+export const thinkingFormatOf = (provider: string): string | undefined => THINKING_FORMAT_OF[provider]
+
 /**
  * 把一套配置并入 pi-ai 路由表（返回新对象，不改入参）。
  * 同一路由下用过的模型都留着：别的会话可能还在本回合里用旧模型，删掉它下一步就 UNKNOWN_MODEL。
@@ -133,7 +141,14 @@ export function withRoute(routes: Record<string, PiRoute>, s: ProviderSettings):
       api: responses ? 'openai-responses' : 'openai-completions',
       // DeepSeek 官方地址在 openai 协议下修回 https://api.deepseek.com（填了 /anthropic 也修回）
       baseURL: endpointBaseOf(s),
-      compat: responses ? RESPONSES_COMPAT : ds ? DEEPSEEK_COMPAT : COMPAT,
+      // 思考开关格式：GLM / Qwen 声明后，pi-ai 在「不思考」时会主动下发各自的关闭字段
+      // （zai → thinking:{type:'disabled'}，qwen → enable_thinking:false）；
+      // Responses 协议不吃这个字段（它的开关走 reasoning.effort），所以只在 completions 上合并。
+      compat: (() => {
+        const base = responses ? RESPONSES_COMPAT : ds ? DEEPSEEK_COMPAT : COMPAT
+        const fmt = responses ? undefined : thinkingFormatOf(s.provider)
+        return fmt ? { ...base, thinkingFormat: fmt } : base
+      })(),
       retryPolicy: { ...RETRY_POLICY, backoff: { ...RETRY_POLICY.backoff }, retryableCodes: [...RETRYABLE_CODES] },
       // 传给 pi-ai 的是**档位名**（low/medium/high），不是线上值：pi-ai 会再用模型声明的
       // reasoningEfforts（档位 → 厂商线上值）翻译一次。之前传了翻译后的值，等于翻了两次

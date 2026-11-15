@@ -18,7 +18,7 @@ const IDENT = /^[A-Za-z0-9_$.-]{1,64}$/
 export interface BackupOpts { dir: string; database?: string; tables?: string[]; routines?: boolean }
 export interface BackupPlan { dir: string; freeBytes?: number; estimateBytes?: number; tool: boolean; blocked?: string; warn?: string }
 export interface BackupFile { name: string; size: number; at: number }
-export interface BackupStatus { state: 'running' | 'ok' | 'fail' | 'canceled'; bytes: number; file: string; error?: string; startedAt: number; endedAt?: number }
+export interface BackupStatus { state: 'running' | 'ok' | 'fail' | 'canceled'; bytes: number; file: string; error?: string; startedAt: number; endedAt?: number; kind?: 'backup' | 'restore' }
 
 /** 备份文件名：<库名或连接名>-YYYYMMDD-HHMMSS<扩展名>（本地时间） */
 export function backupFileName(c: DbConn, base: string | undefined, now = new Date()): string {
@@ -234,8 +234,8 @@ export function backupsToPrune(files: BackupFile[], c: DbConn, base: string | un
 // 还原是破坏性操作：调用方必须在执行前先给当前库做一份「还原前快照」，并在执行记录里留痕。
 export const RESTORE_DECISION = 'db_restore'
 
-/** 本版支持还原的数据库类型（PG / Mongo / Redis 的导入工具与风险各不相同，暂不提供） */
-const RESTORE_KINDS = ['mysql'] as const
+/** 本版支持还原的数据库类型（Redis 的 rdb 要停服务替换文件，风险太高，仍不提供） */
+const RESTORE_KINDS = ['mysql', 'postgres', 'mongo'] as const
 export const canRestore = (kind: string): boolean => (RESTORE_KINDS as readonly string[]).includes(kind)
 
 /** 还原前快照的文件名：复用备份命名规则，slug 里带 prerestore（列表里一眼能看出） */
@@ -244,32 +244,101 @@ export function preRestoreFileName(c: DbConn, database: string, now = new Date()
 }
 
 /**
- * 还原命令（MySQL）：gunzip 解压后灌进 mysql 客户端。
+ * 「数一下这个库里有几个对象」：还原结束后用来确认结果（MySQL/PG 数表，Mongo 数集合）。
+ * 只读查询，不进执行记录；命令只输出一个数字。Redis 不在还原范围，直接拒绝。
+ * 密码同样走 stdin 第一行（与备份/还原一致），不拼进命令行。
+ */
+export function countObjectsCommand(c: DbConn, database: string): string {
+  if (c.kind === 'redis') throw new Error(tr('本版还不支持还原这类数据库的备份'))
+  if (!IDENT.test(database)) throw new Error(tr('非法的数据库名'))
+  const docker = c.via === 'docker' && !!c.container
+  const wrap = (argv: string[]): string[] =>
+    docker ? ['docker', 'exec', '-i', `\${${PW_ENV[c.kind]}+-e ${PW_ENV[c.kind]}}`, shq(c.container!), ...argv] : argv
+  let argv: string[]
+  if (c.kind === 'mysql') {
+    const q = `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=${shq(database)}`
+    argv = ['mysql', '-N', '-B', ...(c.host ? ['-h', shq(c.host)] : []), ...(c.port ? ['-P', String(c.port)] : []), ...(c.user ? ['-u', shq(c.user)] : []), '-e', shq(q)]
+  } else if (c.kind === 'postgres') {
+    // 只数 public schema 里的普通表和视图；pg_restore --clean 也是按它恢复的
+    const q = "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
+    argv = ['psql', '-tA', '-w', ...(c.host ? ['-h', shq(c.host)] : []), ...(c.port ? ['-p', String(c.port)] : []), ...(c.user ? ['-U', shq(c.user)] : []), '-d', shq(database), '-c', shq(q)]
+  } else {
+    // mongo：数集合；密码写临时 YAML（同备份/还原）
+    argv = ['mongosh', '--quiet', '--host', shq(c.host || '127.0.0.1'), '--port', String(c.port || 27017),
+      ...(c.user ? ['--username', shq(c.user), '--authenticationDatabase', 'admin'] : []),
+      shq(database), '--eval', shq('db.getCollectionNames().length')]
+    const run = docker ? ['docker', 'exec', '-i', '${MONGO_PWD+-e MONGO_PWD}', shq(c.container!), ...argv] : argv
+    return ['sh', '-c', shq([
+      ...readPw(c),
+      'umask 077; __cf=$(mktemp) || exit 1; trap \'rm -f "$__cf"\' EXIT',
+      'if [ -n "$MONGO_PWD" ]; then printf "password: \'%s\'\\n" "$(printf %s "$MONGO_PWD" | sed "s/\'/\\\'\\\'/g")" > "$__cf"; fi',
+      `${run.join(' ')} ${'${MONGO_PWD:+--config="$__cf"}'}`,
+    ].join('\n'))].join(' ')
+  }
+  return ['sh', '-c', shq([...readPw(c), wrap(argv).join(' ')].join('\n'))].join(' ')
+}
+
+/**
+ * 还原命令：把备份文件喂回对应的客户端。
+ * - MySQL `.sql.gz`：gunzip 后走管道灌进 mysql；
+ * - PostgreSQL `.dump`（pg_dump -Fc）：pg_restore --clean --if-exists 先删再建，回到备份时的状态；
+ * - MongoDB `.archive.gz`（mongodump --archive --gzip）：mongorestore --drop 先删同名集合。
+ * 三者的文件都从 **stdin** 喂给客户端（`"$1"` 用重定向），这样 docker 连接也能用——宿主机上的文件路径进不到容器里。
  * 与备份同一套后台任务：旁边仍是 .done / .err / .rc / .pid，输出 `started <文件>`；
  * 进度看备份文件大小没意义（读的是它），所以界面只显示「进行中 / 完成 / 失败」。
  */
 export function restoreCommand(c: DbConn, file: string, database: string): string {
-  if (!canRestore(c.kind)) throw new Error(tr('本版只支持还原 MySQL 的 .sql.gz 备份'))
+  if (!canRestore(c.kind)) throw new Error(tr('本版还不支持还原这类数据库的备份'))
   const base = file.slice(file.lastIndexOf('/') + 1)
   if (!isBackupName(base)) throw new Error(tr('非法的备份文件名'))
-  if (!IDENT.test(database)) throw new Error(tr('非法的数据库名'))
-  const argv = [
-    'mysql',
-    ...(c.host ? ['-h', shq(c.host)] : []),
-    ...(c.port ? ['-P', String(c.port)] : []),
-    ...(c.user ? ['-u', shq(c.user)] : []),
-    shq(database),
-  ]
-  // 容器内执行：把环境变量一起带进去（密码走 stdin → 环境变量，不进命令行）
-  const run = c.via === 'docker' && c.container
-    ? ['docker', 'exec', '-i', `\${${PW_ENV[c.kind]}+-e ${PW_ENV[c.kind]}}`, shq(c.container), ...argv]
-    : argv
-  const job = [
-    `{ gunzip -c "$1" | ${run.join(' ')}; echo $? > "$1.rc"; } 2>"$1.err"`,
-    'r=$(cat "$1.rc" 2>/dev/null)',
-    'if [ "$r" = 0 ]; then echo ok > "$1.done"; else echo "fail ${r:-?}" > "$1.done"; fi',
-    'rm -f "$1.rc"',
-  ].join('\n')
+  if (!base.endsWith(BACKUP_EXT[c.kind])) throw new Error(tr('备份文件和数据库类型对不上'))
+  // Mongo 的 archive 自带库名，不按库还原；其余类型必须给目标库
+  if (c.kind !== 'mongo' && !IDENT.test(database)) throw new Error(tr('非法的数据库名'))
+  const docker = c.via === 'docker' && !!c.container
+  const wrap = (argv: string[]): string[] =>
+    docker ? ['docker', 'exec', '-i', `\${${PW_ENV[c.kind]}+-e ${PW_ENV[c.kind]}}`, shq(c.container!), ...argv] : argv
+
+  let job: string
+  if (c.kind === 'mysql') {
+    const argv = [
+      'mysql',
+      ...(c.host ? ['-h', shq(c.host)] : []),
+      ...(c.port ? ['-P', String(c.port)] : []),
+      ...(c.user ? ['-u', shq(c.user)] : []),
+      shq(database),
+    ]
+    // gunzip 在宿主机解，解完灌进客户端（docker 时灌进容器）
+    job = `{ gunzip -c "$1" | ${wrap(argv).join(' ')}; echo $? > "$1.rc"; } 2>"$1.err"`
+  } else if (c.kind === 'postgres') {
+    // -Fc 备份必须用 pg_restore 读；**不传文件参数**时它从 stdin 读
+    // （写成 `-` 会被当成文件名：无法打开输入文件 "-"），文件由外层重定向喂进来
+    const argv = [
+      'pg_restore', '--clean', '--if-exists', '--no-owner', '-w',
+      ...(c.host ? ['-h', shq(c.host)] : []),
+      ...(c.port ? ['-p', String(c.port)] : []),
+      ...(c.user ? ['-U', shq(c.user)] : []),
+      '-d', shq(database),
+    ]
+    job = `{ ${wrap(argv).join(' ')} < "$1"; echo $? > "$1.rc"; } 2>"$1.err"`
+  } else {
+    // mongo：密码写临时 YAML（同备份，不走命令行），--archive **不跟值** = 从 stdin 读
+    // （写成 `--archive -` 会被拒绝：cannot restore from "-" when --archive is specified）
+    const argv = [
+      'mongorestore', '--gzip', '--archive', '--drop',
+      '--host', shq(c.host || '127.0.0.1'), '--port', String(c.port || 27017),
+      ...(c.user ? ['--username', shq(c.user), '--authenticationDatabase', 'admin'] : []),
+      '${MONGO_PWD:+--config="$__cf"}',
+    ]
+    job = [
+      'umask 077; __cf=$(mktemp) || exit 1; trap \'rm -f "$__cf"\' EXIT',
+      // YAML 单引号字符串：值里的 ' 写成 ''
+      'if [ -n "$MONGO_PWD" ]; then printf "password: \'%s\'\\n" "$(printf %s "$MONGO_PWD" | sed "s/\'/\\\'\\\'/g")" > "$__cf"; fi',
+      `{ ${wrap(argv).join(' ')} < "$1"; echo $? > "$1.rc"; } 2>"$1.err"`,
+    ].join('\n')
+  }
+  // 收尾：把 .rc 转成 .done（界面靠 .done 判断任务结束），再清掉 .rc 和 .pid。
+  // 漏了这一步，还原任务会永远显示「进行中」——它只写了 .rc，没人转成 .done。
+  job += '\nr=$(cat "$1.rc" 2>/dev/null)\nif [ "$r" = 0 ]; then echo ok > "$1.done"; else echo "fail ${r:-?}" > "$1.done"; fi\nrm -f "$1.rc"'
   const script = [
     ...readPw(c),
     `f=${shq(file)}`,

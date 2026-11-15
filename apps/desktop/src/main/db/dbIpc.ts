@@ -14,7 +14,7 @@ import {
   BACKUP_DECISION, DB_KIND_LABEL, backupCancelCommand, backupCleanupCommand, backupDeleteCommand, backupErrorText, backupEstimateSql, backupFileName, backupListCommand, backupProbeCommand,
   backupSpaceCheck, backupStartCommand, backupStatusCommand, checkBackupOpts, isBackupDir, isBackupName, parseBackupList, parseBackupProbe, parseBackupStatus,
   backupsToPrune, sanitizeBackupSchedule,
-  RESTORE_DECISION, canRestore, restoreCommand,
+  RESTORE_DECISION, canRestore, restoreCommand, countObjectsCommand,
   DB_LIST_SQL, REDIS_KEY_DEL_DECISION, REDIS_KEY_SET_DECISION, REDIS_KEY_DEL_MANY_DECISION, REDIS_DEL_MANY_MAX, isRedisValue, isRedisCursor, isRedisKey, parseCsvTable, parseRedisClients, pgDdl, queryInput, redisErrorOf, redisKeyCmds, redisKeyspace,
   redisPreviewTable, schemaTableSql, schemaTablesSql, shq, withDatabase,
   MONGO_SCRIPT_MAX, MONGO_VIEW_JS, docsToTable, isDbIdent, mongoExplain, mongoJs, mongoPageable, mongoParseOut, mongoQueryBody, mongoQueryText, mongoSchemaDetail, mongoViewResult, parseMongoQuery,
@@ -472,7 +472,12 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
   // ── 备份（见 shared/db/dbBackup.ts）：在数据库所在机器上后台导出，这里只发起、查进度、取消、列 / 删文件 ──
   const runWith = (run: DbRun, cmd: string, stdin?: string, timeoutMs = DB_TIMEOUT_MS) => run(cmd, { timeoutMs, maxBytes: 256 * 1024, ...(stdin !== undefined ? { stdin } : {}) }).then((r) => d.mask(r.output))
   const runOn = (c: DbConn, cmd: string, stdin?: string, timeoutMs = DB_TIMEOUT_MS) => runWith(d.run(c.hostKey), cmd, stdin, timeoutMs)
-  const unixOnly = (c: DbConn) => { if (c.hostKey === 'local' && process.platform === 'win32') throw new Error(tr('本机是 Windows：备份请在数据库所在的 Linux 主机上做（连接选那台主机）')) }
+  // 本机 Windows 也能备份 / 还原（0.1.14 起）：
+  // 这里以前对「本机 + Windows」直接抛错，等于 Windows 用户连本机数据库永远做不了备份。
+  // 应用用的是 Git Bash 跑命令，nohup / gzip / mysqldump / pg_dump / mongodump 本地都有；
+  // 真缺工具时由各 handler 里的 missingTool 提示（「这台机器上没有 xxx」）兜住，不需要在这一层拦。
+  // 保留函数与调用点，将来要按平台细分（例如仅对某些 via 放行）时改这里即可。
+  const unixOnly = (_c: DbConn): void => {}
   const defaultDir = (c: DbConn) => `~/lingshell-backups/${c.name.replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/^[._-]+/, '').slice(0, 40) || c.kind}`
   type Job = { connId: string; path: string; status: BackupStatus; audited?: boolean; label: string; kind?: 'backup' | 'restore' }
   const jobs = new Map<string, Job>()   // 完整路径 → 任务（本次运行期间；应用重启后列表里仍能看到已完成的文件）
@@ -485,7 +490,7 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
   }
   const tag = (c: DbConn) => `  # ${DB_KIND_LABEL[c.kind]}「${c.name}」`   // i18n-ignore 执行记录（测试按中文断言）
   // 发起一次备份（手动 / 定时共用）：返回备份文件完整路径，任务记进 jobs
-  async function startBackup(c: DbConn, o: BackupOpts, run: DbRun, by = ''): Promise<string> {
+  async function startBackup(c: DbConn, o: BackupOpts, run: DbRun, by = '', nameBase?: string): Promise<string> {
     // 同一连接同时只能有一个备份：双击「开始备份」/ 手动与定时撞车时，两个进程会写同一个 .part
     if (starting.has(c.id) || [...jobs.values()].some((j) => j.connId === c.id && j.status.state === 'running')) {
       throw new Error(tr('这个数据库已有备份在进行，等它结束再开始'))
@@ -494,7 +499,8 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     try {
       const pw = c.secret ? d.password(c.hostKey, c.secret) : ''
       if (/[\r\n]/.test(pw)) throw new Error(tr('密钥保险箱里的这个密码含换行，不能用作数据库密码'))
-      const out = await runWith(run, backupStartCommand(c, o, backupFileName(c, o.database)), `${pw}\n`)
+      // nameBase：文件名前缀（缺省用库名）。还原前快照传「库名-prerestore」，在备份列表里一眼能认出是回滚点
+      const out = await runWith(run, backupStartCommand(c, o, backupFileName(c, nameBase ?? o.database)), `${pw}\n`)
       const m = /^started (.+)$/m.exec(out)
       if (!m) throw new Error(/^exists /m.test(out) ? tr('同名备份文件已存在，稍后再试') : tr('没能启动备份：{err}', { err: out.trim().slice(0, 500) || tr('没有输出') }))
       const path = m[1].trim()
@@ -542,7 +548,7 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     const c = connOf(id)
     const mine = [...jobs.values()].filter((j) => j.connId === c.id)
     for (const j of mine.filter((x) => x.status.state === 'running' && !sched.running.has(x.path))) await pollJob(c, j, d.run(c.hostKey))
-    return mine.map((j) => j.status).sort((a, b) => b.startedAt - a.startedAt)
+    return mine.map((j) => ({ ...j.status, kind: j.kind ?? 'backup' })).sort((a, b) => b.startedAt - a.startedAt)
   })
   d.handle('db:backupCancel', async (_e, id, path) => {
     const c = connOf(id)
@@ -562,40 +568,62 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     await runOn(c, backupDeleteCommand(dir, name))
     d.audit(c.hostKey, { command: `[删除备份] ${dir}/${name}${tag(c)}`, decision: BACKUP_DECISION })   // i18n-ignore 执行记录
   })
-  // 还原（MySQL）：先给当前库做一份「还原前快照」，成功后再执行 gunzip | mysql。
+  // 还原（MySQL / PostgreSQL / MongoDB）：默认直接导入；只有用户勾了「先备份」才做还原前快照。
   // 快照失败就停，不动数据；进度与结果复用备份任务（kind='restore'），界面照常轮询 backupStatus。
-  d.handle('db:restore', async (_e, id, file, database) => {
+  d.handle('db:restore', async (_e, id, file, database, preBackup = false) => {
     const c = connOf(id); unixOnly(c)
-    if (!canRestore(c.kind)) throw new Error(tr('本版只支持还原 MySQL 的 .sql.gz 备份'))
+    if (!canRestore(c.kind)) throw new Error(tr('本版还不支持还原这类数据库的备份'))
     const path = String(file ?? '')
     const name = path.slice(path.lastIndexOf('/') + 1)
     if (!isBackupName(name)) throw new Error(tr('非法的备份文件名'))
     const db = String(database ?? c.database ?? '').trim()
-    if (!db) throw new Error(tr('请填写要还原到的库名'))
+    // MongoDB 的 archive 自带库名，还原不需要指定目标库；MySQL / PG 必须给
+    if (c.kind !== 'mongo' && !db) throw new Error(tr('请填写要还原到的库名'))
+    // 快照仍按连接上的库做（mongodump 需要库名）；只有勾选了「先备份」才用得上
+    const snapDb = db || c.database || ''
+    if (preBackup && c.kind === 'mongo' && !snapDb) throw new Error(tr('还原前快照需要库名：请在连接里填上数据库'))
     if (starting.has(c.id) || [...jobs.values()].some((j) => j.connId === c.id && j.status.state === 'running')) {
       throw new Error(tr('这个数据库已有备份/还原在进行，等它结束再开始'))
     }
     const run = d.run(c.hostKey)
     const dir = path.slice(0, path.lastIndexOf('/')) || '.'
-    // 1) 还原前快照（当前库现状）：快照失败/空间不足都不动数据
-    const snap = await startBackup(c, { dir, database: db, tables: [] }, run, '[还原前快照] ')   // i18n-ignore 执行记录里的标签
-    const snapJob = jobs.get(snap)
-    if (snapJob) {
-      for (;;) {
-        await pollJob(c, snapJob, run)
-        if (snapJob.status.state !== 'running') break
-        await new Promise((r) => setTimeout(r, 500))
+    // 1) 还原前快照：只在用户勾选时做（默认直接还原）。快照失败/空间不足都不动数据
+    let snap = ''
+    if (preBackup) {
+      snap = await startBackup(c, { dir, database: snapDb, tables: [] }, run, '[还原前快照] ', `${snapDb}-prerestore`)   // i18n-ignore 执行记录里的标签
+      const snapJob = jobs.get(snap)
+      if (snapJob) {
+        for (;;) {
+          await pollJob(c, snapJob, run)
+          if (snapJob.status.state !== 'running') break
+          await new Promise((r) => setTimeout(r, 500))
+        }
+        if (snapJob.status.state !== 'ok') throw new Error(tr('还原前快照没做成（{err}），数据未改动', { err: snapJob.status.error ?? snapJob.status.state }))
       }
-      if (snapJob.status.state !== 'ok') throw new Error(tr('还原前快照没做成（{err}），数据未改动', { err: snapJob.status.error ?? snapJob.status.state }))
     }
     // 2) 执行还原：后台跑，进度走同一个 backupStatus
     const pw = c.secret ? d.password(c.hostKey, c.secret) : ''
     if (/[\r\n]/.test(pw)) throw new Error(tr('密钥保险箱里的这个密码含换行，不能用作数据库密码'))
     const out = await runWith(run, restoreCommand(c, path, db), `${pw}\n`)
     if (!/^started /m.test(out)) throw new Error(tr('没能启动还原：{err}', { err: out.trim().slice(0, 500) || tr('没有输出') }))
-    jobs.set(path, { connId: c.id, path, kind: 'restore', label: `${db}（← ${name}）`, status: { state: 'running', bytes: 0, file: path, startedAt: Date.now() } })   // i18n-ignore 执行记录里的标签
-    d.audit(c.hostKey, { command: `[还原开始] ${db} ← ${path}（还原前快照 ${snap}）${tag(c)}`, decision: RESTORE_DECISION })   // i18n-ignore 执行记录
+    jobs.set(path, { connId: c.id, path, kind: 'restore', label: `${db || snapDb}（← ${name}）`, status: { state: 'running', bytes: 0, file: path, startedAt: Date.now() } })   // i18n-ignore 执行记录里的标签
+    d.audit(c.hostKey, { command: `[还原开始] ${db || snapDb} ← ${path}（${snap ? `还原前快照 ${snap}` : '未做还原前快照'}）${tag(c)}`, decision: RESTORE_DECISION })   // i18n-ignore 执行记录
     return { file: path, snapshot: snap }
+  })
+  // 数一下这个库里有几个对象（只读）：还原结束后用来确认结果。失败返回 -1，界面不显示。
+  d.handle('db:countObjects', async (_e, id, database) => {
+    const c = connOf(id)
+    const db = String(database ?? c.database ?? '').trim()
+    if (c.kind === 'redis' || !db) return -1
+    const pw = c.secret ? d.password(c.hostKey, c.secret) : ''
+    if (/[\r\n]/.test(pw)) return -1
+    try {
+      const out = await runWith(d.run(c.hostKey), countObjectsCommand(c, db), `${pw}\n`)
+      const n = Number(String(out).trim().split(/\s+/).pop())
+      return Number.isFinite(n) ? n : -1
+    } catch {
+      return -1
+    }
   })
 
   // ── 定时备份：每个连接一个计划，存 schedulesFile；主进程里每分钟看一次到点没有（只在应用开着时跑，错过的启动后补跑一次）──

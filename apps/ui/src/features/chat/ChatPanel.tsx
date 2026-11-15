@@ -305,12 +305,19 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     }
   }, [])
   const trail = useRef<string[]>([])   // 最近几次贴底判断（诊断用，见下方切会话后的自检）
+  const lastDist = useRef(1e9)         // 上一次的离底距离：用来判断用户是不是正在往下滚
   const onScroll = () => {
     const el = scrollRef.current
     if (!el) return
     const dist = Math.round(el.scrollHeight - el.scrollTop - el.clientHeight)
+    const prevDist = lastDist.current
+    lastDist.current = dist
     const user = pointerDown.current || Date.now() < userScrollUntil.current
-    if (dist <= 120) { if (user) pinnedRef.current = true }
+    // 距离在变小 = 用户正往下滚（流式内容变长时距离变大，不会被误判）。
+    // 只有往下滚才允许「离底 120px 内恢复跟随」：以前只按距离判断，上滚一格（约 100px、仍在阈值内）
+    // 会被立刻重新钉住，新内容一来又拽回底部——就是「滚一下又被拉回去」。
+    const goingDown = dist < prevDist - 2
+    if (dist <= 120) { if (user && goingDown) pinnedRef.current = true }
     else if (user) pinnedRef.current = false
     else if (pinnedRef.current && !keepHeightRef.current) el.scrollTop = el.scrollHeight   // 布局造成的偏移：钉回底部
     trail.current = [...trail.current.slice(-7), `d=${dist} h=${el.scrollHeight} u=${user ? 1 : 0} p=${pinnedRef.current ? 1 : 0}`]

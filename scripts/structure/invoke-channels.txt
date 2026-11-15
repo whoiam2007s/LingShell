@@ -93,6 +93,7 @@ db:backupScheduleRun
 db:backupScheduleSave
 db:backupStart
 db:backupStatus
+db:countObjects
 db:databases
 db:delete
 db:explain

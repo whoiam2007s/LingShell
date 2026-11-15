@@ -88,6 +88,7 @@ db.backupScheduleRun → db:backupScheduleRun
 db.backupScheduleSave → db:backupScheduleSave
 db.backupStart → db:backupStart
 db.backupStatus → db:backupStatus
+db.countObjects → db:countObjects
 db.databases → db:databases
 db.delete → db:delete
 db.explain → db:explain
