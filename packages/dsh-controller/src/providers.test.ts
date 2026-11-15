@@ -93,9 +93,11 @@ describe('withRoute', () => {
     // completions 那套字段不能混进 Responses 路由（pi-ai 的 compat 按协议白名单校验）
     expect(route.compat).not.toHaveProperty('supportsStore')
     expect(route.compat).not.toHaveProperty('maxTokensField')
-    // 没选档位时默认 medium：pi-ai 只有拿到 reasoningEffort 才会发 { reasoning: { effort, summary: "auto" } }
+    // 没选档位时默认「关」：off 在档位表里是 null（支持但不发参数），pi-ai 不会给服务端发 reasoning，
+    // 行为与 0.1.11 一致；用户想用思考就在「思考深度」里显式选一档
     const def = withRoute({}, { profileId: 'g2', provider: 'openai', model: 'gpt-5', baseUrl: '', protocol: 'openai-responses' })['lingshell-r-g2']
-    expect(def.reasoning).toBe('medium')
+    expect(def.reasoning).toBe('off')
+    expect(def.models[0].reasoningEfforts).toMatchObject({ off: null })
     // 非推理模型（gpt-4o）不声明、不发，否则可能被端点 400
     const g4 = withRoute({}, { profileId: 'g4', provider: 'openai', model: 'gpt-4o', baseUrl: '', protocol: 'openai-responses' })['lingshell-r-g4']
     expect(g4).not.toHaveProperty('reasoning')

@@ -455,8 +455,10 @@ export const THINKING_WIRE: Record<string, Partial<Record<ThinkingLevel, string 
   // 「关」= 这一档不发 reasoning_effort（DeepSeek 这时候由适配器显式发 thinking:disabled）
   deepseek: { off: null, low: 'low', medium: 'high', high: 'max' },
   // 下面各家文档里的取值就是 low / medium / high，与 pi-ai 的档位名同名。
-  // 「关」暂未逐个核对到官方写法，先不声明 → 界面上「关」置灰。
-  openai: { low: 'low', medium: 'medium', high: 'high' },
+  // OpenAI 补上「关」：o 系列 / gpt-5 支持按需关闭推理；null = 支持这一档但**不发任何参数**
+  // （pi-ai 拿到 off 会把 reasoningEffort 丢掉，不会给服务端发 reasoning 字段）。
+  // 不补这一档的话，只要声明了档位表，GPT 每次请求都会思考、界面上还关不掉。
+  openai: { off: null, low: 'low', medium: 'medium', high: 'high' },
   xai: { low: 'low', medium: 'medium', high: 'high' },
   glm: { low: 'low', medium: 'high', high: 'max' },   // GLM-5.x 官方只有 low/high/max（见 docs/思考深度-厂商对照.md）
   minimax: { low: 'low', medium: 'medium', high: 'high' },
