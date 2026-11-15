@@ -99,6 +99,19 @@ describe('数据库还原（纯逻辑）', () => {
     expect(cmd).not.toMatch(/--password=/)
   })
 
+  it('还原命令：任务结束必须写 .done（漏了就永远显示「进行中」）', () => {
+    const cases: [DbConn, string][] = [
+      [{ ...my }, '/b/shop-20261018-030405.sql.gz'],
+      [{ ...my, kind: 'postgres' }, '/b/shop-20261018-030405.dump'],
+      [{ ...my, kind: 'mongo' }, '/b/shop-20261018-030405.archive.gz'],
+    ]
+    for (const [conn, file] of cases) {
+      const cmd = restoreCommand(conn, file, 'shop')
+      expect(cmd, conn.kind).toContain('.done')
+      expect(cmd, conn.kind).toMatch(/echo ok > "\$1\.done"/)
+    }
+  })
+
   it('统计对象数：三种类型各自查表/集合，Redis 拒绝', () => {
     const myCnt = countObjectsCommand(my, 'shop')
     expect(myCnt).toContain('information_schema.tables')

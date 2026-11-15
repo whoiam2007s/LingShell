@@ -336,6 +336,9 @@ export function restoreCommand(c: DbConn, file: string, database: string): strin
       `{ ${wrap(argv).join(' ')} < "$1"; echo $? > "$1.rc"; } 2>"$1.err"`,
     ].join('\n')
   }
+  // 收尾：把 .rc 转成 .done（界面靠 .done 判断任务结束），再清掉 .rc 和 .pid。
+  // 漏了这一步，还原任务会永远显示「进行中」——它只写了 .rc，没人转成 .done。
+  job += '\nr=$(cat "$1.rc" 2>/dev/null)\nif [ "$r" = 0 ]; then echo ok > "$1.done"; else echo "fail ${r:-?}" > "$1.done"; fi\nrm -f "$1.rc"'
   const script = [
     ...readPw(c),
     `f=${shq(file)}`,
