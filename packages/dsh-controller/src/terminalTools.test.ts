@@ -30,9 +30,9 @@ const exec = (extra: Record<string, unknown> = {}) => ({ agent: { id: 'sess_1' }
 const defOf = (d: TerminalToolDeps, name: string) => terminalToolDefs(d).find((t: { name: string }) => t.name === name)!
 
 describe('工具定义', () => {
-  it('二十三个工具齐全，顺序稳定', () => {
+  it('二十四个工具齐全，顺序稳定', () => {
     const names = terminalToolDefs(deps()).map((t) => t.name)
-    expect(names).toEqual(['list_terminals', 'read_terminal', 'exec_in_terminal', 'exec_on_terminals', 'start_background', 'check_background', 'wait', 'create_terminal', 'propose_host_knowledge', 'propose_quick_commands', 'propose_runbook', 'run_on_hosts', 'upload_file', 'read_file', 'write_file', 'download_file', 'get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server'])
+    expect(names).toEqual(['list_terminals', 'read_terminal', 'exec_in_terminal', 'exec_on_terminals', 'start_background', 'check_background', 'wait', 'create_terminal', 'propose_host_knowledge', 'propose_quick_commands', 'propose_runbook', 'run_on_hosts', 'upload_file', 'read_file', 'write_file', 'download_file', 'get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
   })
 
   it('propose_quick_commands / propose_runbook：只校验不写、无需授权；不合法报错回给模型', async () => {
@@ -898,5 +898,52 @@ describe('四类实体：list_config / save_*', () => {
     commitGrant(d, 'sess_1', 'save_skill', { name: 'a' }, 'user')
     expect(d.grant.mock.calls[0]).toEqual(['sess_1', 'local', 'write'])
     expect(d.audit.mock.calls[0][0]).toEqual(expect.objectContaining({ sessionId: 'sess_1', terminalId: 'local', decision: 'allow:user' }))
+  })
+})
+
+describe('spawn_subagent', () => {
+  it('没注入 spawnSubagent：明确报错', async () => {
+    const d = deps()
+    await expect(defOf(d, 'spawn_subagent').execute({ task: '看看 nginx 版本' } as never, exec() as never)).rejects.toThrow(/没有提供子代理/)
+  })
+
+  it('task 为空 / 超长直接回给模型，不派', async () => {
+    const spawn = vi.fn()
+    const d = deps({ spawnSubagent: spawn } as never)
+    const bad = JSON.parse(await defOf(d, 'spawn_subagent').execute({ task: '  ' } as never, exec() as never))
+    expect(bad.ok).toBe(false)
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('缺省只授只读，并把父会话 id、超时传给控制器', async () => {
+    const spawn = vi.fn(async () => ({ subagentId: 'sess_sub', status: 'done', summary: '关键发现：nginx 1.24', elapsedMs: 1200 }))
+    const d = deps({ spawnSubagent: spawn } as never)
+    const out = JSON.parse(await defOf(d, 'spawn_subagent').execute({ task: '查 nginx 版本', context_hint: '生产机' } as never, exec() as never))
+    expect(out.ok).toBe(true)
+    expect(out.summary).toContain('nginx 1.24')
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ task: '查 nginx 版本', permission: 'read', contextHint: '生产机', parentSessionId: 'sess_1' }))
+    expect(d.audit.mock.calls[0][0]).toEqual(expect.objectContaining({ decision: 'subagent' }))
+  })
+
+  it('显式 permission=write 才传出写权限', async () => {
+    const spawn = vi.fn(async () => ({ subagentId: 's', status: 'done', summary: 'x', elapsedMs: 1 }))
+    const d = deps({ spawnSubagent: spawn } as never)
+    await defOf(d, 'spawn_subagent').execute({ task: '改配置', permission: 'write' } as never, exec() as never)
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ permission: 'write' }))
+  })
+
+  it('blocked / failed 的结果原样带给模型（含问题与上下文）', async () => {
+    const spawn = vi.fn(async () => ({ subagentId: 's2', status: 'blocked', summary: 'BLOCKED…', blocked: { question: '要跳过吗？', context: 'web2 没日志' }, elapsedMs: 900 }))
+    const d = deps({ spawnSubagent: spawn } as never)
+    const out = JSON.parse(await defOf(d, 'spawn_subagent').execute({ task: '看三台机器' } as never, exec() as never))
+    expect(out.status).toBe('blocked')
+    expect(out.blocked.question).toBe('要跳过吗？')
+    expect(out.ok).toBe(true)
+
+    const failed = vi.fn(async () => ({ subagentId: 's3', status: 'failed', summary: '超时', error: 'timeout', elapsedMs: 600000 }))
+    const d2 = deps({ spawnSubagent: failed } as never)
+    const out2 = JSON.parse(await defOf(d2, 'spawn_subagent').execute({ task: '跑很久' } as never, exec() as never))
+    expect(out2.ok).toBe(false)
+    expect(out2.error).toBe('timeout')
   })
 })

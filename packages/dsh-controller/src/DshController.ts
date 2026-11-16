@@ -43,6 +43,10 @@ import {
   type TerminalToolDeps, type UserOverride,
 } from './terminalTools.js'
 import { unifiedDiff } from './diff.js'
+import {
+  SUBAGENT_BRIEF, SUBAGENT_MAX_CONCURRENT, checkSubagentTask, clampTimeoutSec, composeSubagentTask,
+  parseSubagentSummary, subagentToolDeny, type SubagentPermission, type SubagentResult,
+} from './subagent.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
 import { compactionConfig, effectiveLimit, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
@@ -251,6 +255,8 @@ export class DshController {
         sessionIdOf: (agentId) => this.dshToOurs.get(agentId) ?? agentId,
         takeUserOverride: (callId) => { const o = this.overrides.get(callId); this.overrides.delete(callId); return o },
         isPreview: (sid: string) => this.preview.has(sid),   // 预演模式：propose_plan 不弹审批，只出「方案步骤」
+        // 子代理：主代理派单一任务出去（工具里已校验 task / 超时，这里只管编排）
+        spawnSubagent: (req) => this.spawnSubagent(req),
       }
       // 发给 AI 前脱敏：终端工具在 terminalToolDefs 里已包好；plan / MCP 在这里包（见 redaction.ts）
       const secrets = () => this.cfg.aiSecrets?.()
@@ -311,6 +317,11 @@ export class DshController {
       ;(ctx as any).systemPrompt.section({ name: 'lingshell:preview', order: 155, text: (c: any) => {
         const id = String(c?.agent?.id ?? '')
         return this.preview.has(this.dshToOurs.get(id) ?? id) ? PREVIEW_GUIDANCE : ''
+      } })
+      // 子代理专用说明：只在子会话里出现（「你只做这一件事、不能交互、总结按五块写」见 subagent.ts）
+      ;(ctx as any).systemPrompt.section({ name: 'lingshell:subagent', order: 156, text: (c: any) => {
+        const id = String(c?.agent?.id ?? '')
+        return this.subagents.has(this.dshToOurs.get(id) ?? id) ? SUBAGENT_BRIEF : ''
       } })
       this.installAuthGate(ctx)
       this.ctx = ctx
@@ -442,6 +453,17 @@ export class DshController {
       const agentId = String(exec?.agent?.id ?? '')
       if (!agentId) return next()
       const sessionId = this.dshToOurs.get(agentId) ?? agentId
+      // 子代理：不能跟用户交互、不能再派子代理、不能删除；只读子代理连写工具都不给。
+      // 放在最前面——先于预演 / 计划 / 信任档，子代理的任何越权都不进模型重试循环之外的分支
+      const sub = this.subagents.get(sessionId)
+      if (sub) {
+        const why = subagentToolDeny(String(exec.name), sub.permission)
+        if (why) {
+          const tids = targetTerminalsOf(exec.name, exec.arguments)
+          for (const tid of tids.length ? tids : ['']) this.cfg.audit({ sessionId, terminalId: tid, command: describeCall(exec.name, exec.arguments), decision: `deny:subagent` })
+          return { kind: 'deny', reason: why }
+        }
+      }
       this.touch(sessionId, exec.name, exec.arguments)
       const mcp = this.cfg.mcp?.lookup(String(exec.name))
       // 预演模式：写类工具一律拦（原因进模型，让它改成列计划），只读照常。最先判，计划 / 规则放行都不突破
@@ -743,9 +765,13 @@ export class DshController {
   // dsh 会话 id → 我方会话 id（上下文重置后两者不再相同）
   private dshToOurs = new Map<string, string>()
 
+  // 子代理：这些会话是主代理派出来的，工具受限、不弹授权卡、不写进会话列表
+  private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string }>()
+
   // ── 会话 ────────────────────────────────────────────
   // 随机 id，删除后不复用：复用会撞上 dsh 磁盘上的旧日志（拒绝新建），还会继承旧会话的授权。
-  async createSession(opts?: { title?: string }): Promise<SessionInfo> {
+  // hidden：子代理会话——不写进会话列表（UI 上只从主会话的下拉里进去看）
+  async createSession(opts?: { title?: string; hidden?: boolean }): Promise<SessionInfo> {
     const id = `sess_${randomUUID().slice(0, 8)}`
     const createdAt = new Date().toISOString()
     const workDir = homedir()
@@ -753,8 +779,72 @@ export class DshController {
     const modelProfileId = this.cfg.resolveSettings().profileId
     const meta: SessionMeta = { id, title: opts?.title ?? id, threadId: id, createdAt, lastActiveAt: createdAt, workDir, ...(modelProfileId ? { modelProfileId } : {}) }
     const info = await this.spawn(id, meta)
-    this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
+    if (!opts?.hidden) this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
     return info
+  }
+
+  /**
+   * 派一个子代理：建隐藏会话 → 发任务 → 等它结束 → 把结构化总结交回主代理。
+   *
+   * 授权在调用方（spawn_subagent 工具）已经一次性判定过——这里不再弹卡；
+   * 子代理运行中越权（只读子代理想写、想删除、想跟用户对话、想再派子代理）由授权网关直接拒。
+   */
+  async spawnSubagent(req: {
+    task: string
+    timeoutSec?: number
+    contextHint?: string
+    permission: SubagentPermission
+    parentSessionId: string
+  }): Promise<SubagentResult> {
+    const t = checkSubagentTask(req.task)
+    if (!t.ok) throw new Error(t.error)
+    if (this.subagents.size >= SUBAGENT_MAX_CONCURRENT) {
+      throw new Error(tr('同时最多 {n} 个子代理在跑，等一个结束再派', { n: SUBAGENT_MAX_CONCURRENT }))
+    }
+    const t0 = Date.now()
+    const info = await this.createSession({ title: tr('子任务：{t}', { t: t.value.slice(0, 20) }), hidden: true })
+    const sid = info.id
+    this.subagents.set(sid, { permission: req.permission, parent: req.parentSessionId, task: t.value })
+
+    // 收集最后一条完整的助手消息当总结；轮次结束 / 失败即收
+    let text = ''
+    let turnError: string | undefined
+    const finished = new Promise<void>((resolve) => {
+      const off = this.onEvent((ev) => {
+        if (ev.sessionId !== sid) return
+        if (ev.type === 'agent:itemUpdated' && ev.kind === 'agent_message' && ev.status === 'completed' && ev.text?.trim()) text = ev.text
+        if (ev.type === 'agent:turnCompleted') { off(); resolve() }
+        if (ev.type === 'agent:turnFailed') { turnError = ev.error || tr('子代理的这一轮失败了'); off(); resolve() }
+      })
+    })
+
+    const timeoutMs = clampTimeoutSec(req.timeoutSec) * 1000
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      void this.interruptTurn(sid).catch(() => { /* 没有活跃轮次时是 no-op */ })
+    }, timeoutMs)
+
+    try {
+      await this.sendTurn(sid, composeSubagentTask(t.value, req.contextHint))
+      await finished
+    } catch (e) {
+      turnError = e instanceof Error ? e.message : String(e)
+    } finally {
+      clearTimeout(timer)
+      this.subagents.delete(sid)
+    }
+
+    const elapsedMs = Date.now() - t0
+    const logPath = join(this.cfg.baseDir, 'dsh-sessions', sid)
+    if (timedOut) {
+      return {
+        subagentId: sid, status: 'failed', summary: tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value }), error: 'timeout', elapsedMs, logPath,
+      }
+    }
+    if (turnError) return { subagentId: sid, status: 'failed', summary: tr('子代理执行失败：{err}', { err: turnError }), error: turnError, elapsedMs, logPath }
+    const parsed = parseSubagentSummary(text)
+    return { subagentId: sid, status: parsed.status, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}), elapsedMs, logPath }
   }
 
   // 起一个 agent。dsh 的 sessionId 默认就是我方 id；上下文重置后换成 meta.dshId

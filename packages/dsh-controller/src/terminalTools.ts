@@ -8,6 +8,7 @@ import { randomBytes } from 'node:crypto'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
 import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
 import type { DbConn } from '@lingshell/shared'
+import { checkSubagentTask, clampTimeoutSec, type SubagentResult } from './subagent.js'
 import { unifiedDiff } from './diff.js'
 import { withRedaction, type SecretsFn } from './redaction.js'
 import { wireOf, type SecretVault } from './secretVault.js'
@@ -107,6 +108,17 @@ export interface TerminalToolDeps {
    * 校验（结构、范围、敏感值）在 shared/ai/entityConfig.ts 里做，这里只负责落盘。
    */
   configEntities?: ConfigEntityIO
+  /**
+   * 子代理：主代理派一个单一任务出去，独立会话跑完只回传结构化总结（见 subagent.ts）。
+   * 缺省 = 不提供 spawn_subagent 工具。
+   */
+  spawnSubagent?(req: {
+    task: string
+    timeoutSec?: number
+    contextHint?: string
+    permission: 'read' | 'write'
+    parentSessionId: string
+  }): Promise<SubagentResult>
   // sessionId：主进程据此判断是不是无人值守会话（巡检）：无人值守时临时连接遇到未知指纹直接失败，不弹确认框
   runOnHosts?(hosts: FleetHost[], command: string, timeoutMs: number, signal?: AbortSignal, sessionId?: string): Promise<FleetRow[]>
   isReadOnly?(command: string): boolean
@@ -134,6 +146,7 @@ const NEEDS: Record<string, 'read' | 'write'> = {
   save_db_connection: 'write',
   save_model_profile: 'write',
   save_mcp_server: 'write',
+  spawn_subagent: 'write',   // 子代理能跑命令 / 改文件：按写入授权，spawn 时一次性判定
   read_terminal: 'read',
   exec_in_terminal: 'write',
   exec_on_terminals: 'write',  // 多主机：每台目标主机都要过授权（见 decideMulti）
@@ -150,7 +163,7 @@ const NEEDS: Record<string, 'read' | 'write'> = {
  * 不需要（也没有）terminal_id。以前只有设置工具时没分出来，模型一调就被
  * 「缺少 terminal_id」拒掉，等于白给。
  */
-const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server'])
+const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
 // 已有授权也逐次确认（一次性，不升级）：上传/下载能把文件在本机与主机间搬运（外泄风险）。
 // write_file 不在此列：覆盖前自动备份、可一键还原，按信任档走（首次写入/确认档/生产主机仍弹卡看 diff），
 // 否则同一文件连改几处就要连点几次。
@@ -1329,6 +1342,32 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${res.created ? '新建' : '修改'} MCP 服务：${res.name}`, decision: 'config_changed' })   // i18n-ignore 执行记录文案
         const note = maskedNote(r.value.masked)
         return JSON.stringify({ ok: true, ...res, ...(note ? { note } : {}) })
+      },
+    },
+    {
+      name: 'spawn_subagent',
+      description: '把一个**单一、明确**的子任务派给子代理：它用独立会话去做，只把结构化总结交回来。子代理不能跟你或用户交互、不能删除东西、不能再派子代理——它遇到需要拍板的事会返回 status=blocked 并带回问题，由你决定换做法还是去问用户。适合：多台机器上重复同一套检查、翻一批文件找线索、跑一段耗时命令。不适合：需要边做边判断的大任务（自己拆成几次调用）。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        task: str('要子代理做的事：一句话说清、范围明确（2000 字以内）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        permission: optStr('read = 只读（缺省，最安全）；write = 允许它改文件 / 跑变更命令（会单独弹一次授权卡）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        timeout_sec: optInt('超时秒数（缺省 600，最少 30，最多 1800）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        context_hint: optStr('一句话背景（它看不到你的对话，只看到 task 和这段背景）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any, exec: any) {
+        if (!deps.spawnSubagent) throw new Error(tr('这台机器上没有提供子代理'))
+        const t = checkSubagentTask(args?.task)
+        if (!t.ok) return JSON.stringify({ ok: false, error: t.error })
+        const permission = args?.permission === 'write' ? 'write' : 'read'
+        const r: SubagentResult = await deps.spawnSubagent({
+          task: t.value,
+          timeoutSec: clampTimeoutSec(args?.timeout_sec),
+          contextHint: typeof args?.context_hint === 'string' ? args.context_hint : undefined,
+          permission,
+          parentSessionId: sidOf(exec),
+        })
+        deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `子代理（${permission}）：${t.value.slice(0, 60)} → ${r.status}`, decision: 'subagent' })   // i18n-ignore 执行记录文案
+        return JSON.stringify({ ok: r.status !== 'failed', ...r })
       },
     },
   ]

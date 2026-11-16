@@ -334,5 +334,22 @@ export const core: Record<string, string> = {
   '这台机器上没有提供配置写入': 'This machine does not provide config saving',
   '这条连接没有密码，需要用户自己在设置页补（或先建密钥再引用）': 'This connection has no password; the user has to fill it in in Settings (or create a key first and reference it)',
   '这套配置还没有 API Key，需要用户在设置 → 模型设置里填': 'This profile has no API key yet; the user has to fill it in under Settings → Models',
+  // dsh-controller/subagent.ts：子代理的工具拦截与摘要解析
+  '子代理不能再派子代理：把任务拆解交给主代理做': 'A subagent cannot spawn further subagents — hand task splitting back to the main agent',
+  '子代理不能跟用户交互：请用 blocked 状态把问题交回主代理': 'A subagent cannot interact with the user — return the question to the main agent with blocked status',
+  '子代理不能删除东西：需要删除时交回主代理': 'A subagent cannot delete anything — hand deletion back to the main agent',
+  '这个子任务只授了只读权限，不能执行写操作；需要写就交回主代理': 'This subagent was only granted read access and cannot perform writes — hand write work back to the main agent',
+  '（子代理没有给出总结）': '(the subagent returned no summary)',
+  '…（总结超过 {n} 字已截断，完整内容见子会话记录）': '… (summary truncated at {n} characters; see the subagent session for the full text)',
+  '（子代理说要用户拍板，但没写清问题）': '(the subagent says it needs a decision but did not state the question)',
+  '（没有附上下文）': '(no context attached)',
+  'task 不能为空：写清要子代理做的这一件事': 'task cannot be empty: state the single thing the subagent should do',
+  'task 太长了（{n} 字上限）：子任务要单一明确，大任务请自己拆成几次调用': 'task is too long ({n} characters max): keep it single and specific, split big jobs into several calls',
+  '同时最多 {n} 个子代理在跑，等一个结束再派': 'At most {n} subagents can run at once; wait for one to finish',
+  '子代理超时（{n} 秒）已中止：{t}': 'Subagent timed out after {n} s and was stopped: {t}',
+  '子代理执行失败：{err}': 'Subagent failed: {err}',
+  '子代理的这一轮失败了': 'The subagent turn failed',
+  '子任务：{t}': 'Subtask: {t}',
+  '这台机器上没有提供子代理': 'Subagents are not available on this machine',
   // ════ config / platform / auth-registry end ════
 }
