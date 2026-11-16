@@ -408,4 +408,10 @@ export const shell: Record<string, string> = {
   '让 AI 把重复 / 过时的知识卡整理一遍（清单由你勾选后才生效）': 'Have the AI tidy up duplicate / stale knowledge cards (nothing changes until you tick and apply)',
   '梳理': 'Tidy up',
   '选择这一项': 'Select this item',
+  // features/chat/items/ToolItem.tsx：子代理结果
+  '子代理已完成': 'Subagent finished',
+  '子代理等你拍板': 'Subagent needs your decision',
+  '子代理失败': 'Subagent failed',
+  '问题：': 'Question: ',
+  '上下文：': 'Context: ',
 }

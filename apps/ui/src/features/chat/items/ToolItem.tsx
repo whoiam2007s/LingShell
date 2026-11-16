@@ -6,8 +6,17 @@ import { cn } from '../../../lib/cn.js'
 import { DiffView } from '../../../components/DiffView.js'
 import { ToolElapsed } from './TurnTime.js'
 import { ToolRollback } from '../../auth/index.js'
-import { Network, BookMarked, MessageCircleQuestion, BookPlus, Zap } from 'lucide-react'
+import { Network, BookMarked, MessageCircleQuestion, BookPlus, Zap, Bot } from 'lucide-react'
 import { fleetStatusText, fmtMs, tr, type FleetRow, type FleetSummary } from '@lingshell/shared'
+
+/** spawn_subagent 的结果（与 dsh-controller/src/subagent.ts 的 SubagentResult 对齐） */
+interface SubOut { subagentId: string; status: 'done' | 'blocked' | 'failed'; summary: string; blocked?: { question: string; context: string }; error?: string; elapsedMs: number }
+function parseSubResult(output?: string): SubOut | undefined {
+  try {
+    const j = JSON.parse(output ?? '')
+    return j && typeof j.subagentId === 'string' && typeof j.status === 'string' && typeof j.summary === 'string' ? j : undefined
+  } catch { return undefined }
+}
 
 function parseWriteResult(output?: string): { created?: boolean; backup_path?: string; diff?: string } | undefined {
   try { const j = JSON.parse(output ?? ''); return j && typeof j === 'object' && 'path' in j ? j : undefined } catch { return undefined }
@@ -27,7 +36,7 @@ function mcpArgs(input?: Record<string, unknown>): string {
 const TERMINAL_TOOLS = new Set([
   'exec_in_terminal', 'exec_on_terminals', 'read_terminal', 'create_terminal', 'list_terminals', 'start_background', 'check_background',
 ])
-const FILE_TOOL_ICON: Record<string, typeof Terminal> = { read_file: FileText, write_file: FileEdit, download_file: Download, upload_file: Upload, wait: Timer, run_on_hosts: Network, propose_host_knowledge: BookMarked, ask_user: MessageCircleQuestion, propose_runbook: BookPlus, propose_quick_commands: Zap }
+const FILE_TOOL_ICON: Record<string, typeof Terminal> = { read_file: FileText, write_file: FileEdit, download_file: Download, upload_file: Upload, wait: Timer, run_on_hosts: Network, propose_host_knowledge: BookMarked, ask_user: MessageCircleQuestion, propose_runbook: BookPlus, propose_quick_commands: Zap, spawn_subagent: Bot }
 
 interface FleetOut { command: string; results: FleetRow[]; summary: FleetSummary }
 function parseFleetResult(output?: string): FleetOut | undefined {
@@ -53,13 +62,14 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
     : name === 'propose_quick_commands' && typeof input?.set_name === 'string' ? input.set_name
     : name === 'ask_user' && typeof input?.question === 'string' ? input.question
     : name === 'run_on_hosts' && Array.isArray(input?.targets) && command ? `[${(input.targets as string[]).join(', ')}] ${command}` : command
-  // wait：显示「等待 N 秒 · 原因」
-  const preview = name === 'wait' && input?.seconds ? tr('等待 {n} 秒', { n: String(input.seconds) }) + (input.reason ? ` · ${String(input.reason)}` : '') : preview0
+  // spawn_subagent：预览直接显示派出去的任务（一眼看出子代理在干什么）
+  const preview = name === 'spawn_subagent' && typeof input?.task === 'string' ? String(input.task) : name === 'wait' && input?.seconds ? tr('等待 {n} 秒', { n: String(input.seconds) }) + (input.reason ? ` · ${String(input.reason)}` : '') : preview0
   const output = tool?.output
   // write_file 结果带 diff：展开时按对比视图展示，而不是一坨 JSON
   const fileWrite = name === 'write_file' ? parseWriteResult(output) : undefined
   const multi = name === 'exec_on_terminals' ? parseMultiResult(output) : undefined
   const fleet = name === 'run_on_hosts' ? parseFleetResult(output) : undefined
+  const sub = name === 'spawn_subagent' ? parseSubResult(output) : undefined
   const explain = typeof input?.explain === 'string' ? input.explain.trim() : ''
   // 模型还在流式生成这个工具的参数：卡片先出来（虚线框），参数到齐才切到执行中
   const preparing = item.phase === 'preparing' && item.status === 'in_progress'
@@ -99,7 +109,9 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
             {command && (
               <div className="mb-1.5 font-mono text-[11px] text-[var(--color-accent)]">{input?.command ? '$ ' : ''}{command}</div>
             )}
-            {fileWrite ? (
+            {sub ? (
+              <SubagentResultView data={sub} />
+            ) : fileWrite ? (
               <>
                 <div className="text-[11px] text-[var(--color-text-muted)]">
                   {fileWrite.created ? tr('新建文件') : tr('file|已修改')}{fileWrite.backup_path ? tr('，原文件已备份到 {path}（可在执行记录里还原）', { path: fileWrite.backup_path }) : ''}
@@ -240,4 +252,28 @@ function StatusBadge({ status, preparing }: { status: ConvItem['status']; prepar
   if (status === 'failed')
     return <span className="flex items-center gap-1 text-[11px] text-[var(--color-danger)]"><X className="h-3 w-3" />{tr('失败')}</span>
   return <span className="flex items-center gap-1 text-[11px] text-[var(--color-success)]"><Check className="h-3 w-3" />{tr('完成')}</span>
+}
+
+// 子代理结果：状态 + 耗时 + 结构化总结；blocked 时把问题和上下文单独顶出来（这是要人拍板的地方）
+function SubagentResultView({ data }: { data: SubOut }) {
+  const tone = data.status === 'done' ? 'text-[var(--color-success)]' : data.status === 'blocked' ? 'text-[var(--color-warn)]' : 'text-[var(--color-danger)]'
+  return (
+    <div className="space-y-1.5 text-[11px]">
+      <div className="flex items-center gap-2">
+        <span className={cn('flex items-center gap-1', tone)}>
+          {data.status === 'done' ? <Check className="h-3 w-3" /> : data.status === 'blocked' ? <MessageCircleQuestion className="h-3 w-3" /> : <X className="h-3 w-3" />}
+          {data.status === 'done' ? tr('子代理已完成') : data.status === 'blocked' ? tr('子代理等你拍板') : tr('子代理失败')}
+        </span>
+        <span className="text-[var(--color-text-muted)]">{fmtMs(data.elapsedMs)}</span>
+        {data.error && <span className="font-mono text-[var(--color-danger)]">{data.error}</span>}
+      </div>
+      {data.blocked && (
+        <div className="rounded border border-[var(--color-border-default)] bg-[color:color-mix(in_srgb,var(--color-warn)_8%,transparent)] px-2 py-1.5">
+          <div className="text-[var(--color-text-primary)]">{tr('问题：')}{data.blocked.question}</div>
+          <div className="mt-0.5 whitespace-pre-wrap text-[var(--color-text-muted)]">{tr('上下文：')}{data.blocked.context}</div>
+        </div>
+      )}
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono leading-relaxed text-[var(--color-text-secondary)]">{data.summary}</pre>
+    </div>
+  )
 }
