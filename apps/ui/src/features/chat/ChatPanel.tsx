@@ -11,6 +11,7 @@ import { TodoItem } from './items/TodoItem.js'
 import { AuthRequestItem } from './items/AuthRequestItem.js'
 import { PlanRequestItem } from './items/PlanRequestItem.js'
 import { KnowledgeItem } from './items/KnowledgeItem.js'
+import { TurnSummaryBar } from './items/TurnSummaryBar.js'
 import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
@@ -721,10 +722,16 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
             const pm = isPostmortemRequest(turn.userMsg?.text) && !(busy && i === turns.length - 1) ? turn.final.filter((x) => x.kind === 'agent_message' && x.text.trim()).at(-1)?.text : undefined
             // 预演模式：最后一轮回复末尾的「方案步骤」（可勾选执行）
             const pv = i === turns.length - 1 && !busy ? previewPlanOfTurn(turn, preview.on) : undefined
+            // 知识卡提议会被提到 final 前面，模型写在工具调用前的总结被折进【执行过程】。
+            // final 里没有文字、但有知识卡时，把那条总结补到回合末（纯 UI 复现，不请求模型）
+            const hasFinalText = turn.final.some((x) => x.kind === 'agent_message' && x.text.trim())
+            const sum = !hasFinalText && turn.final.some((x) => x.kind === 'host_note')
+              ? turn.steps.filter((x) => x.kind === 'agent_message' && x.text.trim()).at(-1)?.text
+              : undefined
             // 追问开头的这一组：本轮的「开始回答」时间早于追问，不显示（只留结束时间）
             const tt = turn.turnId ? turnTimes?.get(turn.turnId) : undefined
             return <TurnBlock key={turn.key} turn={turn} active={busy && i === turns.length - 1} last={i === turns.length - 1} times={turn.userMsg?.steered && tt ? { endedAt: tt.endedAt } : tt}
-              end={(fc || hc || pm || pv) && <>{pm && <PostmortemSaveBar text={pm} title={titleOf(sessionTitle)} />}{fc && <TurnChangesBar sessionId={activeSessionId} data={fc} onChanged={turnChanges.refresh} />}{hc && <TurnHostChangesBar data={hc} />}{pv && <PreviewPlanCard key={turn.key} sessionId={activeSessionId} plan={pv} busy={busy} onSend={send} />}</>} />
+              end={(fc || hc || pm || pv || sum) && <>{pm && <PostmortemSaveBar text={pm} title={titleOf(sessionTitle)} />}{fc && <TurnChangesBar sessionId={activeSessionId} data={fc} onChanged={turnChanges.refresh} />}{hc && <TurnHostChangesBar data={hc} />}{pv && <PreviewPlanCard key={turn.key} sessionId={activeSessionId} plan={pv} busy={busy} onSend={send} />}{sum && <TurnSummaryBar text={sum} />}</>} />
           })
         })()}
         </ToolFocusContext.Provider></ToolSessionContext.Provider></MsgActionsContext.Provider>
