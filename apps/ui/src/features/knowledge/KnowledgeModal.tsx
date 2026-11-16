@@ -14,6 +14,7 @@ import { HelpTip, BTN2 } from '../../components/ui/form.js'
 import { Input, Textarea } from '../../components/ui/Input.js'
 import { Select } from '../../components/ui/Select.js'
 import { ConfirmDialog } from '../common/index.js'
+import { ConsolidateDialog } from './ConsolidateDialog.js'
 import { KNOWLEDGE_OPEN_EVENT, scopeValue, parseScopeValue } from './knowledgeBus.js'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -41,6 +42,7 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
   const [q, setQ] = useState(initial.q ?? '')
   const [edit, setEdit] = useState<Draft | null>(null)
   const [del, setDel] = useState<KnowledgeCard | null>(null)
+  const [consolidating, setConsolidating] = useState(false)
   const [err, setErr] = useState('')
   const load = () => client.knowledge.list().then(setCards).catch((e) => setErr(errText(e)))
   useEffect(() => { void load(); client.hosts.list().then(setHosts).catch(() => {}) }, [])
@@ -121,7 +123,15 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
               {tr('给主机、分组或全局记下部署方式、日志位置、启停方式、已知问题等长期知识。AI 用到某台主机后，会自动读到该主机、所属分组与全局的知识卡（按更新时间，总长约 4000 字）；')}
               {' '}{tr('排障中发现值得记住的事，AI 会在对话里提议保存，你点「保存」才写入。旧的「主机备注」已自动迁移成该主机的一张「主机备注」卡。')}
             </HelpTip>
-            {!edit && <button onClick={startNew} className={cn('ml-auto flex items-center gap-1 py-1', BTN2)}><Plus className="h-3.5 w-3.5" />{tr('新建卡片')}</button>}
+            {!edit && (
+              <button onClick={() => setConsolidating(true)} title={tr('让 AI 把重复 / 过时的知识卡整理一遍（清单由你勾选后才生效）')}
+                className={cn('relative ml-auto flex items-center gap-1 py-1', BTN2)}>
+                <Sparkles className="h-3.5 w-3.5" />{tr('梳理')}
+                {/* 卡片攒到 50 张就该整理一次了：加个小圆点提示（不自动改数据，删除必须你自己确认） */}
+                {cards.length >= 50 && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />}
+              </button>
+            )}
+            {!edit && <button onClick={startNew} className={cn('flex items-center gap-1 py-1', BTN2)}><Plus className="h-3.5 w-3.5" />{tr('新建卡片')}</button>}
             <button onClick={onClose} title={tr('关闭（Esc）')} className={cn('flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]', edit && 'ml-auto')}><X className="h-4 w-4" /></button>
           </div>
           {edit ? (
@@ -195,6 +205,7 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
         </div>
       </div>
       <ConfirmDialog open={!!del} title={tr('删除知识卡')} message={tr('确定删除「{title}」？删除后 AI 不再读到这条知识。', { title: tr(del?.title ?? '') })} onConfirm={remove} onCancel={() => setDel(null)} />
+      <ConsolidateDialog open={consolidating} cards={cards} onClose={() => setConsolidating(false)} onApplied={() => { void load() }} />
     </div>
   )
 }
