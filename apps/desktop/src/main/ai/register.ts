@@ -7,7 +7,7 @@ import type { ApprovalRequest, PlanRequest, DshController } from '@lingshell/dsh
 import { TemplateStore } from '@lingshell/config'
 import { type AppEvent, type ApprovalAnswer, type UsageRange, type UsagePrices, type TemplateInput, type McpServerInput,
   tr, decodeText, encodeText, type NlCommandRequest, buildNlCommandPrompt, sanitizeNlCommand, summarizeUsage, sessionUsage,
-  applyRuleVerdict, evaluateCommandRules, dangerCheck } from '@lingshell/shared'
+  applyRuleVerdict, evaluateCommandRules, dangerCheck, mergeSystemPatch } from '@lingshell/shared'
 import { randomUUID } from 'node:crypto'
 import { log, type MainContext } from '../core/index.js'
 import { type FileAccess, localAccess, sftpAccess, writeEnsureDir, writeWithBackup, MAX_FILE_BYTES, EXT_EDIT_MAX_BYTES } from '../files/index.js'
@@ -203,6 +203,16 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     },
     // AI 终端清单里带上各终端最近知道的 cwd（不触发 pwd 探测），问目录时不用为此跑命令、弹授权
     terminalCwd: (tid) => terminals.cachedCwd(tid),
+    // AI 读 / 写应用设置（白名单见 shared/ai/appSettings.ts）。写入走 SettingsStore.save 落盘：
+    // 字号 / 主题这类立即生效，超时、上下文阈值等要下次读取才用到新值
+    appSettings: () => settings.get() as unknown as Record<string, unknown>,
+    saveAppSettings: (patch) => {
+      const cur = settings.get()
+      if (!cur.system) return { applied: [] }
+      const { next, applied } = mergeSystemPatch(cur.system, patch)
+      if (applied.length) settings.save({ ...cur, system: next })
+      return { applied }
+    },
     proposeKnowledge: (sessionId, req) => {
       const p = knowledge.propose(req)
       send({ type: 'knowledge:proposal', proposalId: randomUUID(), sessionId, ...p })

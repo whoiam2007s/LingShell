@@ -6,7 +6,7 @@
 // 发起调用的 agent，所以鉴权整体上移到网关，工具体只管干活。少一层协议、少一半代码。
 import { randomBytes } from 'node:crypto'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
-import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk } from '@lingshell/shared'
+import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS } from '@lingshell/shared'
 import { unifiedDiff } from './diff.js'
 import { withRedaction, type SecretsFn } from './redaction.js'
 import { wireOf, type SecretVault } from './secretVault.js'
@@ -79,6 +79,11 @@ export interface TerminalToolDeps {
   proposeKnowledge?(sessionId: string, req: KnowledgeProposalReq): { targetLabel: string }
   // 跨主机提问：可访问的已保存主机（只有名称 / id / 分组 / 环境）、并行执行、只读判定
   fleetHosts?(): FleetHost[]
+  // 应用设置（白名单见 shared/ai/appSettings.ts）：返回 AppSettings 形状的对象（含 system）。
+  // 缺省 = 不提供 get_app_setting / set_app_setting 两个工具
+  appSettings?(): Record<string, unknown>
+  // AI 改设置：patch 是 { 'system.xxx': value } 形状，实现方自己再校验一遍并落盘
+  saveAppSettings?(patch: Record<string, unknown>): { applied: string[] }
   // sessionId：主进程据此判断是不是无人值守会话（巡检）：无人值守时临时连接遇到未知指纹直接失败，不弹确认框
   runOnHosts?(hosts: FleetHost[], command: string, timeoutMs: number, signal?: AbortSignal, sessionId?: string): Promise<FleetRow[]>
   isReadOnly?(command: string): boolean
@@ -99,6 +104,8 @@ export interface TerminalToolDeps {
 
 // 工具名 → 需要的权限档；不在表里的（list_terminals / create_terminal）无需授权
 const NEEDS: Record<string, 'read' | 'write'> = {
+  get_app_setting: 'read',
+  set_app_setting: 'write',
   read_terminal: 'read',
   exec_in_terminal: 'write',
   exec_on_terminals: 'write',  // 多主机：每台目标主机都要过授权（见 decideMulti）
@@ -1074,6 +1081,49 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           command: tr('下载 {path} → {local}', { path: String(args.path), local: r.localPath }), decision: 'download_allowed',
         })
         return JSON.stringify({ ok: true, local_path: r.localPath })
+      },
+    },
+    {
+      name: 'get_app_setting',
+      description: '读取应用设置（白名单内的偏好项）。不传 key 列出全部可读项与当前值；传 key 返回单个。敏感字段（API Key、密码、凭据）永不返回。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: { key: optStr('设置键，如 system.terminalFontSize；留空 = 列出全部') },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      output: textOut,
+      async execute(args: any) {
+        if (!deps.appSettings) throw new Error(tr('这台机器上没有提供设置读取'))
+        const all = deps.appSettings()
+        if (args.key) {
+          const spec = specOf(String(args.key))
+          if (!spec) return JSON.stringify({ ok: false, error: `没有这个设置项：${args.key}` })
+          return JSON.stringify({ ok: true, key: spec.key, label: spec.label, value: readSetting(all, spec.key), writable: spec.writable })
+        }
+        const values: Record<string, unknown> = {}
+        for (const s of APP_SETTING_SPECS) values[s.key] = readSetting(all, s.key)
+        return JSON.stringify({ ok: true, settings: values, writable: APP_SETTING_SPECS.filter((s) => s.writable).map((s) => s.key) })
+      },
+    },
+    {
+      name: 'set_app_setting',
+      description: '修改应用设置（只有白名单里的可写项）。值会先校验类型与范围，越界直接拒绝并说明原因；部分设置需要重启应用才生效。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        key: str('设置键，如 system.terminalFontSize'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        value: str('新值（按字符串传：数字 18、布尔 true、枚举 dark）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any) {
+        if (!deps.saveAppSettings) throw new Error(tr('这台机器上没有提供设置写入'))
+        const key = String(args.key ?? '')
+        const spec = specOf(key)
+        if (!spec) return JSON.stringify({ ok: false, error: `没有这个设置项：${key}（可先调 get_app_setting 看全部可用的键）` })
+        // 值按字符串传进来，先按规格解析成目标类型
+        let value: unknown = args.value
+        if (typeof value === 'string') {
+          if (spec.type === 'number') value = Number(value)
+          else if (spec.type === 'boolean') value = value === 'true' || value === '1'
+        }
+        const err = validateSetting(key, value)
+        if (err) return JSON.stringify({ ok: false, error: err, spec: describeSettings() })
+        const r = deps.saveAppSettings({ [key]: value })
+        return JSON.stringify({ ok: true, key, value, applied: r.applied })
       },
     },
   ]
