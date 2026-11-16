@@ -1001,6 +1001,18 @@ export interface SkillImportPreview {
 }
 export interface SkillInput { name: string; description: string; body: string }
 
+// 子代理（主会话派出去做单一任务的独立会话）：会话标题栏下拉里显示
+export interface SubagentView {
+  subagentId: string
+  task: string
+  permission: 'read' | 'write'
+  status: 'running' | 'done' | 'blocked' | 'failed'
+  startedAt: string
+  elapsedMs?: number
+  summary?: string
+  blocked?: { question: string; context: string }
+}
+
 // ── 模型接口协议 ────────────────────────────────────────
 // anthropic = Anthropic Messages（{base}/v1/messages，x-api-key）；
 // openai = OpenAI Chat Completions（{base}/chat/completions，Bearer）；

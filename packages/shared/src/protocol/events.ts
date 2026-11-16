@@ -178,6 +178,13 @@ export type KnowledgeProposalEvent = {
   previous?: { title: string; content: string }    // 更新时的原卡内容（卡片上对照）
 }
 
+// 后台自动梳理攒出了建议清单（卡片满 50 张 / 距上次超 7 天）：界面在知识库入口提示，不弹窗
+export type KnowledgeConsolidatePendingEvent = {
+  type: 'knowledge:consolidatePending'
+  at: string
+  plan: import('../ai/index.js').ConsolidatePlan
+}
+
 // ── 阶段三：资源上传/下载进度 ────────────────────────────
 export type TransferProgressEvent = {
   type: 'transfer:progress'
@@ -245,6 +252,7 @@ export type AppEvent =
   | AgentEvent
   | AuthRequestEvent | AuthResolvedEvent | PlanRequestEvent
   | KnowledgeProposalEvent
+  | KnowledgeConsolidatePendingEvent
   | TransferProgressEvent
   | PortForwardChangedEvent
   | InspectionRunEvent | InspectionOpenSessionEvent

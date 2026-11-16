@@ -139,6 +139,14 @@ export interface AiApi {
     consolidate(trigger?: 'manual' | 'size' | 'schedule'): Promise<import('../../ai/index.js').ConsolidatePlan>
     /** 应用用户勾选的清单动作；返回实际应用条数 */
     consolidateApply(actions: import('../../ai/index.js').ConsolidateAction[]): Promise<{ applied: number }>
+    /** 后台自动梳理攒下的待处理清单（没有则 null）；界面在知识库入口提示条数 */
+    consolidatePending(): Promise<{ at: string; plan: import('../../ai/index.js').ConsolidatePlan } | null>
+    /** 用户把建议放一边：清掉待处理清单（不应用） */
+    consolidatePendingClear(): Promise<void>
+  }
+  // 子代理：某个会话派过哪些（会话标题栏下拉里显示；新的在前）
+  subagent: {
+    list(sessionId: string): Promise<import('../../protocol/types.js').SubagentView[]>
   }
   // 左侧对话增强（见 desktop/main/ai/chatPlusIpc.ts）：digest 历史会话摘要（@ 引用）；search 跨会话全文检索；
   // runShell 输入框 `!命令` 在终端里执行并取回结果（输出已按脱敏设置处理、只留末尾 4KB）；answerAsk 回答 AI 提问卡（null = 跳过）

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   SUBAGENT_DEFAULT_TIMEOUT_SEC, SUBAGENT_MAX_TIMEOUT_SEC, SUBAGENT_SUMMARY_MAX, SUBAGENT_TASK_MAX,
-  checkSubagentTask, clampTimeoutSec, composeSubagentTask, isWriteTool, parseSubagentSummary, subagentToolDeny,
+  checkSubagentTask, clampTimeoutSec, composeSubagentTask, isWriteTool, parseSubagentSummary, parseToolList, subagentToolDeny,
 } from './subagent.js'
 
 describe('subagentToolDeny', () => {
@@ -28,6 +28,27 @@ describe('subagentToolDeny', () => {
   it('isWriteTool 认得写工具', () => {
     for (const n of ['write_file', 'upload_file', 'save_skill', 'exec_in_terminal']) expect(isWriteTool(n)).toBe(true)
     for (const n of ['read_file', 'list_config', 'run_on_hosts']) expect(isWriteTool(n)).toBe(false)
+  })
+
+  it('tools 白名单：不在名单里的拒，名单外的硬禁用照样拒', () => {
+    expect(subagentToolDeny('read_file', 'read', ['read_file', 'list_terminals'])).toBeUndefined()
+    expect(subagentToolDeny('exec_in_terminal', 'write', ['read_file'])).toMatch(/只允许用这些工具/)
+    // 即使在白名单里，交互 / 递归 / 删除也不放开
+    expect(subagentToolDeny('ask_user', 'write', ['ask_user'])).toMatch(/不能跟用户交互/)
+    expect(subagentToolDeny('spawn_subagent', 'write', ['spawn_subagent'])).toMatch(/不能再派子代理/)
+    expect(subagentToolDeny('delete_file', 'write', ['delete_file'])).toMatch(/不能删除/)
+    // 空名单 = 不限制
+    expect(subagentToolDeny('read_file', 'read', [])).toBeUndefined()
+  })
+})
+
+describe('parseToolList', () => {
+  it('数组 / 逗号 / 空格 / 中文逗号都认，去重去空', () => {
+    expect(parseToolList(['read_file', 'list_terminals'])).toEqual(['read_file', 'list_terminals'])
+    expect(parseToolList('read_file,list_terminals')).toEqual(['read_file', 'list_terminals'])
+    expect(parseToolList('read_file，list_terminals  read_file')).toEqual(['read_file', 'list_terminals'])
+    expect(parseToolList('  ')).toBeUndefined()
+    expect(parseToolList(undefined)).toBeUndefined()
   })
 })
 

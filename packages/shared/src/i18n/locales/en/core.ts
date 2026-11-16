@@ -339,6 +339,7 @@ export const core: Record<string, string> = {
   '子代理不能跟用户交互：请用 blocked 状态把问题交回主代理': 'A subagent cannot interact with the user — return the question to the main agent with blocked status',
   '子代理不能删除东西：需要删除时交回主代理': 'A subagent cannot delete anything — hand deletion back to the main agent',
   '这个子任务只授了只读权限，不能执行写操作；需要写就交回主代理': 'This subagent was only granted read access and cannot perform writes — hand write work back to the main agent',
+  '这个子任务只允许用这些工具：{list}；需要别的就交回主代理': 'This subagent may only use these tools: {list}; hand anything else back to the main agent',
   '（子代理没有给出总结）': '(the subagent returned no summary)',
   '…（总结超过 {n} 字已截断，完整内容见子会话记录）': '… (summary truncated at {n} characters; see the subagent session for the full text)',
   '（子代理说要用户拍板，但没写清问题）': '(the subagent says it needs a decision but did not state the question)',

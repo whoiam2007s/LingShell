@@ -1,10 +1,14 @@
 // 主机知识库（见 shared/ai/knowledge.ts、config/KnowledgeStore.ts）：
 //  - IPC：knowledge:list / save / remove（知识库视图、AI 提议卡片的「保存」）
 //  - 给引擎用：context（会话用到的主机 → 注入文本）、titles（list_terminals 带的卡片标题）、propose（AI 提议 → 卡片草稿）
+//  - 自动梳理：卡片攒够 50 张、或距上次超过 7 天，后台跑一次只出清单（不动数据），
+//    结果存 knowledge-schedule.json，界面在知识库按钮上提示「有 N 条建议」
 // 每次读之前先把旧「主机备注」/ 本机备注同步成卡片（向后兼容；备注没变时不写盘）。
+import { join } from 'node:path'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { KnowledgeStore } from '@lingshell/config'
 import {
-  buildKnowledgeContext, normalizeKnowledge, knowledgeScopeText, KNOWLEDGE_CATEGORIES,
+  buildKnowledgeContext, normalizeKnowledge, knowledgeScopeText, KNOWLEDGE_CATEGORIES, CONSOLIDATE_SIZE_THRESHOLD, shouldConsolidate,
   buildConsolidatePrompt, countAfter, parseConsolidateReply, validateConsolidateActions,
   type ConsolidateAction, type ConsolidatePlan,
   type HostSummary, type KnowledgeCard, type KnowledgeHost, type KnowledgeInput, type KnowledgeCategory, tr,
@@ -47,17 +51,25 @@ export function registerKnowledge(d: {
   localNotes: () => string
   /** 调一次模型（梳理用）；缺省 = 不提供梳理功能 */
   complete?(system: string, user: string, signal: AbortSignal, source: string): Promise<string>
+  /** 后台梳理出了建议清单（界面可以据此弹个提示）；异步，抛错不影响梳理 */
+  onPending?(plan: ConsolidatePlan): void
 }) {
   const store = new KnowledgeStore(d.dir)
   const cards = (): KnowledgeCard[] => {
     try { store.syncLegacy([{ hostKey: 'local', notes: d.localNotes() }, ...d.hosts().map((h) => ({ hostKey: h.id, notes: h.notes }))]) } catch { /* 同步失败不影响读 */ }
     return store.list()
   }
-  d.handle('knowledge:list', () => cards())
-  d.handle('knowledge:save', (_e, input) => store.save(input as KnowledgeInput))
-  d.handle('knowledge:remove', (_e, id) => { if (typeof id === 'string') store.delete(id) })
-  // 梳理：把全部卡片交给模型，产出合并 / 更新 / 删除清单（不落库，交界面勾选）
-  d.handle('knowledge:consolidate', async (_e, trigger) => {
+
+  // ── 自动梳理的状态（lastAt = 上次梳理时间；pending = 后台产出、等用户确认的清单）──
+  type State = { lastAt?: string; pending?: { at: string; plan: ConsolidatePlan } }
+  const stateFile = join(d.dir, 'knowledge-schedule.json')
+  const readState = (): State => { try { return JSON.parse(readFileSync(stateFile, 'utf8')) as State } catch { return {} } }
+  const writeState = (s: State) => {
+    try { mkdirSync(d.dir, { recursive: true }); writeFileSync(stateFile, JSON.stringify(s, null, 2)) } catch { /* 状态存不下不影响主流程 */ }
+  }
+
+  // 跑一次梳理（不落库）：手动 / 后台共用
+  const runConsolidate = async (trigger: ConsolidatePlan['trigger']): Promise<ConsolidatePlan> => {
     if (!d.complete) throw new Error(tr('这台机器上没有可用的模型通道，无法梳理'))
     const all = cards()
     if (all.length < 2) throw new Error(tr('至少要有 2 张卡才值得整理'))
@@ -69,12 +81,39 @@ export function registerKnowledge(d: {
     if (parsed.error || !parsed.actions) throw new Error(parsed.error ?? tr('模型没有给出整理清单'))
     const errs = validateConsolidateActions(parsed.actions, all)
     if (errs.length) throw new Error(tr('模型给的整理清单不合法：{err}', { err: errs.slice(0, 5).join('；') }))   // i18n-ignore 列表分隔符（中文分号）
-    const plan: ConsolidatePlan = {
-      trigger: trigger === 'size' || trigger === 'schedule' ? trigger : 'manual',
-      before: all.length,
-      after: countAfter(parsed.actions, all.length),
-      actions: parsed.actions,
-    }
+    return { trigger, before: all.length, after: countAfter(parsed.actions, all.length), actions: parsed.actions }
+  }
+
+  // 后台那一趟：只出清单、绝不写回（合并 / 删除知识卡必须用户自己确认）
+  let running = false
+  const tick = async () => {
+    if (running || !d.complete) return
+    const st = readState()
+    const all = cards()
+    if (!shouldConsolidate({ count: all.length, lastAt: st.lastAt, pendingCount: st.pending ? st.pending.plan.before : undefined })) return
+    running = true
+    try {
+      const plan = await runConsolidate(all.length >= CONSOLIDATE_SIZE_THRESHOLD ? 'size' : 'schedule')
+      writeState({ lastAt: new Date().toISOString(), ...(plan.actions.length ? { pending: { at: new Date().toISOString(), plan } } : {}) })
+      if (plan.actions.length) { try { d.onPending?.(plan) } catch { /* 提示失败不影响结果 */ } }
+    } catch { /* 后台失败不打扰用户：下一趟再试 */ } finally { running = false }
+  }
+  // 启动后 30 秒先看一次（别和启动抢模型），之后每 10 分钟看一次
+  const first = d.complete ? setTimeout(() => { void tick() }, 30_000) : undefined
+  const every = d.complete ? setInterval(() => { void tick() }, 10 * 60_000) : undefined
+  first?.unref?.(); every?.unref?.()
+
+  d.handle('knowledge:list', () => cards())
+  d.handle('knowledge:save', (_e, input) => store.save(input as KnowledgeInput))
+  d.handle('knowledge:remove', (_e, id) => { if (typeof id === 'string') store.delete(id) })
+  // 后台攒下的待处理清单：界面在知识库入口显示「有 N 条整理建议」
+  d.handle('knowledge:consolidatePending', () => readState().pending ?? null)
+  d.handle('knowledge:consolidatePendingClear', () => { const st = readState(); writeState({ ...st, pending: undefined }) })
+  // 梳理：把全部卡片交给模型，产出合并 / 更新 / 删除清单（不落库，交界面勾选）
+  d.handle('knowledge:consolidate', async (_e, trigger) => {
+    const plan = await runConsolidate(trigger === 'size' || trigger === 'schedule' ? trigger : 'manual')
+    // 界面手动跑过一次也算「最近梳理过」：清掉后台那份待处理，免得重复提示
+    writeState({ lastAt: new Date().toISOString() })
     return plan
   })
   // 应用清单：用户勾选后的动作一次性写回（全部校验通过才动，避免半途失败留下脏数据）
@@ -109,9 +148,13 @@ export function registerKnowledge(d: {
       for (const id of a.ids) store.delete(id)
       applied++
     }
+    const st = readState()
+    writeState({ ...st, lastAt: new Date().toISOString(), pending: undefined })
     return { applied }
   })
   return {
+    /** 停掉后台定时器（应用退出时调） */
+    stop: () => { if (first) clearTimeout(first); if (every) clearInterval(every) },
     context: (hostKeys: string[]) => {
       const all = knowledgeHosts(d.hosts())
       // 只用到了临时主机（未保存）：没有主机 / 分组卡，全局卡照样给

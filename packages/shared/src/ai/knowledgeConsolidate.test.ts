@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildConsolidatePrompt, countAfter, parseConsolidateReply, validateConsolidateActions, type ConsolidateAction } from './knowledgeConsolidate.js'
+import { buildConsolidatePrompt, countAfter, parseConsolidateReply, shouldConsolidate, validateConsolidateActions, type ConsolidateAction } from './knowledgeConsolidate.js'
 import type { KnowledgeCard } from './knowledge.js'
 
 const card = (id: string, title = id): KnowledgeCard => ({
@@ -61,5 +61,41 @@ describe('知识库梳理', () => {
     expect(user).toContain('当前共 3 张卡')
     expect(user).toContain('id: a')
     expect(user).toContain('主机一')
+  })
+})
+
+describe('shouldConsolidate（什么时候自动梳理）', () => {
+  const now = Date.parse('2026-11-16T00:00:00.000Z')
+  const daysAgo = (n: number) => new Date(now - n * 86400_000).toISOString()
+
+  it('少于 2 张没必要', () => {
+    expect(shouldConsolidate({ count: 0, now })).toBe(false)
+    expect(shouldConsolidate({ count: 1, now })).toBe(false)
+  })
+
+  it('卡片到阈值就该跑（不管上次什么时候）', () => {
+    expect(shouldConsolidate({ count: 50, lastAt: daysAgo(0.1), now })).toBe(true)
+    expect(shouldConsolidate({ count: 49, lastAt: daysAgo(0.1), now })).toBe(false)
+  })
+
+  it('手动调低阈值也生效', () => {
+    expect(shouldConsolidate({ count: 5, lastAt: daysAgo(0.1), now, sizeThreshold: 5 })).toBe(true)
+  })
+
+  it('超过 7 天且攒够 10 张才按时间触发', () => {
+    expect(shouldConsolidate({ count: 12, lastAt: daysAgo(8), now })).toBe(true)
+    expect(shouldConsolidate({ count: 12, lastAt: daysAgo(6), now })).toBe(false)
+    expect(shouldConsolidate({ count: 9, lastAt: daysAgo(30), now })).toBe(false)
+  })
+
+  it('从没梳理过、攒够 10 张 → 触发', () => {
+    expect(shouldConsolidate({ count: 12, now })).toBe(true)
+    expect(shouldConsolidate({ count: 9, now })).toBe(false)
+  })
+
+  it('还有待处理清单且卡片数没变 → 不重复跑', () => {
+    expect(shouldConsolidate({ count: 60, lastAt: daysAgo(30), pendingCount: 60, now })).toBe(false)
+    // 卡片变了（新增 / 删除）→ 值得重跑
+    expect(shouldConsolidate({ count: 61, lastAt: daysAgo(30), pendingCount: 60, now })).toBe(true)
   })
 })

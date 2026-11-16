@@ -140,3 +140,39 @@ export function buildConsolidatePrompt(cards: KnowledgeCard[], hostLabel: (key: 
 
   return { system, user: `当前共 ${cards.length} 张卡：\n\n${body}` }
 }
+
+// ── 什么时候该自动梳理一次 ──────────────────────────────────────────
+/** 卡片攒到这么多就有必要整理（再往上翻起来就累了） */
+export const CONSOLIDATE_SIZE_THRESHOLD = 50
+/** 距上次梳理超过这么多天，主动提醒一次 */
+export const CONSOLIDATE_INTERVAL_DAYS = 7
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * 该不该在后台跑一次梳理（只出清单，不动数据）。
+ * 纯函数，方便单测：
+ *  - 卡片少于 2 张：没必要
+ *  - 已经有待处理的清单、且卡片数没变：别重复烧模型钱
+ *  - 卡片数到阈值 → 该跑
+ *  - 距上次超过 7 天（且卡片数 ≥ 10，太少不值得）→ 该跑
+ *  - 从没梳理过且卡片数 ≥ 10 → 该跑（首次建库后攒够一批再整理）
+ */
+export function shouldConsolidate(o: {
+  count: number
+  lastAt?: string
+  pendingCount?: number
+  now?: number
+  sizeThreshold?: number
+  intervalDays?: number
+}): boolean {
+  const { count, lastAt, pendingCount, now = Date.now() } = o
+  const threshold = o.sizeThreshold ?? CONSOLIDATE_SIZE_THRESHOLD
+  const days = o.intervalDays ?? CONSOLIDATE_INTERVAL_DAYS
+  if (count < 2) return false
+  if (pendingCount !== undefined && pendingCount === count) return false   // 清单还是新的，等用户处理
+  if (count >= threshold) return true
+  if (count < 10) return false
+  const last = lastAt ? Date.parse(lastAt) : NaN
+  if (!Number.isFinite(last)) return true
+  return now - last >= days * DAY_MS
+}

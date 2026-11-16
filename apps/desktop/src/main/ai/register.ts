@@ -153,6 +153,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), localNotes: () => sys().localNotes,
     // 梳理要调一次模型：复用 dsh 的一次性补全通道
     complete: (s, u, sig, src) => controllerRef.current!.complete(s, u, sig, src),
+    // 后台攒到建议了：告诉界面（知识库入口上显示「有 N 条整理建议」），不弹窗、不打断
+    onPending: (plan) => send({ type: 'knowledge:consolidatePending', at: new Date().toISOString(), plan }),
   })
   // 安全与流程（见 safetyIpc.ts）：分层规则 / AI 复核 / 预演模式 / sudo 限时提权
   const safety = registerSafety({
@@ -378,6 +380,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
 
   // agent handlers
   ipcMain.handle('agent:createSession', (_e, opts) => controller.createSession(opts))
+  // 子代理列表（会话标题栏下拉）：某个会话派过哪些子代理、各自状态
+  ipcMain.handle('subagent:list', (_e, sessionId: string) => controller.subagentsOf(String(sessionId ?? '')))
   ipcMain.handle('agent:listSessions', () => controller.listSessions())
   ipcMain.handle('agent:sendTurn', (_e, sessionId: string, prompt: string) => controller.sendTurn(sessionId, prompt))
   ipcMain.handle('agent:interruptTurn', (_e, sessionId: string) => controller.interruptTurn(sessionId))

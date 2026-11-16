@@ -21,7 +21,19 @@ export const SUBAGENT_TASK_MAX = 2000
 export const SUBAGENT_SUMMARY_MAX = 4000
 
 export type SubagentPermission = 'read' | 'write'
-export type SubagentStatus = 'done' | 'blocked' | 'failed'
+export type SubagentStatus = 'done' | 'blocked' | 'failed' | 'running'
+
+/** 界面用的子代理列表项（主会话标题栏下拉里显示） */
+export interface SubagentRecord {
+  subagentId: string
+  task: string
+  permission: SubagentPermission
+  status: SubagentStatus
+  startedAt: string
+  elapsedMs?: number
+  summary?: string
+  blocked?: { question: string; context: string }
+}
 
 export interface SubagentResult {
   subagentId: string
@@ -75,7 +87,12 @@ const DENY_PREFIXES = ['delete_', 'remove_']
  * 子代理调用某工具时的拒绝原因（undefined = 放行）。
  * permission=read 的子代理连写工具都不给——spawn 时已一次性判定过，运行中不再弹卡。
  */
-export function subagentToolDeny(toolName: string, permission: SubagentPermission): string | undefined {
+/**
+ * 子代理调用某工具时的拒绝原因（undefined = 放行）。
+ * permission=read 的子代理连写工具都不给——spawn 时已一次性判定过，运行中不再弹卡。
+ * allowed：主代理指定的工具白名单（空 = 除下面几类禁用的以外都可用）。
+ */
+export function subagentToolDeny(toolName: string, permission: SubagentPermission, allowed?: string[]): string | undefined {
   const name = String(toolName)
   if (ALWAYS_DENY.has(name)) {
     return name === 'spawn_subagent'
@@ -83,10 +100,22 @@ export function subagentToolDeny(toolName: string, permission: SubagentPermissio
       : tr('子代理不能跟用户交互：请用 blocked 状态把问题交回主代理')
   }
   if (DENY_PREFIXES.some((p) => name.startsWith(p))) return tr('子代理不能删除东西：需要删除时交回主代理')
+  if (allowed?.length && !allowed.includes(name)) {
+    return tr('这个子任务只允许用这些工具：{list}；需要别的就交回主代理', { list: allowed.join('、') })   // i18n-ignore 列表分隔符（中文顿号）
+  }
   if (permission === 'read' && isWriteTool(name)) {
     return tr('这个子任务只授了只读权限，不能执行写操作；需要写就交回主代理')
   }
   return undefined
+}
+
+/**
+ * 把模型传的 tools（数组或逗号/空白分隔的字符串）规整成白名单；认不出的忽略
+ */
+export function parseToolList(v: unknown): string[] | undefined {
+  const raw = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : typeof v === 'string' ? v.split(/[,，\s]+/) : []
+  const out = raw.map((s) => s.trim()).filter(Boolean)
+  return out.length ? [...new Set(out)] : undefined
 }
 
 /** 写类工具（与 execGate 的判定保持一致的子集；只用于「只读子代理」的拦截） */

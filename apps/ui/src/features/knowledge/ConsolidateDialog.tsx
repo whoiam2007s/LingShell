@@ -20,9 +20,11 @@ const KIND_STYLE: Record<ConsolidateAction['kind'], string> = {
   drop: 'bg-[color:color-mix(in_srgb,var(--color-danger)_14%,transparent)] text-[var(--color-danger)]',
 }
 
-export function ConsolidateDialog({ open, cards, onClose, onApplied }: {
+export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: {
   open: boolean
   cards: KnowledgeCard[]
+  /** 后台已攒好的清单：有就直接用，不再让模型重跑一遍 */
+  pending?: { at: string; plan: ConsolidatePlan } | null
   onClose: () => void
   onApplied: () => void
 }) {
@@ -32,21 +34,28 @@ export function ConsolidateDialog({ open, cards, onClose, onApplied }: {
   const [err, setErr] = useState('')
   const [checked, setChecked] = useState<Set<number>>(new Set())
 
-  // 打开即让模型读一遍（要几秒到十几秒）；关掉后丢弃结果
+  // 打开即就绪：有后台清单直接展示，否则让模型读一遍（要几秒到十几秒）；关掉后丢弃结果
   useEffect(() => {
     if (!open) return
+    setErr('')
+    if (pending) {
+      setPlan(pending.plan)
+      setChecked(new Set(pending.plan.actions.map((_, i) => i)))   // 默认全选，用户自己取消不要的
+      setLoading(false)
+      return
+    }
     let alive = true
-    setLoading(true); setErr(''); setPlan(null)
+    setLoading(true); setPlan(null)
     client.knowledge.consolidate('manual')
       .then((p) => {
         if (!alive) return
         setPlan(p)
-        setChecked(new Set(p.actions.map((_, i) => i)))   // 默认全选，用户自己取消不要的
+        setChecked(new Set(p.actions.map((_, i) => i)))
       })
       .catch((e) => { if (alive) setErr(errText(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [open])
+  }, [open, pending])
 
   if (!open) return null
 

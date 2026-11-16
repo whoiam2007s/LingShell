@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
 import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
 import type { DbConn } from '@lingshell/shared'
-import { checkSubagentTask, clampTimeoutSec, type SubagentResult } from './subagent.js'
+import { checkSubagentTask, clampTimeoutSec, parseToolList, type SubagentResult } from './subagent.js'
 import { unifiedDiff } from './diff.js'
 import { withRedaction, type SecretsFn } from './redaction.js'
 import { wireOf, type SecretVault } from './secretVault.js'
@@ -116,6 +116,7 @@ export interface TerminalToolDeps {
     task: string
     timeoutSec?: number
     contextHint?: string
+    tools?: string[]
     permission: 'read' | 'write'
     parentSessionId: string
   }): Promise<SubagentResult>
@@ -1351,6 +1352,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         task: str('要子代理做的事：一句话说清、范围明确（2000 字以内）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         permission: optStr('read = 只读（缺省，最安全）；write = 允许它改文件 / 跑变更命令（会单独弹一次授权卡）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         timeout_sec: optInt('超时秒数（缺省 600，最少 30，最多 1800）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        tools: optStr('限制它能用的工具，逗号分隔（如 read_file,list_terminals）；留空 = 除交互 / 递归 / 删除外都能用'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         context_hint: optStr('一句话背景（它看不到你的对话，只看到 task 和这段背景）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
       output: textOut,
@@ -1363,6 +1365,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           task: t.value,
           timeoutSec: clampTimeoutSec(args?.timeout_sec),
           contextHint: typeof args?.context_hint === 'string' ? args.context_hint : undefined,
+          ...(parseToolList(args?.tools) ? { tools: parseToolList(args?.tools) } : {}),
           permission,
           parentSessionId: sidOf(exec),
         })

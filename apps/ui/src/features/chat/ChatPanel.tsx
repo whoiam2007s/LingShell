@@ -7,6 +7,7 @@ import { MessageItem, MsgActionsContext, type MsgActions } from './items/Message
 import { ToolSessionContext } from '../auth/index.js'
 import { ReasoningItem } from './items/ReasoningItem.js'
 import { ToolItem } from './items/ToolItem.js'
+import { SubagentBadge } from './SubagentBadge.js'
 import { TodoItem } from './items/TodoItem.js'
 import { AuthRequestItem } from './items/AuthRequestItem.js'
 import { PlanRequestItem } from './items/PlanRequestItem.js'
@@ -1293,6 +1294,8 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
             </button>
           )}
           {onExport && <ExportMenu onExport={onExport} postmortem={postmortem} />}
+          {/* 这个会话派过子代理时，名称后面显示数量与状态；点开看各自结论 */}
+          {sessionId && <SubagentBadge sessionId={sessionId} live={busy} />}
         </div>
       )}
       {hasSession && models?.note && <span className={`max-w-[160px] shrink-0 truncate text-[11px] ${models.note.ok ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-danger)]'}`} title={models.note.text}>{models.note.text}</span>}

@@ -45,7 +45,7 @@ import {
 import { unifiedDiff } from './diff.js'
 import {
   SUBAGENT_BRIEF, SUBAGENT_MAX_CONCURRENT, checkSubagentTask, clampTimeoutSec, composeSubagentTask,
-  parseSubagentSummary, subagentToolDeny, type SubagentPermission, type SubagentResult,
+  parseSubagentSummary, subagentToolDeny, type SubagentPermission, type SubagentRecord, type SubagentResult,
 } from './subagent.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
@@ -457,7 +457,7 @@ export class DshController {
       // 放在最前面——先于预演 / 计划 / 信任档，子代理的任何越权都不进模型重试循环之外的分支
       const sub = this.subagents.get(sessionId)
       if (sub) {
-        const why = subagentToolDeny(String(exec.name), sub.permission)
+        const why = subagentToolDeny(String(exec.name), sub.permission, sub.allowed)
         if (why) {
           const tids = targetTerminalsOf(exec.name, exec.arguments)
           for (const tid of tids.length ? tids : ['']) this.cfg.audit({ sessionId, terminalId: tid, command: describeCall(exec.name, exec.arguments), decision: `deny:subagent` })
@@ -766,7 +766,14 @@ export class DshController {
   private dshToOurs = new Map<string, string>()
 
   // 子代理：这些会话是主代理派出来的，工具受限、不弹授权卡、不写进会话列表
-  private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string }>()
+  private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string; allowed?: string[] }>()
+  // 每个主会话派过哪些子代理（界面标题栏下拉用；只存内存，重启就没了——列表不是存档）
+  private subagentLog = new Map<string, SubagentRecord[]>()
+
+  /** 某会话派过的子代理（新的在前）：运行中的也在里面 */
+  subagentsOf(sessionId: string): SubagentRecord[] {
+    return [...(this.subagentLog.get(sessionId) ?? [])].reverse()
+  }
 
   // ── 会话 ────────────────────────────────────────────
   // 随机 id，删除后不复用：复用会撞上 dsh 磁盘上的旧日志（拒绝新建），还会继承旧会话的授权。
@@ -793,6 +800,7 @@ export class DshController {
     task: string
     timeoutSec?: number
     contextHint?: string
+    tools?: string[]
     permission: SubagentPermission
     parentSessionId: string
   }): Promise<SubagentResult> {
@@ -804,7 +812,18 @@ export class DshController {
     const t0 = Date.now()
     const info = await this.createSession({ title: tr('子任务：{t}', { t: t.value.slice(0, 20) }), hidden: true })
     const sid = info.id
-    this.subagents.set(sid, { permission: req.permission, parent: req.parentSessionId, task: t.value })
+    this.subagents.set(sid, { permission: req.permission, parent: req.parentSessionId, task: t.value, ...(req.tools?.length ? { allowed: req.tools } : {}) })
+    // 记一笔给界面看（运行中）；结束时更新同一条
+    const rec: SubagentRecord = { subagentId: sid, task: t.value, permission: req.permission, status: 'running', startedAt: new Date(t0).toISOString() }
+    const log = this.subagentLog.get(req.parentSessionId) ?? []
+    this.subagentLog.set(req.parentSessionId, [...log, rec])
+    const settle = (patch: Partial<SubagentRecord>) => {
+      const at = (this.subagentLog.get(req.parentSessionId) ?? []).findIndex((r) => r.subagentId === sid)
+      if (at < 0) return
+      const next = [...this.subagentLog.get(req.parentSessionId)!]
+      next[at] = { ...next[at], ...patch }
+      this.subagentLog.set(req.parentSessionId, next)
+    }
 
     // 收集最后一条完整的助手消息当总结；轮次结束 / 失败即收
     let text = ''
@@ -838,12 +857,19 @@ export class DshController {
     const elapsedMs = Date.now() - t0
     const logPath = join(this.cfg.baseDir, 'dsh-sessions', sid)
     if (timedOut) {
-      return {
+      const r: SubagentResult = {
         subagentId: sid, status: 'failed', summary: tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value }), error: 'timeout', elapsedMs, logPath,
       }
+      settle({ status: 'failed', elapsedMs, summary: r.summary })
+      return r
     }
-    if (turnError) return { subagentId: sid, status: 'failed', summary: tr('子代理执行失败：{err}', { err: turnError }), error: turnError, elapsedMs, logPath }
+    if (turnError) {
+      const r: SubagentResult = { subagentId: sid, status: 'failed', summary: tr('子代理执行失败：{err}', { err: turnError }), error: turnError, elapsedMs, logPath }
+      settle({ status: 'failed', elapsedMs, summary: r.summary })
+      return r
+    }
     const parsed = parseSubagentSummary(text)
+    settle({ status: parsed.status, elapsedMs, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}) })
     return { subagentId: sid, status: parsed.status, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}), elapsedMs, logPath }
   }
 

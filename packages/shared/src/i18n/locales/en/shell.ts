@@ -412,6 +412,9 @@ export const shell: Record<string, string> = {
   '子代理已完成': 'Subagent finished',
   '子代理等你拍板': 'Subagent needs your decision',
   '子代理失败': 'Subagent failed',
+  '等你拍板': 'Needs your decision',
+  '这个会话派过的子代理（{n} 个）': 'Subagents this session spawned ({n})',
+  '子代理 {n}': 'Subagents {n}',
   '问题：': 'Question: ',
   '上下文：': 'Context: ',
 }
