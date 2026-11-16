@@ -66,19 +66,22 @@ export function decideByMode(mode: ExecMode, f: OpFacts): OpDecision {
       if (preview || mode === 'trust') return 'allow'
       return f.granted ? 'allow' : 'ask'
     }
-    // 会改东西的命令：命令串判不出路径，所以除预演外一律问（trust 也一样）
+    // 信任模式：普通改动命令也直接放行（删除 / 危险命令已被上面两条不变式拦住）
+    if (mode === 'trust') return 'allow'
+    // 其它模式：命令串判不出路径，一律问
     return preview ? 'deny' : 'ask'
   }
 
   // kind === 'write'（文件写入 / 创建 / 移动）
   if (preview) return 'deny'
-  // 工作目录外的写：auto / trust 档第一次问，批过这个目录就记住（confirm 不记，照旧每条问）
-  if (f.outsideWorkDir && !f.granted) return 'ask'
   switch (mode) {
     case 'trust':
+      // 信任模式：目录内外的写都放行（真删除走 destructive，已被上面的不变式拦住）
       return 'allow'
     case 'confirm':
     case 'auto':
+      // 工作目录外的写：第一次问，批过这个目录就记住（confirm 不记，照旧每条问）
+      if (f.outsideWorkDir && !f.granted) return 'ask'
       return f.granted ? 'allow' : 'ask'
   }
 }
