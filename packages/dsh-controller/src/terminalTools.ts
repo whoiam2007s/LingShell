@@ -1109,7 +1109,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         value: str('新值（按字符串传：数字 18、布尔 true、枚举 dark）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
       output: textOut,
-      async execute(args: any) {
+      async execute(args: any, exec: any) {
         if (!deps.saveAppSettings) throw new Error(tr('这台机器上没有提供设置写入'))
         const key = String(args.key ?? '')
         const spec = specOf(key)
@@ -1123,6 +1123,10 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const err = validateSetting(key, value)
         if (err) return JSON.stringify({ ok: false, error: err, spec: describeSettings() })
         const r = deps.saveAppSettings({ [key]: value })
+        // 改配置是敏感操作：进执行记录（和命令一样可追溯）
+        if (r.applied.length) {
+          deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${spec.label}：${key} → ${JSON.stringify(value)}`, decision: 'setting_changed' })
+        }
         return JSON.stringify({ ok: true, key, value, applied: r.applied })
       },
     },
