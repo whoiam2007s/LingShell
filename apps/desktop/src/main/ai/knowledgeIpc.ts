@@ -68,7 +68,7 @@ export function registerKnowledge(d: {
     const parsed = parseConsolidateReply(text)
     if (parsed.error || !parsed.actions) throw new Error(parsed.error ?? tr('模型没有给出整理清单'))
     const errs = validateConsolidateActions(parsed.actions, all)
-    if (errs.length) throw new Error(tr('模型给的整理清单不合法：{err}', { err: errs.slice(0, 5).join('；') }))
+    if (errs.length) throw new Error(tr('模型给的整理清单不合法：{err}', { err: errs.slice(0, 5).join('；') }))   // i18n-ignore 列表分隔符（中文分号）
     const plan: ConsolidatePlan = {
       trigger: trigger === 'size' || trigger === 'schedule' ? trigger : 'manual',
       before: all.length,
@@ -83,7 +83,7 @@ export function registerKnowledge(d: {
     if (!list.length) return { applied: 0 }
     const all = cards()
     const errs = validateConsolidateActions(list, all)
-    if (errs.length) throw new Error(tr('清单不合法：{err}', { err: errs.slice(0, 5).join('；') }))
+    if (errs.length) throw new Error(tr('清单不合法：{err}', { err: errs.slice(0, 5).join('；') }))   // i18n-ignore 列表分隔符（中文分号）
     const byId = new Map(all.map((c) => [c.id, c]))
     let applied = 0
     for (const a of list) {

@@ -1,3 +1,4 @@
+// i18n-ignore-file 本文件的中文都是给模型看的提示词与校验说明，不进界面翻译
 import { KNOWLEDGE_CONTENT_MAX, KNOWLEDGE_TITLE_MAX, type KnowledgeCard, type KnowledgeCategory, type KnowledgeScope } from './knowledge.js'
 
 /**

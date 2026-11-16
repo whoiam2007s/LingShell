@@ -127,12 +127,12 @@ describe('四档执行模式验收矩阵', () => {
     const c = makeCtx('trust')
     check('信任', '写工作目录内', gate(c, 'write_file', writeA), 'allow')
     check('信任', '只读命令 ls', gate(c, 'exec_in_terminal', ls), 'allow')
-    check('信任', '会改东西的命令 touch', gate(c, 'exec_in_terminal', touch), 'ask')
+    check('信任', '会改东西的命令 touch（信任档放行）', gate(c, 'exec_in_terminal', touch), 'allow')
     check('信任', '危险命令 rm -rf', gate(c, 'exec_in_terminal', rm), 'ask')
     check('信任', '上传文件（每次都问）', gate(c, 'upload_file', upload), 'ask')
-    // 即使这台主机已经有写入授权（比如在授权抽屉里授过写），目录外的写仍要问
+    // 信任档只拦删除与危险命令：目录外写也放行（B2 用例见 execMode.e2e.test.ts）
     approve(c, 'write_file', writeA)
-    check('信任', '写目录外（已有写入授权）', gate(c, 'write_file', writeOut), 'ask')
+    check('信任', '写目录外（已有写入授权）', gate(c, 'write_file', writeOut), 'allow')
   })
 
   it('预演：写操作与危险命令直接拒，只读放行（首次仍要先批读取授权）', () => {

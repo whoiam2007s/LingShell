@@ -327,5 +327,12 @@ export const core: Record<string, string> = {
   // config/WebhookStore.ts
   '未知的机器人类型': 'Unknown bot type',
   'Webhook 地址不能为空': 'Webhook URL can\'t be empty',
+  // dsh-controller/terminalTools.ts：AI 读写四类配置（list_config / save_*）
+  '这台机器上没有提供设置读取': 'This machine does not provide settings reading',
+  '这台机器上没有提供设置写入': 'This machine does not provide settings writing',
+  '这台机器上没有提供配置读取': 'This machine does not provide config listing',
+  '这台机器上没有提供配置写入': 'This machine does not provide config saving',
+  '这条连接没有密码，需要用户自己在设置页补（或先建密钥再引用）': 'This connection has no password; the user has to fill it in in Settings (or create a key first and reference it)',
+  '这套配置还没有 API Key，需要用户在设置 → 模型设置里填': 'This profile has no API key yet; the user has to fill it in under Settings → Models',
   // ════ config / platform / auth-registry end ════
 }

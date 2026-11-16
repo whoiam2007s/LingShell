@@ -171,14 +171,15 @@ describe.skipIf(!hasZstd)('四档执行模式真机验收（真实控制器 + �
     expect(approvals).toHaveLength(3)
   }, 90_000)
 
-  it('信任：目录外的写第一次问，批过同目录之后不再问（B2）', async () => {
+  it('信任：目录外的写也直接放行（只拦删除与危险命令）', async () => {
     const s = await newSession('trust')
     const outside = join(dir, 'outside-trust')
     mkdirSync(outside, { recursive: true })
     await runTurn(s.id, `写 [[write:term_l:${join(outside, 'n.txt')}]]`)
-    expect(approvals).toHaveLength(1)                      // 工作目录外：第一次问
+    expect(approvals).toHaveLength(0)                     // 信任档：目录外写也不问
+    expect(exists(join(outside, 'n.txt'))).toBe(CONTENT)
     await runTurn(s.id, `再写 [[write:term_l:${join(outside, 'o.txt')}]]`)
-    expect(approvals).toHaveLength(1)                      // 同一个目录：不再问
+    expect(approvals).toHaveLength(0)
     expect(exists(join(outside, 'o.txt'))).toBe(CONTENT)
   }, 90_000)
 

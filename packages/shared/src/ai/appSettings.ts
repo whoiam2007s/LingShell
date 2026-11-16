@@ -1,3 +1,4 @@
+// i18n-ignore-file 本文件的中文都是给模型看的设置名与校验说明，不进界面翻译
 import type { SystemSettings } from '../protocol/types.js'
 
 /**

@@ -326,7 +326,13 @@ export function createDbQuery(d: Pick<DbIpcDeps, 'run' | 'password' | 'mask'>) {
   return { exec, sql, redis, mongo, version, view, explain, script, query, databases, schemaTable, redisScan, redisKey }
 }
 
-export function registerDb(d: DbIpcDeps): { stop(): void } {
+export function registerDb(d: DbIpcDeps): {
+  stop(): void
+  /** 现有连接（AI 的 list_config 用） */
+  list(): DbConn[]
+  /** 校验后新建 / 修改一条连接（AI 的 save_db_connection 用），返回是否新建 */
+  upsert(v: unknown): { conn: DbConn; created: boolean }
+} {
   let conns = loadDbConns(d.file)
   const q = createDbQuery(d)
   const save = () => { saveDbConns(d.file, conns); return conns }
@@ -338,15 +344,19 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
   }
   const limitOf = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 500 ? v : 20)
 
-  d.handle('db:list', () => conns)
-  d.handle('db:save', (_e, v) => {
+  // 校验 + 落盘（AI 的 save_db_connection 与 db:save 共用一套规则）
+  const upsertConn = (v: unknown): { conns: DbConn[]; conn: DbConn; created: boolean } => {
     const c = sanitizeDbConn(v)
     if (typeof c === 'string') throw new Error(c)
     if (!d.host(c.hostKey)) throw new Error(tr('所选主机不存在'))
     const i = conns.findIndex((x) => x.id === c.id)
     conns = i < 0 ? [...conns, c] : conns.map((x, k) => (k === i ? c : x))
-    return save()
-  })
+    save()
+    return { conns, conn: c, created: i < 0 }
+  }
+
+  d.handle('db:list', () => conns)
+  d.handle('db:save', (_e, v) => { upsertConn(v); return conns })
   // 删连接连带删它的定时备份计划（否则调度器还会按旧计划跑，界面上又看不到）；已有的备份文件不动
   d.handle('db:delete', (_e, id) => {
     conns = conns.filter((x) => x.id !== id)
@@ -720,5 +730,9 @@ export function registerDb(d: DbIpcDeps): { stop(): void } {
     d.audit(c.hostKey, { command: d.mask(scriptAuditCommand(c, checkScript(c.kind, text, useTx), text, useTx)), decision: DB_SCRIPT_DECISION, exitCode: r.ok ? 0 : (r.rc || 1) })
     return r
   })
-  return { stop: () => clearInterval(timer) }
+  return {
+    stop: () => clearInterval(timer),
+    list: () => conns,
+    upsert: (v) => { const r = upsertConn(v); return { conn: r.conn, created: r.created } },
+  }
 }

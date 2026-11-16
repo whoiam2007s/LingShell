@@ -66,7 +66,7 @@ export class HttpTransport implements AppClient {
   hostCheck: AppClient['hostCheck'] = { run: ni, history: ni, get: ni, fileDiff: ni, fetchFile: ni }
   hostChanges: AppClient['hostChanges'] = { list: ni }
   systemd: AppClient['systemd'] = { list: ni, status: ni, action: ni }
-  knowledge: AppClient['knowledge'] = { list: ni, save: ni, remove: ni }
+  knowledge: AppClient['knowledge'] = { list: ni, save: ni, remove: ni, consolidate: ni, consolidateApply: ni }
   dashboard: AppClient['dashboard'] = { open: ni, close: ni, snapshot: ni, setSampling: ni, setInterval: ni }
   appearance: AppClient['appearance'] = { apply: async () => {} }   // 浏览器里没有原生主题 / 缩放，页面内的主题照常
   secrets: AppClient['secrets'] = { list: ni, save: ni, delete: ni, copy: ni, send: ni }

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { TerminalManager, PortForwardManager, connectSsh, execFull } from '@lingshell/terminal-core'
 import { DshController, McpManager, AUTO_COMPACT_CAP, unifiedDiff, wireOf } from '@lingshell/dsh-controller'
 import { AuthRegistry, JsonAuthStore } from '@lingshell/auth-registry'
-import { type AppEvent, type TerminalInfo, DEFAULT_SYSTEM_SETTINGS, redactAi, type SecretStreamMasker } from '@lingshell/shared'
+import { type AppEvent, type TerminalInfo, type DbConn, DEFAULT_SYSTEM_SETTINGS, redactAi, type SecretStreamMasker } from '@lingshell/shared'
 import { createAuditHelpers, findLiveTerminal, initAppContext, log } from './core/index.js'
 import { TransferService, fileHistory, type FileAccess, localAccess, sftpAccess } from './files/index.js'
 import { setNotifyLockState, notifyIfUnfocused, userWatching, notify, AppLock, installLockGate, registerAppearance, shouldHideOnClose,
@@ -250,6 +250,9 @@ export function createMainContext(win: BrowserWindow) {
     recorder, recMask, startLog, startAutoReply, stopRecording, stopLog, autoReply, sessionLog, dashboard, sessionLogDir, forwards,
     cmdHistory, layoutStore, autoReplyStore, summaryPathOf, electronEncryptor, dashProfiles, webhookStore, visibleTerm, logUnsub,
     auditRaw, auditTerminal, auditHost, liveTerminal,
+    // 数据库连接的内存表：由 db 领域在 registerDbIpc 里填（AI 的 list_config / save_db_connection 要用）。
+    // 必须走这个共享槽：连接状态的唯一来源是 dbIpc 里的内存数组，直接读写 db-conns.json 会与它不同步
+    dbConns: undefined as undefined | { list(): DbConn[]; upsert(v: unknown): { conn: DbConn; created: boolean } },
     stopAllLogs, knownSecrets, sendTaps, shouldHideOnClose, beginQuit, cancelQuit, win,
     setClearCards: (f: (sid: string) => void) => { clearCardsOnTurnEnd = f },
     setMobileSecretsInvalidator: (f: () => void) => { invalidateMobileSecrets = f },

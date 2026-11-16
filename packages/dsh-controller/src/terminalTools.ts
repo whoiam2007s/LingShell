@@ -6,7 +6,8 @@
 // 发起调用的 agent，所以鉴权整体上移到网关，工具体只管干活。少一层协议、少一半代码。
 import { randomBytes } from 'node:crypto'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
-import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS } from '@lingshell/shared'
+import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
+import type { DbConn } from '@lingshell/shared'
 import { unifiedDiff } from './diff.js'
 import { withRedaction, type SecretsFn } from './redaction.js'
 import { wireOf, type SecretVault } from './secretVault.js'
@@ -48,6 +49,22 @@ export interface KnowledgeProposalReq {
 // rule=按命令规则放行 / 询问（执行记录里注明）
 export interface UserOverride { deny?: string; command?: string; fail?: string; base?: string | null; rule?: string; review?: AiReviewResult }
 
+/**
+ * 四类实体的存取：主进程实现，AI 只能列 + 存（新建 / 修改），**删除不在工具里**。
+ * 校验在 shared/ai/entityConfig.ts 完成，这里拿到的都是已校验过的值。
+ */
+export interface ConfigEntityIO {
+  /** 某一类的现有条目（给模型看的摘要形状，不含密钥 / 明文）；Skill 库是异步读的 */
+  list(kind: AiConfigKind): Record<string, unknown>[] | Promise<Record<string, unknown>[]>
+  /** 密钥保险箱里的名称：数据库连接的密码只能引用它们（不提供 = 不校验） */
+  secretNames?(): string[]
+  saveSkill(input: SkillDraft): Promise<{ name: string; created: boolean }>
+  saveDbConn(input: DbConn): { id: string; name: string; created: boolean }
+  /** needsApiKey：新建的配置还没有 Key，要让用户去设置页填 */
+  saveModelProfile(input: ModelProfileDraft): { id: string; name: string; created: boolean; needsApiKey: boolean }
+  saveMcpServer(input: McpDraft): { id: string; name: string; created: boolean }
+}
+
 export interface TerminalToolDeps {
   terminals: TerminalLike
   // 把 terminalId 解析成授权粒度（'local' | hostId | 'host:port'）
@@ -84,6 +101,12 @@ export interface TerminalToolDeps {
   appSettings?(): Record<string, unknown>
   // AI 改设置：patch 是 { 'system.xxx': value } 形状，实现方自己再校验一遍并落盘
   saveAppSettings?(patch: Record<string, unknown>): { applied: string[] }
+  /**
+   * 四类可配置实体（Skill / 数据库连接 / 模型配置 / MCP 服务）：AI 能列出、能新建与修改，**不能删除**。
+   * 缺省 = 不提供 list_config 与四个 save_* 工具。
+   * 校验（结构、范围、敏感值）在 shared/ai/entityConfig.ts 里做，这里只负责落盘。
+   */
+  configEntities?: ConfigEntityIO
   // sessionId：主进程据此判断是不是无人值守会话（巡检）：无人值守时临时连接遇到未知指纹直接失败，不弹确认框
   runOnHosts?(hosts: FleetHost[], command: string, timeoutMs: number, signal?: AbortSignal, sessionId?: string): Promise<FleetRow[]>
   isReadOnly?(command: string): boolean
@@ -106,6 +129,11 @@ export interface TerminalToolDeps {
 const NEEDS: Record<string, 'read' | 'write'> = {
   get_app_setting: 'read',
   set_app_setting: 'write',
+  list_config: 'read',
+  save_skill: 'write',
+  save_db_connection: 'write',
+  save_model_profile: 'write',
+  save_mcp_server: 'write',
   read_terminal: 'read',
   exec_in_terminal: 'write',
   exec_on_terminals: 'write',  // 多主机：每台目标主机都要过授权（见 decideMulti）
@@ -117,6 +145,12 @@ const NEEDS: Record<string, 'read' | 'write'> = {
   download_file: 'read',
   run_on_hosts: 'read',        // 只读命令（不是只读直接拒），每台目标主机都要读取授权（见 decideFleet）
 }
+/**
+ * 改的是**应用自身配置**、不针对某台主机的工具：授权粒度固定为 local，
+ * 不需要（也没有）terminal_id。以前只有设置工具时没分出来，模型一调就被
+ * 「缺少 terminal_id」拒掉，等于白给。
+ */
+const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server'])
 // 已有授权也逐次确认（一次性，不升级）：上传/下载能把文件在本机与主机间搬运（外泄风险）。
 // write_file 不在此列：覆盖前自动备份、可一键还原，按信任档走（首次写入/确认档/生产主机仍弹卡看 diff），
 // 否则同一文件连改几处就要连点几次。
@@ -539,6 +573,17 @@ export function decideFor(deps: TerminalToolDeps, sessionId: string, toolName: s
   if (!NEEDS[toolName]) return { kind: 'allow' }               // 无需授权的工具
   if (toolName === 'exec_on_terminals') return decideMulti(deps, sessionId, args)
   if (toolName === 'run_on_hosts') return decideFleet(deps, sessionId, args)
+  const needed0 = neededForCall(deps, toolName, args)
+  // 应用自身配置（设置 / Skill / 数据库连接 / 模型配置 / MCP）：粒度固定 local，不涉及 terminal_id
+  if (APP_TOOLS.has(toolName)) {
+    const d0 = deps.decide(sessionId, 'local', needed0)
+    if (d0.kind === 'allow') return { kind: 'allow', ...ruleOf(d0.rule) }
+    if (d0.kind === 'deny') {
+      deps.audit({ sessionId, terminalId: 'local', command: describeCall(toolName, args), decision: `deny:${d0.reason}`, ...ruleOf(d0.rule) })
+      return { kind: 'deny', reason: `permission_denied: ${d0.reason}` }
+    }
+    return { kind: 'ask', reason: d0.reason, ...ruleOf(d0.rule) }
+  }
   const needed = neededForCall(deps, toolName, args)
   const terminalId = terminalIdOf(args)
   if (!terminalId) return { kind: 'deny', reason: tr('{tool} 缺少 terminal_id', { tool: toolName }) }
@@ -593,6 +638,13 @@ export function commitGrant(deps: TerminalToolDeps, sessionId: string, toolName:
     }
     return
   }
+  // 应用自身配置：粒度 local，没有 terminal_id 也要落授权与记录
+  if (APP_TOOLS.has(toolName)) {
+    const needed = neededForCall(deps, toolName, args)
+    if (reason !== 'dangerous_command') deps.grant(sessionId, 'local', needed)
+    deps.audit({ sessionId, terminalId: 'local', command: describeCall(toolName, args), decision: `allow:${reason ?? 'user'}`, ...ruleOf(rule) })
+    return
+  }
   const terminalId = terminalIdOf(args)
   if (!NEEDS[toolName] || !terminalId) return
   const needed = neededForCall(deps, toolName, args)
@@ -617,7 +669,26 @@ export function groupSameOutput(rs: { terminal_id: string; exit_code: number; fu
 }
 
 const str = (description: string) => ({ type: 'string' as const, required: true, description })
+const boolStr = (description: string) => ({ type: 'boolean' as const, description })
 const textOut = { schema: { type: 'string' as const }, render: (_a: unknown, v: string) => [{ type: 'text' as const, text: v }] }
+
+// 模型传进来的布尔值可能是字符串（"true" / "false"）：认不出就当没传（沿用原值）
+const boolArg = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : v === 'true' ? true : v === 'false' ? false : undefined)
+
+/** "KEY=VALUE" 每行一个 → 对象（模型爱用这种写法填 env / headers；空值也保留，交给占位逻辑） */
+function parseKvLines(v: unknown): Record<string, string> | undefined {
+  if (typeof v !== 'string' || !v.trim()) return undefined
+  const out: Record<string, string> = {}
+  for (const line of v.split(/\r?\n/)) {
+    const s = line.trim()
+    if (!s || s.startsWith('#')) continue
+    const i = s.indexOf('=')
+    const k = (i < 0 ? s : s.slice(0, i)).trim()
+    if (!k) continue
+    out[k] = i < 0 ? '' : s.slice(i + 1).trim()
+  }
+  return Object.keys(out).length ? out : undefined
+}
 
 /**
  * 工具定义表。工具体**不做鉴权**（网关已经把住），只管干活并把结果 JSON 化。
@@ -1093,7 +1164,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const all = deps.appSettings()
         if (args.key) {
           const spec = specOf(String(args.key))
-          if (!spec) return JSON.stringify({ ok: false, error: `没有这个设置项：${args.key}` })
+          if (!spec) return JSON.stringify({ ok: false, error: `没有这个设置项：${args.key}` })   // i18n-ignore 给模型的错误说明
           return JSON.stringify({ ok: true, key: spec.key, label: spec.label, value: readSetting(all, spec.key), writable: spec.writable })
         }
         const values: Record<string, unknown> = {}
@@ -1113,7 +1184,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         if (!deps.saveAppSettings) throw new Error(tr('这台机器上没有提供设置写入'))
         const key = String(args.key ?? '')
         const spec = specOf(key)
-        if (!spec) return JSON.stringify({ ok: false, error: `没有这个设置项：${key}（可先调 get_app_setting 看全部可用的键）` })
+        if (!spec) return JSON.stringify({ ok: false, error: `没有这个设置项：${key}（可先调 get_app_setting 看全部可用的键）` })   // i18n-ignore 给模型的错误说明
         // 值按字符串传进来，先按规格解析成目标类型
         let value: unknown = args.value
         if (typeof value === 'string') {
@@ -1125,9 +1196,139 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const r = deps.saveAppSettings({ [key]: value })
         // 改配置是敏感操作：进执行记录（和命令一样可追溯）
         if (r.applied.length) {
-          deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${spec.label}：${key} → ${JSON.stringify(value)}`, decision: 'setting_changed' })
+          deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${spec.label}：${key} → ${JSON.stringify(value)}`, decision: 'setting_changed' })   // i18n-ignore 执行记录文案
         }
         return JSON.stringify({ ok: true, key, value, applied: r.applied })
+      },
+    },
+    {
+      name: 'list_config',
+      description: '列出可配置的实体：Skill / 数据库连接 / 模型配置 / MCP 服务。不传 kind 列出全部四类；传 kind 只看一类。返回值不含任何密钥或密码明文（数据库连接的密码只有密钥名）。改之前先列一遍，避免重复新建。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: { kind: optStr('要列哪一类：skill / db_connection / model_profile / mcp_server；留空 = 四类都列') },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      output: textOut,
+      async execute(args: any) {
+        if (!deps.configEntities) throw new Error(tr('这台机器上没有提供配置读取'))
+        const io = deps.configEntities
+        const want = String(args?.kind ?? '').trim()
+        if (want && !isAiConfigKind(want)) {
+          return JSON.stringify({ ok: false, error: `没有这一类：${want}（可选：${AI_CONFIG_KINDS.join(' / ')}）` })   // i18n-ignore 给模型的错误说明
+        }
+        const kinds = want ? [want as AiConfigKind] : AI_CONFIG_KINDS
+        const out: Record<string, unknown> = { ok: true }
+        for (const k of kinds) {
+          try {
+            const items = await io.list(k)
+            out[k] = { label: AI_CONFIG_KIND_LABEL[k], hint: AI_CONFIG_KIND_HINT[k], count: items.length, text: items.length ? items.map((x) => summarizeEntity(k, x)).join('\n') : '（还没有）' }   // i18n-ignore 给模型的输出
+          } catch (e) {
+            out[k] = { label: AI_CONFIG_KIND_LABEL[k], error: e instanceof Error ? e.message : String(e) }
+          }
+        }
+        return JSON.stringify(out)
+      },
+    },
+    {
+      name: 'save_skill',
+      description: '新建或修改一个 Skill（设置 → Skills 里的一条操作说明）。name 已存在 = 修改它。正文写清步骤、判断条件、注意事项，别写死的 IP / 密码。改完立即生效，不用重启。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        name: str('skill 名称：小写字母、数字、连字符，如 nginx-check（已存在 = 修改）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        description: str('一句话描述：什么时候该用这个 skill（AI 靠它判断）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        body: str('正文（Markdown）：具体步骤与判断依据'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        enabled: boolStr('是否启用，缺省沿用 / 新建即启用'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        model_invocable: boolStr('AI 是否可自动调用，缺省沿用 / 新建即允许'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any, exec: any) {
+        if (!deps.configEntities) throw new Error(tr('这台机器上没有提供配置写入'))
+        const r = checkSkillInput({
+          name: args?.name, description: args?.description, body: args?.body,
+          enabled: boolArg(args?.enabled), modelInvocable: boolArg(args?.model_invocable),
+        })
+        if (!r.ok) return JSON.stringify({ ok: false, error: r.error })
+        const res = await deps.configEntities.saveSkill(r.value)
+        deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${res.created ? '新建' : '修改'} Skill：${res.name}`, decision: 'config_changed' })   // i18n-ignore 执行记录文案
+        return JSON.stringify({ ok: true, ...res })
+      },
+    },
+    {
+      name: 'save_db_connection',
+      description: '新建或修改一条数据库连接（数据库快查用的）。密码只接受密钥保险箱里的名称（传给 secret），不传就把这条连接建成分无密码的骨架、让用户自己补；绝不能写明文密码。host_key 是要在哪台机器上执行客户端：local = 本机。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        name: str('连接名称，如 订单库（60 字以内）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        id: optStr('要修改的连接 id；留空 = 新建'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        kind: str('数据库类型：mysql / postgres / redis / mongo'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        host_key: optStr('在哪台机器上执行客户端：local = 本机，或已保存主机的 id；留空 = local'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        via: optStr('client = 本机客户端（缺省）；docker = 进容器执行'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        container: optStr('via=docker 时的容器名'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        host: optStr('数据库地址（留空 = 客户端默认的本机 socket）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        port: optInt('端口（留空 = 该类型默认）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        user: optStr('用户名'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        database: optStr('库名（Redis 填库序号 0–99）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        secret: optStr('密钥保险箱里的密钥名称（不是密码本身）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any, exec: any) {
+        if (!deps.configEntities) throw new Error(tr('这台机器上没有提供配置写入'))
+        const r = checkDbConnInput({ ...args, hostKey: args?.host_key ?? args?.hostKey }, deps.configEntities.secretNames?.())
+        if (!r.ok) return JSON.stringify({ ok: false, error: r.error })
+        const res = deps.configEntities.saveDbConn(r.value)
+        deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${res.created ? '新建' : '修改'}数据库连接：${res.name}`, decision: 'config_changed' })   // i18n-ignore 执行记录文案
+        return JSON.stringify({ ok: true, ...res, ...(r.value.secret ? {} : { note: tr('这条连接没有密码，需要用户自己在设置页补（或先建密钥再引用）') }) })
+      },
+    },
+    {
+      name: 'save_model_profile',
+      description: '新建或修改一套模型配置（设置 → 模型配置）。只能改供应商 / 模型名 / 地址 / 上下文 / 思考深度 / 接口协议；API Key 绝不经过这里——新建的配置没有 Key，要提示用户自己去设置页填。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        provider: str('提供商 id（如 deepseek / openai-compatible / anthropic）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        model: str('模型名，如 deepseek-chat'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        id: optStr('要修改的配置 id（小写字母数字下划线）；留空 = 新建'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        name: optStr('显示名称（留空 = 用模型名）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        baseUrl: optStr('接口地址（留空 = 提供商默认）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        context_window: optInt('上下文窗口（0 / 留空 = 按模型自动）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        thinking: optStr('思考深度：off / low / medium / high'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        protocol: optStr('接口协议：anthropic / openai / openai-responses（留空 = 提供商默认）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        multimodal: boolStr('是否支持图片'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any, exec: any) {
+        if (!deps.configEntities) throw new Error(tr('这台机器上没有提供配置写入'))
+        const r = checkModelProfileInput({ ...args, contextWindow: args?.context_window ?? args?.contextWindow, multimodal: boolArg(args?.multimodal) })
+        if (!r.ok) return JSON.stringify({ ok: false, error: r.error })
+        const res = deps.configEntities.saveModelProfile(r.value)
+        deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${res.created ? '新建' : '修改'}模型配置：${res.name}`, decision: 'config_changed' })   // i18n-ignore 执行记录文案
+        return JSON.stringify({ ok: true, ...res, ...(res.needsApiKey ? { note: tr('这套配置还没有 API Key，需要用户在设置 → 模型设置里填') } : {}) })
+      },
+    },
+    {
+      name: 'save_mcp_server',
+      description: '新建或修改一个 MCP 服务（设置 → MCP）。env / headers 里像密钥的值（TOKEN / SECRET / PASSWORD / KEY / AUTHORIZATION 等）会被自动换成中文占位注释，不报错、也不会写假 token——建完要提醒用户自己补真实值。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        name: str('服务名称'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        transport: str('传输方式：stdio（本地命令）或 http（远程地址）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        id: optStr('要修改的服务 id；留空 = 新建'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        command: optStr('transport=stdio 时启动命令，如 npx'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        args: optStr('启动参数，空格分隔，如 -y @modelcontextprotocol/server-filesystem'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        cwd: optStr('stdio 的工作目录'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        url: optStr('transport=http 时服务地址'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        env: optStr('环境变量：KEY=VALUE 每行一个，如 GITHUB_TOKEN=（留空让用户自己填）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        headers: optStr('请求头：KEY=VALUE 每行一个'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        enabled: boolStr('是否启用'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any, exec: any) {
+        if (!deps.configEntities) throw new Error(tr('这台机器上没有提供配置写入'))
+        const r = checkMcpServerInput({
+          ...args,
+          args: typeof args?.args === 'string' ? args.args.split(/\s+/).filter(Boolean) : args?.args,
+          env: parseKvLines(args?.env),
+          headers: parseKvLines(args?.headers),
+          enabled: boolArg(args?.enabled),
+        })
+        if (!r.ok) return JSON.stringify({ ok: false, error: r.error })
+        const res = deps.configEntities.saveMcpServer(r.value)
+        deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${res.created ? '新建' : '修改'} MCP 服务：${res.name}`, decision: 'config_changed' })   // i18n-ignore 执行记录文案
+        const note = maskedNote(r.value.masked)
+        return JSON.stringify({ ok: true, ...res, ...(note ? { note } : {}) })
       },
     },
   ]
