@@ -135,6 +135,10 @@ export interface AiApi {
     list(): Promise<import('../../ai/index.js').KnowledgeCard[]>
     save(input: import('../../ai/index.js').KnowledgeInput): Promise<import('../../ai/index.js').KnowledgeCard>
     remove(id: string): Promise<void>
+    /** 梳理：让模型产出合并 / 更新 / 删除清单（不落库）；trigger 说明为什么触发 */
+    consolidate(trigger?: 'manual' | 'size' | 'schedule'): Promise<import('../../ai/index.js').ConsolidatePlan>
+    /** 应用用户勾选的清单动作；返回实际应用条数 */
+    consolidateApply(actions: import('../../ai/index.js').ConsolidateAction[]): Promise<{ applied: number }>
   }
   // 左侧对话增强（见 desktop/main/ai/chatPlusIpc.ts）：digest 历史会话摘要（@ 引用）；search 跨会话全文检索；
   // runShell 输入框 `!命令` 在终端里执行并取回结果（输出已按脱敏设置处理、只留末尾 4KB）；answerAsk 回答 AI 提问卡（null = 跳过）

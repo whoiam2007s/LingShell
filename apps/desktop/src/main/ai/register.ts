@@ -149,7 +149,11 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
       { prod, readonly: auth.getTrust(sid) === 'readonly', dangerous: dangerCheck(command) === 'dangerous' })
   }
   // 主机知识库（见 knowledgeIpc.ts）+ 跨主机提问的执行通道（见 fleetExec.ts，连接选择同批量执行）
-  const knowledge = registerKnowledge({ handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), localNotes: () => sys().localNotes })
+  const knowledge = registerKnowledge({
+    handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), localNotes: () => sys().localNotes,
+    // 梳理要调一次模型：复用 dsh 的一次性补全通道
+    complete: (s, u, sig, src) => controllerRef.current!.complete(s, u, sig, src),
+  })
   // 安全与流程（见 safetyIpc.ts）：分层规则 / AI 复核 / 预演模式 / sudo 限时提权
   const safety = registerSafety({
     handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), sys, auth, isReadOnly: isReadOnlyCommand,

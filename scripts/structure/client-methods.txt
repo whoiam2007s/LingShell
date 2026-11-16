@@ -241,6 +241,8 @@ keys.importPicked → keys:importPicked
 keys.list → keys:list
 keys.pickImport → keys:pickImport
 keys.useForHost → keys:useForHost
+knowledge.consolidate → knowledge:consolidate
+knowledge.consolidateApply → knowledge:consolidateApply
 knowledge.list → knowledge:list
 knowledge.remove → knowledge:remove
 knowledge.save → knowledge:save

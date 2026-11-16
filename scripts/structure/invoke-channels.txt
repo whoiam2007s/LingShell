@@ -245,6 +245,8 @@ keys:importPicked
 keys:list
 keys:pickImport
 keys:useForHost
+knowledge:consolidate
+knowledge:consolidateApply
 knowledge:list
 knowledge:remove
 knowledge:save
