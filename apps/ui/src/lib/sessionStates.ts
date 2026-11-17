@@ -39,6 +39,8 @@ export function noteSessionEvent(ev: { type?: string; sessionId?: string; [k: st
       break
     // 格式错误后引擎会自动补一轮：状态回到「进行中」，不要因为这次失败亮红点
     case 'agent:turnRetrying':
+      set('running')
+      break
     // 网络 / 服务端 / 限流的自动重试同理
     case 'agent:requestRetrying':
       set('running')

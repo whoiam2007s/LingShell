@@ -11,7 +11,7 @@ import { tr, type SessionMeta } from '@lingshell/shared'
 import { cn } from '../../lib/cn.js'
 import { RECENT_N, recentSessions, tabTitle } from './sessionTabsModel.js'
 import { useRunStates } from '../../lib/sessionStates.js'
-import { RunStateDot } from '../sessions/RunStateDot.js'
+import { RunStateDot } from '../sessions/index.js'
 
 export interface SessionSwitcherProps {
   sessions: SessionMeta[]
