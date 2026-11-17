@@ -1012,6 +1012,8 @@ export interface SubagentView {
   elapsedMs?: number
   summary?: string
   blocked?: { question: string; context: string }
+  /** 最近一步在干什么（节流更新）：让用户在下拉里看得见进度，而不只是「运行中」 */
+  step?: { kind: 'tool' | 'text'; label: string; at: string }
 }
 
 // ── 模型接口协议 ────────────────────────────────────────

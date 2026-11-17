@@ -365,6 +365,7 @@ export const core: Record<string, string> = {
   '保存 MCP 服务：{name}': 'Save MCP server: {name}',
   '查看 Skill / 数据库连接 / 模型配置 / MCP 服务列表': 'List skills / database connections / model profiles / MCP servers',
   '读取应用设置': 'Read app settings',
+  '调用 {tool}': 'Calling {tool}',
   '修改应用设置：{key}': 'Change app setting: {key}',
   // ════ config / platform / auth-registry end ════
 }

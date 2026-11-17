@@ -842,11 +842,26 @@ export class DshController {
     }
 
     // 收集最后一条完整的助手消息当总结；轮次结束 / 失败即收
+    // 同时把「最近一步」写进记录（节流 400ms）：下拉里能看见子代理在干什么，而不是只有一个「运行中」
     let text = ''
     let turnError: string | undefined
+    let stepAt = 0
+    const bumpStep = (kind: 'tool' | 'text', label: string) => {
+      const now = Date.now()
+      if (now - stepAt < 400) return
+      stepAt = now
+      settle({ step: { kind, label: label.replace(/\s+/g, ' ').trim().slice(0, 120), at: new Date(now).toISOString() } })
+    }
     const finished = new Promise<void>((resolve) => {
       const off = this.onEvent((ev) => {
         if (ev.sessionId !== sid) return
+        if (ev.type === 'agent:itemStarted') {
+          if (ev.tool?.name) bumpStep('tool', tr('调用 {tool}', { tool: ev.tool.name }))
+        }
+        if ((ev.type === 'agent:itemDelta' || ev.type === 'agent:itemUpdated') && ev.text?.trim()) {
+          const tail = ev.text.trim().slice(-80)
+          if (tail) bumpStep('text', tail)
+        }
         if (ev.type === 'agent:itemUpdated' && ev.kind === 'agent_message' && ev.status === 'completed' && ev.text?.trim()) text = ev.text
         if (ev.type === 'agent:turnCompleted') { off(); resolve() }
         if (ev.type === 'agent:turnFailed') { turnError = ev.error || tr('子代理的这一轮失败了'); off(); resolve() }

@@ -33,6 +33,8 @@ export interface SubagentRecord {
   elapsedMs?: number
   summary?: string
   blocked?: { question: string; context: string }
+  /** 最近一步（工具名 / 正在写的话），节流后更新 */
+  step?: { kind: 'tool' | 'text'; label: string; at: string }
 }
 
 export interface SubagentResult {

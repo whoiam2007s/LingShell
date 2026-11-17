@@ -56,7 +56,7 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
         <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-40 mt-1 max-h-[min(420px,60vh)] w-[min(560px,80vw)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-xl">
+        <div className="absolute left-0 top-full z-40 mt-1 max-h-[min(420px,60vh)] w-[min(760px,92vw)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-xl">
           {list.map((x) => (
             <div key={x.subagentId} className="rounded-md border-b border-[var(--color-border-subtle)] px-2 py-1.5 last:border-b-0">
               <button onClick={() => setDetail(detail === x.subagentId ? undefined : x.subagentId)}
@@ -64,9 +64,16 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
                 <span className={cn('flex shrink-0 items-center gap-1 text-[11px]', statusTone(x.status))}>
                   <StatusIcon status={x.status} />{statusText(x.status)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]">{x.task}</span>
+                <span className="line-clamp-2 min-w-0 flex-1 text-[12px] text-[var(--color-text-secondary)]">{x.task}</span>
                 {x.elapsedMs !== undefined && <span className="shrink-0 text-[10.5px] text-[var(--color-text-muted)]">{fmtMs(x.elapsedMs)}</span>}
               </button>
+              {/* 最近一步：只知道「运行中」看不出卡在哪，这里显示它正在调什么 / 正在写什么 */}
+              {x.status === 'running' && x.step && (
+                <div className="mt-0.5 flex items-center gap-1 pl-[52px] text-[11px] text-[var(--color-text-muted)]">
+                  <span className="shrink-0">{x.step.kind === 'tool' ? '⚙' : '✎'}</span>
+                  <span className="truncate">{x.step.label}</span>
+                </div>
+              )}
               {detail === x.subagentId && (
                 <div className="mt-1 space-y-1">
                   {x.blocked && (
