@@ -126,7 +126,7 @@ export interface DshControllerConfig extends TerminalToolDeps {
   // 全局自定义规则（系统设置），每次模型请求现读注入系统提示词
   customRules?(): string
   // 主机知识库：这些主机（hostKey）相关的知识卡注入文本（已截断），没有返回 ''。每次模型请求现求值
-  hostKnowledge?(hostKeys: string[]): string
+  hostKnowledge?(hostKeys: string[], window?: number): string
   // MCP：连接管理器（boot 时把已连上的服务工具注册进来）；授权要看会话信任档与是否无人值守巡检
   mcp?: McpManager
   trustOf?(sessionId: string): TrustLevel
@@ -307,7 +307,9 @@ export class DshController {
       // 主机知识库（按会话：只注入本会话用到过的主机）+ 跨主机提问的用法与主机清单
       installKnowledgeSection(ctx, (agentId) => {
         const keys = this.touched.get(this.dshToOurs.get(agentId) ?? agentId)
-        return keys?.size ? this.cfg.hostKnowledge?.([...keys]) ?? '' : ''
+        const sid = this.dshToOurs.get(agentId) ?? agentId
+        // 带上窗口：注入上限按模型窗口算（大窗口多给，小窗口少给）
+        return keys?.size ? this.cfg.hostKnowledge?.([...keys], this.sessions.get(sid)?.window) ?? '' : ''
       })
       installFleetSection(ctx, () => this.cfg.fleetHosts?.() ?? [])
       // 分层规则（分组 / 主机按本会话用到过的主机，工作目录按会话绑定的目录）+ 预演模式的做法（只在开着时出现）

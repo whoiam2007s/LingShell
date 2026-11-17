@@ -155,10 +155,12 @@ export function registerKnowledge(d: {
   return {
     /** 停掉后台定时器（应用退出时调） */
     stop: () => { if (first) clearTimeout(first); if (every) clearInterval(every) },
-    context: (hostKeys: string[]) => {
+    context: (hostKeys: string[], window?: number) => {
       const all = knowledgeHosts(d.hosts())
+      // 注入上限按模型窗口的 2% 算（8K–80K）：大窗口模型多给点，小窗口模型别把上下文吃光
+      const limit = Math.min(80_000, Math.max(8_000, Math.floor((window ?? 0) * 0.02)))
       // 只用到了临时主机（未保存）：没有主机 / 分组卡，全局卡照样给
-      return hostKeys.length ? buildKnowledgeContext(cards(), all.filter((h) => hostKeys.includes(h.hostKey))) : ''
+      return hostKeys.length ? buildKnowledgeContext(cards(), all.filter((h) => hostKeys.includes(h.hostKey)), limit) : ''
     },
     titles: (hostKey: string) => cards().filter((c) => c.scope === 'host' && c.target === hostKey).map((c) => c.title),
     propose: (req: ProposalReq) => buildProposal(cards(), knowledgeHosts(d.hosts()), req),

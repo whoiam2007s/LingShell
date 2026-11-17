@@ -303,7 +303,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
       send({ type: 'knowledge:proposal', proposalId: randomUUID(), sessionId, ...p })
       return { targetLabel: p.targetLabel }
     },
-    hostKnowledge: (keys) => knowledge.context(keys),
+    hostKnowledge: (keys, window) => knowledge.context(keys, window),
     // 跨主机提问：只给名称 / id / 分组 / 环境；只读判定同巡检白名单
     fleetHosts: () => hostStore.list().map((h) => ({ id: h.id, label: h.label, ...(h.group ? { group: h.group } : {}), ...(h.env ? { env: h.env } : {}) })),
     runOnHosts: (hosts, command, ms, signal, sid) => runOnHosts(hosts, sid && unattended.has(sid) ? fleetOpenUnattended : fleetOpen, command, ms, signal),

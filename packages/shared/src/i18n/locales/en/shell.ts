@@ -432,4 +432,5 @@ export const shell: Record<string, string> = {
   '填 0 = 按模型自动。对话上下文超过「自动压缩阈值」时，自动把较早的对话压缩成摘要、任务不中断。': '0 = derive from the model. When the conversation exceeds the compaction threshold, older turns are summarized and the task continues.',
   '上下文用到窗口的这个百分比时自动压缩，默认 60%。小窗口模型可以调低（更早压缩、更省钱但更早丢细节）；想尽量保留原文可以调高到 80~90%。范围 20%~95%。界面上那个百分比始终按「用量 / 上下文窗口」显示，跟这个阈值无关。': 'Auto-compact when the context reaches this percentage of the window; default 60%. Lower it for small-window models (compacts earlier, cheaper, loses detail sooner); raise it to 80–90% to keep more original text. Range 20–95%. The percentage in the title bar is always usage / context window and is unaffected by this threshold.',
   '压缩阈值要填 20 到 95 之间的百分比（默认 60）': 'Compaction threshold must be a percentage between 20 and 95 (default 60)',
+  '内容太长（{n} 字，上限 {max} 字）：只留可照做的结论（命令、路径、判据），细节拆成另一张卡': 'Content too long ({n} characters, limit {max}): keep only actionable conclusions (commands, paths, criteria) and split the details into another card',
 }

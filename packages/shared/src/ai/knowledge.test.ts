@@ -38,14 +38,20 @@ describe('relevantCards / buildKnowledgeContext', () => {
     expect(buildKnowledgeContext(cards, [{ hostKey: 'h9', label: 'x' }])).toContain('全局')   // 全局卡总是相关
     expect(buildKnowledgeContext([card({ target: 'h2' })], hosts)).toBe('')
   })
-  it('总长截断：超限的卡只列标题，总长不超上限太多', () => {
+  it('总长超限：整卡放不下就只列题名，正文不截断', () => {
     const big = Array.from({ length: 10 }, (_, i) => card({ id: `b${i}`, title: `大卡${i}`, content: 'x'.repeat(900), updatedAt: `2026-02-${String(10 + i)}T00:00:00Z` }))
     const t = buildKnowledgeContext(big, hosts, 4000)
     expect(t.length).toBeLessThan(4000 + 500)
     expect(t).toContain('[b9] 大卡9')        // 最新的展开
     expect(t).toMatch(/另有 \d+ 条因篇幅未展开/)
-    const one = buildKnowledgeContext([card({ content: 'y'.repeat(3000) })], hosts)
-    expect(one).toContain('（已截断）')
+    // 放得下的长卡：正文必须完整（读不截断），不再出现「已截断」
+    const one = buildKnowledgeContext([card({ content: 'y'.repeat(3000) })], hosts, 8000)
+    expect(one).toContain('y'.repeat(3000))
+    expect(one).not.toContain('已截断')
+    // 放不下：一个字都不给，只列题名（避免模型把半截内容当成全部）
+    const tooLong = buildKnowledgeContext([card({ content: 'z'.repeat(3000) })], hosts, 1000)
+    expect(tooLong).not.toContain('z')
+    expect(tooLong).toMatch(/另有 1 条因篇幅未展开/)
   })
 })
 
