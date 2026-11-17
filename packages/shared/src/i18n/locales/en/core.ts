@@ -332,6 +332,7 @@ export const core: Record<string, string> = {
   '这台机器上没有提供设置写入': 'This machine does not provide settings writing',
   '这台机器上没有提供配置读取': 'This machine does not provide config listing',
   '这台机器上没有提供配置写入': 'This machine does not provide config saving',
+  '已写入配置：终端字号 / 配色 / 字体等界面项会立即刷新；超时、上下文阈值等下一轮读取时生效。': 'Configuration saved: terminal font size / colors / font refresh immediately; timeouts and context thresholds take effect on the next read.',
   '这条连接没有密码，需要用户自己在设置页补（或先建密钥再引用）': 'This connection has no password; the user has to fill it in in Settings (or create a key first and reference it)',
   '这套配置还没有 API Key，需要用户在设置 → 模型设置里填': 'This profile has no API key yet; the user has to fill it in under Settings → Models',
   // dsh-controller/subagent.ts：子代理的工具拦截与摘要解析

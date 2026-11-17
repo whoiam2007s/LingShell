@@ -1212,7 +1212,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         if (r.applied.length) {
           deps.audit({ sessionId: sidOf(exec), terminalId: 'local', command: `${spec.label}：${key} → ${JSON.stringify(value)}`, decision: 'setting_changed' })   // i18n-ignore 执行记录文案
         }
-        return JSON.stringify({ ok: true, key, value, applied: r.applied })
+        return JSON.stringify({ ok: true, key, value, applied: r.applied, ...(r.applied.length ? { note: tr('已写入配置：终端字号 / 配色 / 字体等界面项会立即刷新；超时、上下文阈值等下一轮读取时生效。') } : {}) })   // i18n-ignore 给模型的说明
       },
     },
     {

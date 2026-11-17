@@ -185,6 +185,13 @@ export type KnowledgeConsolidatePendingEvent = {
   plan: import('../ai/index.js').ConsolidatePlan
 }
 
+// 应用设置被改过（AI 通过 set_app_setting，或任何非渲染层的写入）：
+// 界面据此重拉设置并热更新终端外观（字号 / 配色 / 字体…），否则只有重启才生效
+export type AppSettingsChangedEvent = {
+  type: 'app:settingsChanged'
+  patch: Record<string, unknown>
+}
+
 // ── 阶段三：资源上传/下载进度 ────────────────────────────
 export type TransferProgressEvent = {
   type: 'transfer:progress'
@@ -253,6 +260,7 @@ export type AppEvent =
   | AuthRequestEvent | AuthResolvedEvent | PlanRequestEvent
   | KnowledgeProposalEvent
   | KnowledgeConsolidatePendingEvent
+  | AppSettingsChangedEvent
   | TransferProgressEvent
   | PortForwardChangedEvent
   | InspectionRunEvent | InspectionOpenSessionEvent

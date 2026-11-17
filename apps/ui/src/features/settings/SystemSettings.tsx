@@ -18,11 +18,13 @@ export function useSystemSettings({ onSaved, validate, defer }: {
   useEffect(() => {
     const load = () => client.settings.get().then((s) => { cur.current = { ...DEFAULT_SYSTEM_SETTINGS, ...s.system }; setSys(cur.current); setLoaded(true) })
     void load()
-    // AI 也能改设置（set_app_setting）：窗口重新聚焦时重读一次，免得界面上还是旧值。
+    // AI 也能改设置（set_app_setting）：主进程会广播 app:settingsChanged，收到就重读；
+    // 另外窗口重新聚焦时也补一次（防事件丢失）。
     // 有未保存的本地改动（dirty 非空）时不覆盖，避免打断用户正在编辑的项
-    const onFocus = () => { if (!dirty.current.size) void load() }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    const reread = () => { if (!dirty.current.size) void load() }
+    const off = client.on((ev) => { if (ev.type === 'app:settingsChanged') reread() })
+    window.addEventListener('focus', reread)
+    return () => { off(); window.removeEventListener('focus', reread) }
   }, [])
   const auto = useAutoSave({
     defer,

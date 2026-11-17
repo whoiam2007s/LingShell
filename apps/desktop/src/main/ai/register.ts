@@ -219,7 +219,11 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
       const cur = settings.get()
       if (!cur.system) return { applied: [] }
       const { next, applied } = mergeSystemPatch(cur.system, patch)
-      if (applied.length) settings.save({ ...cur, system: next })
+      if (applied.length) {
+        settings.save({ ...cur, system: next })
+        // 界面侧的外观（终端字号 / 配色 / 字体）来自渲染层的内存单例，不广播的话只有重启才生效
+        send({ type: 'app:settingsChanged', patch })
+      }
       return { applied }
     },
     /**
