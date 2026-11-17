@@ -419,6 +419,7 @@ export interface ModelProfile {
   model: string
   baseUrl: string
   contextWindow?: number    // 0/缺省 = 按模型自动
+  compactRatio?: number     // 自动压缩阈值占窗口的百分比（20–95，默认 60）；也接受 0.2–0.95 的小数
   apiKey?: string
   hasApiKey?: boolean
   keyFrom?: string          // 仅保存 / 测试方向：「复制」出的新配置沿用这套已存的 key（同提供商才生效）

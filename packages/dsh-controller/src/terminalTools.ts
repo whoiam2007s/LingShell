@@ -160,11 +160,14 @@ const NEEDS: Record<string, 'read' | 'write'> = {
   run_on_hosts: 'read',        // 只读命令（不是只读直接拒），每台目标主机都要读取授权（见 decideFleet）
 }
 /**
- * 改的是**应用自身配置**、不针对某台主机的工具：授权粒度固定为 local，
- * 不需要（也没有）terminal_id。以前只有设置工具时没分出来，模型一调就被
- * 「缺少 terminal_id」拒掉，等于白给。
+ * 改的是**应用自身配置**、不针对某台主机的工具：授权粒度用伪主机键，不是 local。
+ * 用 local 会把「批准改个设置」记成「本地终端写入授权」——auto 档下顺带放宽了本地文件写入。
  */
 const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
+/** 授权粒度：应用配置 / 派子代理各占一个键，都不会和真实主机的授权混在一起 */
+export const authKeyOf = (toolName: string): string => (toolName === 'spawn_subagent' ? 'subagent' : 'app')
+/** 伪主机键（不是真实主机 id，UI 上按语义显示，不当终端处理） */
+export const isPseudoHostKey = (k: string | undefined): boolean => k === 'app' || k === 'subagent'
 // 已有授权也逐次确认（一次性，不升级）：上传/下载能把文件在本机与主机间搬运（外泄风险）。
 // write_file 不在此列：覆盖前自动备份、可一键还原，按信任档走（首次写入/确认档/生产主机仍弹卡看 diff），
 // 否则同一文件连改几处就要连点几次。
@@ -197,6 +200,8 @@ export function neededFor(toolName: string): 'read' | 'write' { return NEEDS[too
  * isReadOnly 没注入（部分单测 / 嵌入场景）时保持静态表。
  */
 export function neededForCall(deps: Pick<TerminalToolDeps, 'isReadOnly'>, toolName: string, args: unknown): 'read' | 'write' {
+  // 派子代理按参数判定：只要只读就不该要"写权限"（与「只读批一次就记」的语义一致）
+  if (toolName === 'spawn_subagent') return (args as { permission?: unknown } | null)?.permission === 'write' ? 'write' : 'read'
   const n = NEEDS[toolName] ?? 'write'
   // start_background 会留下一个持续运行的进程，即使命令本身只读也仍按写入授权
   if (n !== 'write' || !deps.isReadOnly || toolName === 'start_background') return n
@@ -229,6 +234,19 @@ export function describeCall(toolName: string, args: unknown): string | undefine
   // 没有命令参数的读工具：授权卡上也要说清楚在干什么，否则卡片是空的
   if (toolName === 'check_background') return tr('查询后台任务 {id}（只读：状态 + 日志末尾）', { id: String(a.job_id) })
   if (toolName === 'read_terminal') return tr('读取终端屏幕内容')
+  // 应用级工具：授权卡 / 执行记录上要说清在改什么（以前这里是空的，卡片只有一行"终端"）
+  if (toolName === 'spawn_subagent') {
+    const task = String(a.task ?? '').split('\n')[0].slice(0, 120)
+    const perm = a.permission === 'write' ? tr('读写') : tr('只读')
+    return tr('派子代理（{perm}）：{task}', { perm, task })
+  }
+  if (toolName === 'save_skill') return tr('保存 Skill：{name}', { name: String(a.name) })
+  if (toolName === 'save_db_connection') return tr('保存数据库连接：{name}', { name: String(a.name) })
+  if (toolName === 'save_model_profile') return tr('保存模型配置：{name}', { name: String(a.name ?? a.model) })
+  if (toolName === 'save_mcp_server') return tr('保存 MCP 服务：{name}', { name: String(a.name) })
+  if (toolName === 'list_config') return tr('查看 Skill / 数据库连接 / 模型配置 / MCP 服务列表')
+  if (toolName === 'get_app_setting') return tr('读取应用设置')
+  if (toolName === 'set_app_setting') return tr('修改应用设置：{key}', { key: String(a.key ?? '') })
   return undefined
 }
 
@@ -275,6 +293,11 @@ export function approvalView(deps: Pick<TerminalToolDeps, 'resolveHostKey' | 'te
   const tids = targetTerminalsOf(toolName, args)
   const titles = new Map(deps.terminals.list().map((t) => [t.id, t.title]))
   const explain = explainOf(args)
+  // 应用自身配置 / 派子代理：不针对任何终端，用伪主机键（UI 上不显示"终端"字样）
+  if (APP_TOOLS.has(toolName)) {
+    const command = describeCall(toolName, args)
+    return { terminalId: authKeyOf(toolName), targets: undefined, ...(command ? { command } : {}), ...(explain ? { explain } : {}) }
+  }
   if (toolName === 'run_on_hosts') {
     // 不经终端：一张卡列出将访问的全部主机（授权粒度就是主机 id）
     const hosts = fleetTargetsOf(deps, args)
@@ -588,12 +611,14 @@ export function decideFor(deps: TerminalToolDeps, sessionId: string, toolName: s
   if (toolName === 'exec_on_terminals') return decideMulti(deps, sessionId, args)
   if (toolName === 'run_on_hosts') return decideFleet(deps, sessionId, args)
   const needed0 = neededForCall(deps, toolName, args)
-  // 应用自身配置（设置 / Skill / 数据库连接 / 模型配置 / MCP）：粒度固定 local，不涉及 terminal_id
+  // 应用自身配置 / 派子代理：授权粒度用伪主机键（app / subagent），不落到 local 上
   if (APP_TOOLS.has(toolName)) {
-    const d0 = deps.decide(sessionId, 'local', needed0)
+    const authKey = authKeyOf(toolName)
+    const view = approvalView(deps, toolName, args)
+    const d0 = deps.decide(sessionId, authKey, needed0)
     if (d0.kind === 'allow') return { kind: 'allow', ...ruleOf(d0.rule) }
     if (d0.kind === 'deny') {
-      deps.audit({ sessionId, terminalId: 'local', command: describeCall(toolName, args), decision: `deny:${d0.reason}`, ...ruleOf(d0.rule) })
+      deps.audit({ sessionId, terminalId: authKey, command: view.command, decision: `deny:${d0.reason}`, ...ruleOf(d0.rule) })
       return { kind: 'deny', reason: `permission_denied: ${d0.reason}` }
     }
     return { kind: 'ask', reason: d0.reason, ...ruleOf(d0.rule) }
@@ -652,11 +677,12 @@ export function commitGrant(deps: TerminalToolDeps, sessionId: string, toolName:
     }
     return
   }
-  // 应用自身配置：粒度 local，没有 terminal_id 也要落授权与记录
+  // 应用自身配置 / 派子代理：伪主机键，没有 terminal_id 也要落授权与记录
   if (APP_TOOLS.has(toolName)) {
     const needed = neededForCall(deps, toolName, args)
-    if (reason !== 'dangerous_command') deps.grant(sessionId, 'local', needed)
-    deps.audit({ sessionId, terminalId: 'local', command: describeCall(toolName, args), decision: `allow:${reason ?? 'user'}`, ...ruleOf(rule) })
+    const authKey = authKeyOf(toolName)
+    if (reason !== 'dangerous_command') deps.grant(sessionId, authKey, needed)
+    deps.audit({ sessionId, terminalId: authKey, command: approvalView(deps, toolName, args).command, decision: `allow:${reason ?? 'user'}`, ...ruleOf(rule) })
     return
   }
   const terminalId = terminalIdOf(args)

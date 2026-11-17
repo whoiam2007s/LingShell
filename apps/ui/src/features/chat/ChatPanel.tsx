@@ -1089,7 +1089,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
 // 本会话累计 tokens（用量统计）：每次请求后 contextUsage 变 → 重新取一次；改了单价也重取（花费跟着变）
 // 头部用量小标签：「本会话累计 tokens · 上下文进度条 %」合成一个，悬停看明细，点击立即压缩上下文。
 // 累计 tokens 每次请求后（contextUsage 变）重取；改了单价也重取（花费跟着变）
-function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { inputTokens: number; limit: number }; busy?: boolean }) {
+function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { inputTokens: number; limit: number; window?: number; compactAt?: number }; busy?: boolean }) {
   const [t, setT] = useState<(UsageTotals & { currency: UsageCurrency }) | null>(null)
   const [priceTick, setPriceTick] = useState(0)
   // 点击标签 = 立即压缩上下文（会话空闲时才有意义；忙时 dsh 会报 busy）
@@ -1138,11 +1138,17 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
   }, [sessionId, tick, priceTick])
   if (!t?.requests && !usage) return null
   const K = (n: number) => `${Math.round(n / 1000)}K`
-  const pct = usage && usage.limit > 0 ? Math.min(100, Math.round((usage.inputTokens / usage.limit) * 100)) : undefined
+  // 分母用**模型上下文窗口**（用户理解的口径）——以前用压缩阈值当分母，
+  // 阈值是窗口的 60%，于是用量一直在 96% 附近徘徊，看着像"上下文快满了"，其实才用了一半多
+  const denom = usage?.window || 0
+  const pct = usage && denom > 0 ? Math.min(100, Math.round((usage.inputTokens / denom) * 100)) : undefined
   const color = pct === undefined ? '' : pct >= 95 ? 'var(--color-danger)' : pct >= 80 ? 'var(--color-warn)' : 'var(--color-accent)'
   const tip = [
-    usage && (usage.limit > 0
-      ? tr('上下文 {used} / {limit}（{pct}%），达到上限会自动压缩后继续', { used: K(usage.inputTokens), limit: K(usage.limit), pct: pct ?? 0 })
+    usage && (denom > 0
+      ? tr('上下文 {used} / {window}（{pct}%）；达到 {compactAt}（{ratio}%）时自动压缩后继续', {
+        used: K(usage.inputTokens), window: K(denom), pct: pct ?? 0, compactAt: K(usage.compactAt || usage.limit),
+        ratio: Math.round(((usage.compactAt || usage.limit) / denom) * 100),
+      })
       : tr('上下文 {used}（未设上限）', { used: K(usage.inputTokens) })),
     t?.requests && tr('本会话 {n} 次请求，共 {total} tokens\n输入 {input}（未命中缓存）\n命中缓存 {cache}（{rate}%）\n输出 {output}\n花费 {cost}', {
       n: t.requests, total: fmtTokens(totalTokens(t)), input: t.input.toLocaleString(), cache: t.cacheRead.toLocaleString(),
@@ -1274,7 +1280,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   postmortem?: PostmortemAction
   hasSession: boolean
   sessionId?: string | null
-  usage?: { inputTokens: number; limit: number }
+  usage?: { inputTokens: number; limit: number; window?: number; compactAt?: number }
   onExport?: (mode: ExportMode, redact: boolean) => void
   title: string
   workDir?: string   // 当前会话绑定的工作目录（hover 标题时和名称一起显示）

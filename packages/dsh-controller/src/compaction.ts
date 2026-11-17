@@ -4,23 +4,33 @@ export const DEEPSEEK_WINDOW = 1_000_000
 // 一个会话目标（dsh 路由 + 模型）的窗口。压缩插件把比例乘在**适配器自报**的窗口上，
 // 所以比例 = 我方 token 阈值 / adapterWindow；contextWindow 是用户眼里的真实窗口（夹阈值用）。
 // pi-ai 路由的 adapterWindow 就是我们配进去的 contextWindow；deepseek 恒为 1M（用户覆盖窗口时两者不同）。
-export interface CompactTarget { provider: string; model: string; contextWindow: number; adapterWindow: number }
+export interface CompactTarget { provider: string; model: string; contextWindow: number; adapterWindow: number; compactRatio?: number }
 
-// 自动压缩阈值 = 模型上下文窗口的 60%，且不超过 600K（不再给用户单独配置）
+// 压缩阈值 = 模型上下文窗口 × compactRatio（默认 60%，按模型可配，见设置 → 模型配置）
 export const AUTO_COMPACT_RATIO = 0.6
 export const AUTO_COMPACT_CAP = 600_000
+export const COMPACT_RATIO_MIN = 0.2
+export const COMPACT_RATIO_MAX = 0.95
 
-// 实际生效的阈值：min(上限, 窗口 × 60%)；limit<=0 = 不自动压缩
-export function effectiveLimit(limitTokens: number, contextWindow: number): number {
-  return limitTokens > 0 ? Math.min(limitTokens, Math.floor(contextWindow * AUTO_COMPACT_RATIO)) : 0
+/** 把用户填的比例夹进合法区间；没填 / 非法 → 默认 60%。
+ * 允许填 0.6 或 60（设置页按百分比填），统一归一成 0.6 */
+export function clampCompactRatio(r: unknown): number {
+  let n = typeof r === 'number' && Number.isFinite(r) ? r : AUTO_COMPACT_RATIO
+  if (n > 1) n = n / 100
+  return Math.min(COMPACT_RATIO_MAX, Math.max(COMPACT_RATIO_MIN, n))
 }
 
-function policy(limitTokens: number, t: Pick<CompactTarget, 'contextWindow' | 'adapterWindow'>) {
-  const thresholdRatio = Math.min(0.95, Math.max(0.001, effectiveLimit(limitTokens, t.contextWindow) / t.adapterWindow))
+// 实际生效的阈值：min(上限, 窗口 × 比例)；limit<=0 = 不自动压缩
+export function effectiveLimit(limitTokens: number, contextWindow: number, compactRatio = AUTO_COMPACT_RATIO): number {
+  return limitTokens > 0 ? Math.min(limitTokens, Math.floor(contextWindow * clampCompactRatio(compactRatio))) : 0
+}
+
+function policy(limitTokens: number, t: Pick<CompactTarget, 'contextWindow' | 'adapterWindow' | 'compactRatio'>) {
+  const thresholdRatio = Math.min(0.95, Math.max(0.001, effectiveLimit(limitTokens, t.contextWindow, t.compactRatio) / t.adapterWindow))
   return { thresholdRatio, retainRatio: thresholdRatio / 5 }
 }
 
-// 自动压缩配置：默认策略按 DeepSeek 1M 窗口换算；其余目标各一条 modelPolicies（插件按 provider/model 精确匹配）。
+// 自动压缩配置：默认策略按 DeepSeek 1M 窗口 + 默认比例换算；其余目标各一条 modelPolicies（插件按 provider/model 精确匹配）。
 // 保留最近 1/5 的阈值预算原样不压（retain 必须小于 threshold）。
 // limit<=0 → auto=false：插件不注册步边界压力检查，也不注册模型侧溢出恢复，即完全不自动压缩
 export function compactionConfig(limitTokens: number, targets: CompactTarget[] = []): {
@@ -28,7 +38,7 @@ export function compactionConfig(limitTokens: number, targets: CompactTarget[] =
   modelPolicies?: ({ provider: string; model: string; headroomTokens: number } & ReturnType<typeof policy>)[]
 } {
   if (!(limitTokens > 0)) return { auto: false }
-  const base = { auto: true, ...policy(limitTokens, { contextWindow: DEEPSEEK_WINDOW, adapterWindow: DEEPSEEK_WINDOW }) }
+  const base = { auto: true, ...policy(limitTokens, { contextWindow: DEEPSEEK_WINDOW, adapterWindow: DEEPSEEK_WINDOW, compactRatio: AUTO_COMPACT_RATIO }) }
   // 插件遇到重复目标会加载失败：同一目标后来者覆盖
   const uniq = new Map(targets.map((t) => [`${t.provider}\n${t.model}`, t]))
   // dsh 0.2 起阈值另受「窗口 − 单次输出预留 − headroom」封顶；headroom 默认 64K，小窗口模型会被压到很低甚至配置报错，

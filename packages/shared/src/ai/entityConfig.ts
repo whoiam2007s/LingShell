@@ -129,6 +129,8 @@ export interface ModelProfileDraft {
   model: string
   baseUrl?: string
   contextWindow?: number
+  /** 自动压缩阈值占上下文窗口的百分比（20–95，默认 60） */
+  compactRatio?: number
   thinking?: ThinkingLevel
   protocol?: string
   multimodal?: boolean
@@ -157,6 +159,11 @@ export function checkModelProfileInput(v: unknown): CheckResult<ModelProfileDraf
     const n = Number(o.contextWindow)
     if (!Number.isInteger(n) || n < 0 || n > 10_000_000) return { ok: false, error: tr('上下文窗口要填整数（0 = 按模型自动）') }
     if (n > 0) out.contextWindow = n
+  }
+  if (o.compactRatio !== undefined && o.compactRatio !== null && o.compactRatio !== '') {
+    const n = Number(o.compactRatio)
+    if (!Number.isFinite(n) || n < 20 || n > 95) return { ok: false, error: tr('压缩阈值要填 20 到 95 之间的百分比（默认 60）') }
+    out.compactRatio = Math.round(n)
   }
   if (o.thinking !== undefined && o.thinking !== null && o.thinking !== '') {
     const t = s(o.thinking) as ThinkingLevel
@@ -249,7 +256,7 @@ export function summarizeEntity(kind: AiConfigKind, item: Record<string, unknown
       return `- ${g('name')}（id=${g('id')}）：${kindName} ${via}${where ? ` → ${where}` : ''}${g('secret') ? '，密码用密钥' : '，无密码'}`   // i18n-ignore 给模型的输出
     }
     case 'model_profile': {
-      const cw = typeof item.contextWindow === 'number' && item.contextWindow > 0 ? `，上下文 ${item.contextWindow}` : ''   // i18n-ignore 给模型的输出
+      const cw = (typeof item.contextWindow === 'number' && item.contextWindow > 0 ? `，上下文 ${item.contextWindow}` : '') + (typeof item.compactRatio === 'number' ? `，压缩阈值 ${item.compactRatio}%` : '')   // i18n-ignore 给模型的输出
       return `- ${g('name')}（id=${g('id')}）：${g('provider')}/${g('model')} @ ${g('baseUrl')}${cw}${item.hasApiKey ? '' : '，未填 API Key'}`   // i18n-ignore 给模型的输出
     }
     case 'mcp_server': {

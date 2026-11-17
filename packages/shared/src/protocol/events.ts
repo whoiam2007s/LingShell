@@ -104,6 +104,10 @@ export type ResetSuggestedEvent = {
 // 上下文用量（每次模型请求后更新；重连时按历史最后一次请求给出）。limit=0 表示未设上限
 export type ContextUsageEvent = {
   type: 'agent:contextUsage'; sessionId: string; inputTokens: number; limit: number
+  /** 模型上下文窗口：界面百分比的分母（用户理解的口径） */
+  window?: number
+  /** 自动压缩阈值（= 窗口 × 压缩比例）：达到它才会压缩，不是"上下文用完" */
+  compactAt?: number
 }
 
 // 重连时会话历史读不回来（如 dsh 升级后旧日志迁移被拒且修不了）：已换成新的空会话继续用。

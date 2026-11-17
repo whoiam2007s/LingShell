@@ -352,7 +352,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     // 一套模型配置（缺省 / 已删 = 默认配置），明文 key 只在主进程内
     resolveSettings: (profileId) => {
       const p = settings.resolveProfile(profileId)
-      return { profileId: p.id, provider: p.provider, model: p.model, baseUrl: p.baseUrl, apiKey: p.apiKey, contextWindow: p.contextWindow, thinking: p.thinking, protocol: p.protocol, multimodal: p.multimodal }
+      return { profileId: p.id, provider: p.provider, model: p.model, baseUrl: p.baseUrl, apiKey: p.apiKey, contextWindow: p.contextWindow, compactRatio: p.compactRatio, thinking: p.thinking, protocol: p.protocol, multimodal: p.multimodal }
     },
     listTerminals: () => terminals.list().map((t) => ({ id: t.id, title: t.title, type: t.type, os: t.os })),
     beforeChange: (sid, tids, cmd) => hostCheck().beforeChange(sid, tids, cmd),   // 变更保险（见 hostCheck.ts）

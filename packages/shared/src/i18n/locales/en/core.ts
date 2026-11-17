@@ -355,5 +355,16 @@ export const core: Record<string, string> = {
   '这台机器上没有提供子代理': 'Subagents are not available on this machine',
   '消息太长（{n} 字，上限 {max} 字）：请拆成几条发': 'Message too long ({n} characters, limit {max}): please split it into several messages',
   '{name} 已上传（原文件超过 10MB，本次未备份）': '{name} uploaded (the original file was over 10MB, so no backup was kept this time)',
+  // dsh-controller：子代理授权（DshController.askFor）+ 应用级工具的卡片正文（describeCall）
+  '子代理不能与你交互：请用 blocked 状态把问题交回主代理': 'A subagent cannot interact with you: return the issue to the main agent with blocked status',
+  '读写': 'read/write',
+  '派子代理（{perm}）：{task}': 'Spawn subagent ({perm}): {task}',
+  '保存 Skill：{name}': 'Save skill: {name}',
+  '保存数据库连接：{name}': 'Save database connection: {name}',
+  '保存模型配置：{name}': 'Save model profile: {name}',
+  '保存 MCP 服务：{name}': 'Save MCP server: {name}',
+  '查看 Skill / 数据库连接 / 模型配置 / MCP 服务列表': 'List skills / database connections / model profiles / MCP servers',
+  '读取应用设置': 'Read app settings',
+  '修改应用设置：{key}': 'Change app setting: {key}',
   // ════ config / platform / auth-registry end ════
 }

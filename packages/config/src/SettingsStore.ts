@@ -17,7 +17,7 @@ export interface KeySlot { apiKeyCipher?: string; apiKeyPlain?: string }
 
 // 一套模型配置（磁盘形态）：key 按配置单独存
 export interface PersistedProfile extends KeySlot {
-  id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number
+  id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number; compactRatio?: number
   protocol?: ModelProtocol   // 偏离提供商默认值时才落盘；缺省按 protocolOf 解读（DeepSeek = anthropic，其它 = openai）
   multimodal?: boolean       // 支持图片；缺省按模型名猜（multimodalOf）
   thinking?: ThinkingLevel   // 思考深度（低/中/高）；缺省 = 不设，DeepSeek 按「中」发
@@ -40,7 +40,7 @@ export interface PersistedSettings extends KeySlot {
 }
 
 // 主进程内部用：解密后的完整配置（含明文 key），不经 IPC
-export interface ResolvedProfile { id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number; thinking?: ThinkingLevel; protocol: ModelProtocol; multimodal: boolean; apiKey: string }
+export interface ResolvedProfile { id: string; name: string; provider: ProviderId; model: string; baseUrl: string; contextWindow?: number; compactRatio?: number; thinking?: ThinkingLevel; protocol: ModelProtocol; multimodal: boolean; apiKey: string }
 
 // 「支持图片」：用户设过就按设置，没设过按模型名猜（已知视觉模型默认开）
 export const multimodalOf = (x: { provider: string; model: string; multimodal?: unknown }): boolean =>

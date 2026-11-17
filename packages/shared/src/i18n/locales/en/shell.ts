@@ -419,4 +419,17 @@ export const shell: Record<string, string> = {
   '上下文：': 'Context: ',
   // features/chat/ChatPanel.tsx：输入框粘贴超长截断
   '已粘贴 {kept} 字，超过上限 {max} 字的部分已截掉（{cut} 字）': 'Pasted {kept} characters; {cut} characters over the {max} limit were trimmed',
+  // features/chat/items/AuthRequestItem.tsx：应用配置 / 派子代理的授权卡（不谈"终端"）
+  '子代理': 'subagent',
+  '给{who}的{perm}权限': '{perm} permission for {who}',
+  'AI 要派一个子代理去跑这个任务': 'The AI wants to spawn a subagent to run this task',
+  'AI 要改动应用设置（不是某台主机上的操作）': 'The AI wants to change app settings (not an operation on any host)',
+  '子代理会独立跑完这个任务：运行中不再询问、不能跟你对话、不能删除东西、不能再派子代理；需要你拍板时它会停下来把问题交回主代理。写权限继承本会话已有的授权。': 'The subagent runs this task on its own: no more prompts while it runs, no chatting with you, no deletions, no nested subagents. If it needs a decision it stops and hands the question back to the main agent. Write access is inherited from this session.',
+  // 上下文用量：分母是模型窗口，压缩阈值另说
+  '上下文 {used} / {window}（{pct}%）；达到 {compactAt}（{ratio}%）时自动压缩后继续': 'Context {used} / {window} ({pct}%); auto-compacts at {compactAt} ({ratio}%)',
+  '压缩阈值': 'Compaction threshold',
+  '{n}%（占上下文窗口）': '{n}% (of the context window)',
+  '填 0 = 按模型自动。对话上下文超过「自动压缩阈值」时，自动把较早的对话压缩成摘要、任务不中断。': '0 = derive from the model. When the conversation exceeds the compaction threshold, older turns are summarized and the task continues.',
+  '上下文用到窗口的这个百分比时自动压缩，默认 60%。小窗口模型可以调低（更早压缩、更省钱但更早丢细节）；想尽量保留原文可以调高到 80~90%。范围 20%~95%。界面上那个百分比始终按「用量 / 上下文窗口」显示，跟这个阈值无关。': 'Auto-compact when the context reaches this percentage of the window; default 60%. Lower it for small-window models (compacts earlier, cheaper, loses detail sooner); raise it to 80–90% to keep more original text. Range 20–95%. The percentage in the title bar is always usage / context window and is unaffected by this threshold.',
+  '压缩阈值要填 20 到 95 之间的百分比（默认 60）': 'Compaction threshold must be a percentage between 20 and 95 (default 60)',
 }

@@ -893,11 +893,14 @@ describe('四类实体：list_config / save_*', () => {
     expect(decideFor(d, 'sess_1', 'read_file', {})).toEqual(expect.objectContaining({ kind: 'deny' }))
   })
 
-  it('应用级工具授权后落 local 粒度记录（没有 terminal_id 也不丢审计）', () => {
+  it('应用级工具授权落到伪主机键，不污染本地终端写权限', () => {
     const d = deps()
     commitGrant(d, 'sess_1', 'save_skill', { name: 'a' }, 'user')
-    expect(d.grant.mock.calls[0]).toEqual(['sess_1', 'local', 'write'])
-    expect(d.audit.mock.calls[0][0]).toEqual(expect.objectContaining({ sessionId: 'sess_1', terminalId: 'local', decision: 'allow:user' }))
+    expect(d.grant.mock.calls[0]).toEqual(['sess_1', 'app', 'write'])
+    expect(d.audit.mock.calls[0][0]).toEqual(expect.objectContaining({ sessionId: 'sess_1', terminalId: 'app', decision: 'allow:user' }))
+    // 派子代理是另一个键：批准它不该把本地写权限一起放开
+    commitGrant(d, 'sess_1', 'spawn_subagent', { task: 't' }, 'user')
+    expect(d.grant.mock.calls[1]).toEqual(['sess_1', 'subagent', 'read'])
   })
 })
 
