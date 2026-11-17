@@ -178,6 +178,8 @@ export class ExternalEditService {
       }
       const fa = await this.d.access(s.terminalId)
       const r = await writeWithBackup(fa, target, data, new Date(), EXT_EDIT_MAX_BYTES)
+      // 大文件 / 内容没变时不会留备份：如实告诉用户，别让人以为还能一键还原
+      if (r.backupSkipped === 'big') this.d.notify(tr('已回传'), tr('{name} 已上传（原文件超过 10MB，本次未备份）', { name: baseName(target) }))
       if (target === s.remote) { s.last = data; s.base = await this.d.stat(s.terminalId, s.remote) }
       this.d.audit(s.terminalId, {
         command: target === s.remote ? `外部编辑器回传 ${target}` : `外部编辑器另存 ${target}（${s.remote} 已被他人修改）`,   // i18n-ignore 执行记录

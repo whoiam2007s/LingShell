@@ -13,7 +13,7 @@ import type { SFTPWrapper } from 'ssh2'
 import {
   ENCODING_LABEL, decodeText, encodeText, isLegacyEncoding, nameError, joinPath, parentPath, baseName, isProtectedDir, conflictName, TREE_CAP, TREE_MAX_DEPTH,
   longnameOwner, archiveKind, archiveName, packCommand, unpackCommand, missingTool, searchCommand, parseSearchOutput, modeOctal, shq, shScript, SEARCH_TIMEOUT_MS,
-  type DeletePlan, type DirEntry, type SearchHit, tr,
+  BACKUP_SKIP_BYTES, type DeletePlan, type DirEntry, type SearchHit, tr,
 } from '@lingshell/shared'
 import { toNativePath } from './paths.js'
 
@@ -114,10 +114,26 @@ export function backupName(path: string, now = new Date()): string {
 /**
  * 覆盖写 + 先备份原文件（原文件不存在则直接新建、无备份）。备份按字节原样拷，权限 0600（原文件可能含密钥）。
  * 备份失败就不写——宁可改不成，也不能改了回不去。
+ *
+ * 两种情况不备份（返回 backupSkipped，让调用方告诉用户「这次没有备份」）：
+ * - same：内容一模一样，备一份没有意义；
+ * - big：原文件超过 BACKUP_SKIP_BYTES（10MB），全量拷一份代价太大（磁盘 + 传输）。
  */
-export async function writeWithBackup(fa: FileAccess, path: string, data: Buffer, now = new Date(), max = MAX_FILE_BYTES): Promise<{ path: string; backupPath?: string }> {
+export async function writeWithBackup(fa: FileAccess, path: string, data: Buffer, now = new Date(), max = MAX_FILE_BYTES): Promise<{ path: string; backupPath?: string; backupSkipped?: 'same' | 'big' }> {
   const old = await fa.read(path, max)   // max：外部编辑器回传允许更大的文件
-  const backupPath = old === undefined ? undefined : await backupFile(fa, path, old, now)
+  if (old === undefined) {
+    await fa.write(path, data)
+    return { path }
+  }
+  if (old.equals(data)) {
+    await fa.write(path, data)
+    return { path, backupSkipped: 'same' }
+  }
+  if (old.length > BACKUP_SKIP_BYTES) {
+    await fa.write(path, data)
+    return { path, backupSkipped: 'big' }
+  }
+  const backupPath = await backupFile(fa, path, old, now)
   await fa.write(path, data)
   return { path, backupPath }
 }
@@ -160,10 +176,20 @@ export async function assertUnchanged(fa: FileAccess, path: string, base: string
   if ((await readText(fa, path)) !== base) throw new Error(tr('文件在打开后已被其他程序修改，请关闭后重新打开再编辑'))
 }
 
-/** 手动编辑保存：先查并发修改，再按 writeWithBackup 备份后覆盖 */
-export async function saveText(fa: FileAccess, path: string, base: string, next: string) {
+/**
+ * 手动编辑保存：先查并发修改，再覆盖。
+ * backup=false 时**不备份**（默认）：人手改的、编辑器有 undo、保存前还有 assertUnchanged，
+ * 每次保存都留一份只会把备份目录撑爆（实测 1460 个 / 64MB 里大半是这类）。
+ * 远端外部编辑器回传（externalEdit）仍然走 writeWithBackup，因为那边没有别的回退手段。
+ */
+export async function saveText(fa: FileAccess, path: string, base: string, next: string, o: { backup?: boolean } = {}) {
   await assertUnchanged(fa, path, base)
-  return writeWithBackup(fa, path, Buffer.from(encodeText(next, fa.encoding)))
+  const buf = Buffer.from(encodeText(next, fa.encoding))
+  if (o.backup === false) {
+    await fa.write(path, buf)
+    return { path }
+  }
+  return writeWithBackup(fa, path, buf)
 }
 
 // ── 资源管理器的新建 / 重命名 / 递归删除 / 目录下载：本地 fs 与 SFTP 同一套接口 ──

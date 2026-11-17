@@ -18,7 +18,7 @@ import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
 import type { TurnTimes, SessionMeta } from '@lingshell/shared'
-import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
+import { tr, tk , type ThinkingLevel , type ExecMode, INPUT_MAX, insertCapped, capInput } from '@lingshell/shared'
 import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
 import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
 import { prefillAsk } from './askPrefill.js'
@@ -821,7 +821,7 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
               skills={{ onPick: (n) => { setSkill(n); requestAnimationFrame(() => taRef.current?.focus()) }, onManage: onManageSkills }}
               attach={{ multimodal: !!models.current?.multimodal, onFiles: att.pickFiles, onDirs: att.pickDirs }} />
             <TemplatePicker hideTrigger disabled={!canChat} onManage={onManageTemplates} preset={tplPreset}
-              onPick={(t) => { setInput(t); requestAnimationFrame(() => taRef.current?.focus()) }} />
+              onPick={(t) => { setInput(capInput(t).value); requestAnimationFrame(() => taRef.current?.focus()) }} />
             <RunbookPicker hideTrigger disabled={!canChat} onManage={onManageRunbooks} onRun={(p) => { send(p) }} preset={rbPreset} />
           </div>
           {/* `!` 开头：终端模式标记（回车在当前终端执行，不发给 AI） */}
@@ -834,13 +834,28 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
           <textarea
             ref={taRef} data-chat-input
             value={input}
+            maxLength={INPUT_MAX}
             onChange={(e) => { setInput(e.target.value); setCaret(e.target.selectionStart) }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={(e) => {
               if (atMenu.onKey(e)) return
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(e.altKey ? { queue: true } : undefined) }
             }}
-            onPaste={att.onPaste}
+            onPaste={(e) => {
+              // 纯文本：超过剩余额度就必须自己截断再插入。浏览器是"先插入再按 maxLength 裁剪"，
+              // 6MB 那一下已经能把界面卡死（受控 textarea 每字符重渲染 + 自动增高重算布局）。
+              const text = e.clipboardData.getData('text/plain')
+              if (!text) { att.onPaste(e); return }   // 文件 / 图片交给附件逻辑
+              const start = taRef.current?.selectionStart ?? input.length
+              const end = taRef.current?.selectionEnd ?? input.length
+              if (text.length <= INPUT_MAX - (input.length - (end - start))) { att.onPaste(e); return }   // 不超限：保留原生粘贴
+              e.preventDefault()
+              const r = insertCapped(input, text, start, end)
+              setInput(r.value)
+              setCaret(r.caret)
+              requestAnimationFrame(() => { const el = taRef.current; if (el) el.selectionStart = el.selectionEnd = r.caret })
+              att.setHint(tr('已粘贴 {kept} 字，超过上限 {max} 字的部分已截掉（{cut} 字）', { kept: r.kept, max: INPUT_MAX, cut: r.cut }))
+            }}
             disabled={!canChat}
             rows={1}
             placeholder={canChat ? (busy ? tr('追问…（Enter 在下一步前插入，Alt+Enter 本轮结束后再发）') : tr('跟 AI 对话…（Enter 发送，@ 引用，! 开头跑命令）')) : tr('等待引擎就绪…')}

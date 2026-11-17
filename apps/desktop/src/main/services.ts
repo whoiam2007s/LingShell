@@ -9,7 +9,7 @@ import { DshController, McpManager, AUTO_COMPACT_CAP, unifiedDiff, wireOf } from
 import { AuthRegistry, JsonAuthStore } from '@lingshell/auth-registry'
 import { type AppEvent, type TerminalInfo, type DbConn, DEFAULT_SYSTEM_SETTINGS, redactAi, type SecretStreamMasker } from '@lingshell/shared'
 import { createAuditHelpers, findLiveTerminal, initAppContext, log } from './core/index.js'
-import { TransferService, fileHistory, type FileAccess, localAccess, sftpAccess } from './files/index.js'
+import { TransferService, fileHistory, type FileAccess, localAccess, sftpAccess, localTreeOps, pruneBackupDir, protectedBackupNames } from './files/index.js'
 import { setNotifyLockState, notifyIfUnfocused, userWatching, notify, AppLock, installLockGate, registerAppearance, shouldHideOnClose,
   beginQuit, cancelQuit } from './app/index.js'
 import { TerminalRecorder, pruneRecordings, SessionLogger, pruneSessionLogs, AutoReplyEngine } from './terminal/index.js'
@@ -243,6 +243,23 @@ export function createMainContext(win: BrowserWindow) {
 
   // ── 磁盘空间分析 / 报错定位一键打开 / 配置按键对比 / 证书巡检（见各自文件）──
   const visibleTerm = (id: string) => terminals.list().find((t) => t.id === id && !hiddenTerms.has(t.id))
+
+  // ── 回滚备份清理：启动后一次 + 每天一次（只清本地；SSH 主机在下次写入时顺手清）──
+  // 每次覆盖写都会留一份，以前没人清（实测累积到 1460 个 / 64MB）。
+  // 被最近执行记录引用、界面上还能一键还原的备份不删（否则「还原」按钮指向空文件）。
+  const pruneBackups = async () => {
+    try {
+      const dir = join(paths.root, 'backups')
+      const protect = protectedBackupNames(auditStore.listRecent(200).map((e) => e.backupPath))
+      const r = await pruneBackupDir(localTreeOps(), dir, { protect })
+      if (r.deleted) log('info', 'main', 'files', `清理过期备份 ${r.deleted} 个，释放 ${Math.round(r.freedBytes / 1024)}KB`)   // i18n-ignore 日志
+    } catch (e) {
+      log('warn', 'main', 'files', `备份清理失败：${String(e)}`)   // i18n-ignore 日志
+    }
+  }
+  setTimeout(() => { void pruneBackups() }, 20_000).unref()
+  setInterval(() => { void pruneBackups() }, 86_400_000).unref()
+
   return {
     paths, sessionStore, unattended, send, terminals, hostStore, hostOf, termHostKey, wireNewTerminal, hiddenTerms, termEncoding, mcpStore,
     auth, sys, settings, redactForAi, fleetDeps, auditStore, fleetOpen, aiSecrets, vault, transfer, fileAccessOf, appLock,

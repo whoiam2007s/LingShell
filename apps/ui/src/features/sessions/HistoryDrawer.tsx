@@ -6,6 +6,7 @@ import { useNow } from '../../lib/useNow.js'
 import { Highlight } from '../help/index.js'
 import { pushChatContext, requestChatJump } from '../../lib/chatBus.js'
 import { useRunStates } from '../../lib/sessionStates.js'
+import { RunStateDot } from './RunStateDot.js'
 
 const KIND = { user: { icon: User, label: tk('提问') }, ai: { icon: Bot, label: 'AI' }, cmd: { icon: TerminalSquare, label: tk('命令') } } as const
 
@@ -104,17 +105,8 @@ export function HistoryDrawer({ sessions, activeId, onSelect, onRename, onDelete
                 className={`group flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${isActive ? 'bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}>
                 <span className="relative flex shrink-0">
                   <MessageSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                  {/* 状态点：进行中(蓝，呼吸) / 待确认(橙) / 失败(红)；正常结束不画。
-                      dot 表示这个会话**最后一轮**的结果：失败就一直红着，点开看过也不清 */}
-                  {(() => {
-                    const st = runState(s.id)
-                    if (!st) return null
-                    const color = st === 'running' ? 'var(--color-accent)' : st === 'awaiting' ? 'var(--color-warn)' : 'var(--color-danger)'
-                    const title = st === 'running' ? tr('正在进行中') : st === 'awaiting' ? tr('等你确认') : tr('上次执行失败')
-                    return <span data-session-state={st} title={title}
-                      className={`absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full ${st === 'running' ? 'animate-pulse' : ''}`}
-                      style={{ background: color }} />
-                  })()}
+                  {/* 状态点：进行中(蓝，呼吸) / 待确认(橙) / 失败(红)；正常结束不画（口径见 lib/sessionStates.ts） */}
+                  <RunStateDot state={runState(s.id)} />
                 </span>
                 {editing === s.id ? (
                   <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onClick={(e) => e.stopPropagation()}

@@ -352,5 +352,7 @@ export const core: Record<string, string> = {
   '子代理的这一轮失败了': 'The subagent turn failed',
   '子任务：{t}': 'Subtask: {t}',
   '这台机器上没有提供子代理': 'Subagents are not available on this machine',
+  '消息太长（{n} 字，上限 {max} 字）：请拆成几条发': 'Message too long ({n} characters, limit {max}): please split it into several messages',
+  '{name} 已上传（原文件超过 10MB，本次未备份）': '{name} uploaded (the original file was over 10MB, so no backup was kept this time)',
   // ════ config / platform / auth-registry end ════
 }

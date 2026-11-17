@@ -417,4 +417,6 @@ export const shell: Record<string, string> = {
   '子代理 {n}': 'Subagents {n}',
   '问题：': 'Question: ',
   '上下文：': 'Context: ',
+  // features/chat/ChatPanel.tsx：输入框粘贴超长截断
+  '已粘贴 {kept} 字，超过上限 {max} 字的部分已截掉（{cut} 字）': 'Pasted {kept} characters; {cut} characters over the {max} limit were trimmed',
 }

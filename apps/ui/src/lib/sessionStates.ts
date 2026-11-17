@@ -1,8 +1,10 @@
-// 会话运行状态（历史会话列表的状态点用）：纯前端维护，来源是主进程推来的事件。
-//   running  = 有一轮正在跑
+// 会话运行状态（会话列表 / 会话下拉的状态点用）：纯前端维护，来源是主进程推来的事件。
+//   running  = 有一轮正在跑（自动重试中也是）
 //   awaiting = 正在等用户处理授权 / 计划 / 提问卡片
-//   failed   = 上一轮以失败告终
-// 正常结束的会话不留状态（列表里不显示点）。
+//   failed   = 该会话**最后一次返回**是失败的
+// 口径（与用户定稿）：状态点只反映这一刻的执行状态，不是"历史出过错"——
+// 自动重试后正常了就不算失败；用户主动停止也不算失败；正常结束不显示点。
+// 只存在内存里：重启后没有在跑的会话，就不显示状态点（不落盘、不按"看过"清）。
 import { useEffect, useState } from 'react'
 
 export type RunState = 'running' | 'awaiting' | 'failed'
@@ -37,14 +39,13 @@ export function noteSessionEvent(ev: { type?: string; sessionId?: string; [k: st
       break
     // 格式错误后引擎会自动补一轮：状态回到「进行中」，不要因为这次失败亮红点
     case 'agent:turnRetrying':
+    // 网络 / 服务端 / 限流的自动重试同理
+    case 'agent:requestRetrying':
       set('running')
       break
     case 'agent:turnFailed':
-      set('failed')
-      break
-    // 用户点了「停止」：不算失败，正常收起
-    case 'agent:interrupted':
-      set(undefined)
+      // 用户点「停止」发的是 turnFailed + stopped：不算失败，直接收起
+      set(ev.stopped === true ? undefined : 'failed')
       break
   }
 }
@@ -52,16 +53,7 @@ export function noteSessionEvent(ev: { type?: string; sessionId?: string; [k: st
 /** 某个会话当前的状态（没有 = 正常/空闲） */
 export const runStateOf = (sessionId: string): RunState | undefined => states.get(sessionId)
 
-/**
- * 打开某个会话（切过去）就当他看过了：把状态点收起来。
- * 以前只有「下一轮正常结束」才清，失败后再没跑过的会话会一直亮红点（历史异常一直提醒）。
- */
-export function clearRunState(sessionId: string): void {
-  if (!states.delete(sessionId)) return
-  notify()
-}
-
-/** 订阅状态变化，返回最新快照（历史会话抽屉用） */
+/** 订阅状态变化，返回最新快照（会话列表 / 会话下拉用） */
 export function useRunStates(): (sessionId: string) => RunState | undefined {
   const [, bump] = useState(0)
   useEffect(() => {

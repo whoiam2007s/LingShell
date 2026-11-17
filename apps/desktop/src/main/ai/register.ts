@@ -7,7 +7,7 @@ import type { ApprovalRequest, PlanRequest, DshController, LocalSkills } from '@
 import { TemplateStore, newProfileId } from '@lingshell/config'
 import { type AppEvent, type ApprovalAnswer, type UsageRange, type UsagePrices, type TemplateInput, type McpServerInput, type ModelProfile, providerMeta,
   tr, decodeText, encodeText, type NlCommandRequest, buildNlCommandPrompt, sanitizeNlCommand, summarizeUsage, sessionUsage,
-  applyRuleVerdict, evaluateCommandRules, dangerCheck, mergeSystemPatch } from '@lingshell/shared'
+  applyRuleVerdict, evaluateCommandRules, dangerCheck, mergeSystemPatch, INPUT_MAX, tooLong } from '@lingshell/shared'
 import { randomUUID } from 'node:crypto'
 import { log, type MainContext } from '../core/index.js'
 import { type FileAccess, localAccess, sftpAccess, writeEnsureDir, writeWithBackup, MAX_FILE_BYTES, EXT_EDIT_MAX_BYTES } from '../files/index.js'
@@ -383,7 +383,12 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   // 子代理列表（会话标题栏下拉）：某个会话派过哪些子代理、各自状态
   ipcMain.handle('subagent:list', (_e, sessionId: string) => controller.subagentsOf(String(sessionId ?? '')))
   ipcMain.handle('agent:listSessions', () => controller.listSessions())
-  ipcMain.handle('agent:sendTurn', (_e, sessionId: string, prompt: string) => controller.sendTurn(sessionId, prompt))
+  // 兜底：输入框已限长（INPUT_MAX），这里防绕过界面直接把几 MB 文本塞进模型请求
+  const guardPrompt = (p: string): string => {
+    if (tooLong(p)) throw new Error(tr('消息太长（{n} 字，上限 {max} 字）：请拆成几条发', { n: p.length, max: INPUT_MAX }))
+    return p
+  }
+  ipcMain.handle('agent:sendTurn', (_e, sessionId: string, prompt: string) => controller.sendTurn(sessionId, guardPrompt(String(prompt ?? ''))))
   ipcMain.handle('agent:interruptTurn', (_e, sessionId: string) => controller.interruptTurn(sessionId))
   // 回合进行中追问（见 DshController.steer）；附件同 attach:send 校验
   ipcMain.handle('agent:steer', (_e, sessionId: string, prompt: unknown, atts: unknown) => controller.steer(String(sessionId), typeof prompt === 'string' ? prompt : '', parseAttachments(atts ?? [])))
