@@ -78,15 +78,18 @@ describe('信任：目录内自动，目录外与会改东西的命令仍问', (
   it('工作目录内写直接放行（不用批过）', () => {
     expect(decideByMode('trust', writeIn)).toBe('allow')
   })
-  it('目录外写：第一次问，批过这个目录就不用再问', () => {
-    expect(decideByMode('trust', writeOut)).toBe('ask')
-    expect(decideByMode('trust', { ...writeOut, granted: true })).toBe('allow')
+  it('目录外写：auto 档第一次问、批过就记住；trust 档直接放行', () => {
+    expect(decideByMode('auto', writeOut)).toBe('ask')
+    expect(decideByMode('auto', { ...writeOut, granted: true })).toBe('allow')
+    expect(decideByMode('trust', writeOut)).toBe('allow')
   })
   it('只读命令直接放行', () => {
     expect(decideByMode('trust', execReadOnly)).toBe('allow')
   })
-  it('会改东西的命令仍然问（命令串判不出路径）', () => {
-    expect(decideByMode('trust', execWrite)).toBe('ask')
+  it('会改东西的命令：trust 放行，confirm / auto 仍问', () => {
+    expect(decideByMode('trust', execWrite)).toBe('allow')
+    expect(decideByMode('confirm', execWrite)).toBe('ask')
+    expect(decideByMode('auto', execWrite)).toBe('ask')
   })
 })
 

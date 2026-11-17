@@ -64,6 +64,32 @@ describe('SettingsStore', () => {
     expect(s.get().contextWindow).toBe(8192)
   })
 
+  it('compactRatio 往返不丢，且引擎侧 resolveProfile 也能读到（问题 14）', () => {
+    const s = new SettingsStore(dir, mockEnc)
+    s.save({
+      provider: 'deepseek', model: 'm', baseUrl: 'u',
+      modelProfiles: [{ id: 'p1', name: 'p1', provider: 'deepseek', model: 'm', baseUrl: 'u', compactRatio: 85, contextWindow: 128000, hasApiKey: false } as any],
+      defaultProfileId: 'p1',
+    })
+    // 渲染层能读到（view 不丢）
+    expect(s.get().modelProfiles?.[0].compactRatio).toBe(85)
+    // 引擎能读到（resolveProfile 不丢）
+    expect(s.resolveProfile('p1').compactRatio).toBe(85)
+    // 磁盘上真的写了
+    expect(readFileSync(join(dir, 'settings.json'), 'utf8')).toContain('"compactRatio": 85')
+  })
+
+  it('compactRatio 超出 20–95 视为没填，不落盘（不静默夹到边界）', () => {
+    const s = new SettingsStore(dir, mockEnc)
+    s.save({
+      provider: 'deepseek', model: 'm', baseUrl: 'u',
+      modelProfiles: [{ id: 'p1', name: 'p1', provider: 'deepseek', model: 'm', baseUrl: 'u', compactRatio: 5, hasApiKey: false } as any],
+      defaultProfileId: 'p1',
+    })
+    expect(s.get().modelProfiles?.[0].compactRatio).toBeUndefined()
+    expect(readFileSync(join(dir, 'settings.json'), 'utf8')).not.toContain('compactRatio')
+  })
+
   it('falls back to plaintext when encryption unavailable', () => {
     const noEnc: Encryptor = { available: () => false, encrypt: () => { throw new Error('no') }, decrypt: () => { throw new Error('no') } }
     const s = new SettingsStore(dir, noEnc)

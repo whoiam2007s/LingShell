@@ -31,6 +31,7 @@ import type { SessionPhase } from './features/chat/index.js'
 import { tr, type SessionMeta, type TerminalInfo } from '@lingshell/shared'
 import { client } from './client/index.js'
 import { noteSessionEvent } from './lib/sessionStates.js'
+import { loadTermPrefs } from './lib/termPrefs.js'
 import { logger } from './lib/logger.js'
 import { BookMarked } from 'lucide-react'
 import { KnowledgeModal } from './features/knowledge/index.js'
@@ -318,6 +319,9 @@ function AppShell() {
   // 新一轮开始：「最近活动」变了（发送时主进程 touch），刷新列表让会话时间跟上
   // 会话运行状态（历史列表的状态点）：所有事件都过一遍状态机，跨会话也能反映
   useEffect(() => client.on((ev) => { noteSessionEvent(ev as { type?: string; sessionId?: string }) }), [])
+  // 设置在渲染层之外被改过（AI 的 set_app_setting、导入配置等）：重拉设置并热更新终端外观，
+  // 否则字号 / 配色要重启才生效
+  useEffect(() => client.on((ev) => { if (ev.type === 'app:settingsChanged') loadTermPrefs() }), [])
   useEffect(() => client.on((ev) => {
     if (ev.type === 'inspection:run' || ev.type === 'agent:turnStarted') void refreshSessions()
     else if (ev.type === 'inspection:openSession') {

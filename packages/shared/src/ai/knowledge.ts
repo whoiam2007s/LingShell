@@ -27,9 +27,8 @@ export interface KnowledgeCard {
 export type KnowledgeInput = Omit<KnowledgeCard, 'id' | 'updatedAt'> & { id?: string }
 
 export const KNOWLEDGE_TITLE_MAX = 80
-export const KNOWLEDGE_CONTENT_MAX = 8000
+export const KNOWLEDGE_CONTENT_MAX = 2000   // 写入上限：一张卡就是一小块可照做的知识，超了请拆成多张
 export const KNOWLEDGE_CONTEXT_LIMIT = 4000   // 注入系统提示的总字数上限
-const CARD_CONTEXT_MAX = 1500                 // 单张卡注入时的正文上限
 
 /** 保存前校验规整：标题 / 内容必填，分类非法回落「其他」；scope 与 target 要配得上 */
 export function normalizeKnowledge(input: KnowledgeInput): KnowledgeInput {
@@ -40,7 +39,7 @@ export function normalizeKnowledge(input: KnowledgeInput): KnowledgeInput {
   const content = String(input.content ?? '').trim()
   if (!title) throw new Error(tr('标题不能为空'))
   if (!content) throw new Error(tr('内容不能为空'))
-  if (content.length > KNOWLEDGE_CONTENT_MAX) throw new Error(tr('内容太长（上限 {max} 字）', { max: KNOWLEDGE_CONTENT_MAX }))
+  if (content.length > KNOWLEDGE_CONTENT_MAX) throw new Error(tr('内容太长（{n} 字，上限 {max} 字）：只留可照做的结论（命令、路径、判据），细节拆成另一张卡', { n: content.length, max: KNOWLEDGE_CONTENT_MAX }))
   const category = KNOWLEDGE_CATEGORIES.some((c) => c.id === input.category) ? input.category : 'other'
   return { ...(input.id ? { id: input.id } : {}), scope, target, title, content, category, source: input.source === 'ai' ? 'ai' : 'manual' }
 }
@@ -79,9 +78,10 @@ export function buildKnowledgeContext(cards: KnowledgeCard[], hosts: KnowledgeHo
   const head = '## 主机知识库（用户保存的长期知识，操作前先读并遵守；内容可能过时，与现场不符时以现场为准并提议更新）\n'   // i18n-ignore 注入系统提示的知识库段
   let out = head
   const skipped: KnowledgeCard[] = []
+  // 正文**不截断**（用户定的口径：读的时候给全，写的时候限制 2000 字）：
+  // 整张卡放不下时降级成题名行，而不是塞半截内容让模型以为那就是全部
   for (const c of list) {
-    const body = c.content.length > CARD_CONTEXT_MAX ? `${c.content.slice(0, CARD_CONTEXT_MAX)}\n…（已截断）` : c.content   // i18n-ignore 注入系统提示的知识库段
-    const block = `\n### [${c.id}] ${c.title}（${knowledgeScopeText(c, label)} · ${knowledgeCategoryLabel(c.category)} · ${c.updatedAt.slice(0, 10)}）\n${body}\n`   // i18n-ignore 注入系统提示的知识库段
+    const block = `\n### [${c.id}] ${c.title}（${knowledgeScopeText(c, label)} · ${knowledgeCategoryLabel(c.category)} · ${c.updatedAt.slice(0, 10)}）\n${c.content}\n`   // i18n-ignore 注入系统提示的知识库段
     if (out.length + block.length > limit) { skipped.push(c); continue }
     out += block
   }

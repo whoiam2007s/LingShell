@@ -245,6 +245,10 @@ keys:importPicked
 keys:list
 keys:pickImport
 keys:useForHost
+knowledge:consolidate
+knowledge:consolidateApply
+knowledge:consolidatePending
+knowledge:consolidatePendingClear
 knowledge:list
 knowledge:remove
 knowledge:save
@@ -350,6 +354,7 @@ skills:save
 skills:setFlags
 sshAuth:answer
 sshUrl:takePending
+subagent:list
 system:appInfo
 system:checkUpdate
 system:downloadUpdate

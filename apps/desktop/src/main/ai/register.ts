@@ -3,11 +3,11 @@ import { ipcMain, app, shell, dialog, clipboard } from 'electron'
 import { join, posix } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
-import type { ApprovalRequest, PlanRequest, DshController } from '@lingshell/dsh-controller'
-import { TemplateStore } from '@lingshell/config'
-import { type AppEvent, type ApprovalAnswer, type UsageRange, type UsagePrices, type TemplateInput, type McpServerInput,
+import type { ApprovalRequest, PlanRequest, DshController, LocalSkills } from '@lingshell/dsh-controller'
+import { TemplateStore, newProfileId } from '@lingshell/config'
+import { type AppEvent, type ApprovalAnswer, type UsageRange, type UsagePrices, type TemplateInput, type McpServerInput, type ModelProfile, providerMeta,
   tr, decodeText, encodeText, type NlCommandRequest, buildNlCommandPrompt, sanitizeNlCommand, summarizeUsage, sessionUsage,
-  applyRuleVerdict, evaluateCommandRules, dangerCheck } from '@lingshell/shared'
+  applyRuleVerdict, evaluateCommandRules, dangerCheck, mergeSystemPatch, INPUT_MAX, tooLong } from '@lingshell/shared'
 import { randomUUID } from 'node:crypto'
 import { log, type MainContext } from '../core/index.js'
 import { type FileAccess, localAccess, sftpAccess, writeEnsureDir, writeWithBackup, MAX_FILE_BYTES, EXT_EDIT_MAX_BYTES } from '../files/index.js'
@@ -149,7 +149,13 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
       { prod, readonly: auth.getTrust(sid) === 'readonly', dangerous: dangerCheck(command) === 'dangerous' })
   }
   // 主机知识库（见 knowledgeIpc.ts）+ 跨主机提问的执行通道（见 fleetExec.ts，连接选择同批量执行）
-  const knowledge = registerKnowledge({ handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), localNotes: () => sys().localNotes })
+  const knowledge = registerKnowledge({
+    handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), localNotes: () => sys().localNotes,
+    // 梳理要调一次模型：复用 dsh 的一次性补全通道
+    complete: (s, u, sig, src) => controllerRef.current!.complete(s, u, sig, src),
+    // 后台攒到建议了：告诉界面（知识库入口上显示「有 N 条整理建议」），不弹窗、不打断
+    onPending: (plan) => send({ type: 'knowledge:consolidatePending', at: new Date().toISOString(), plan }),
+  })
   // 安全与流程（见 safetyIpc.ts）：分层规则 / AI 复核 / 预演模式 / sudo 限时提权
   const safety = registerSafety({
     handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), sys, auth, isReadOnly: isReadOnlyCommand,
@@ -164,6 +170,9 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
 
   // AI 提问卡（ask_user，见 chatPlusIpc.ts）：发卡等回答，超时 / 停止 = 未回答
   const askBroker = createAskBroker({ send, notify: (t, b) => { if (sys().notifyDesktop !== false) notifyIfUnfocused(win, t, b) }, sessionTitle, unattended: (sid) => unattended.has(sid) })
+  // Skill 库在下面 registerSkills 里创建（它要接进已建好的 controller），这里先给个持有者：
+  // controller 的 configEntities 闭包要用它，调用发生在用户交互之后，那时早已填上
+  const skillsRef: { current?: LocalSkills } = {}
   // dsh 是进程内库：没有 MCP 协议层、没有 bridge 端口、没有会话进程池。
   // 终端能力直接注册成 dsh 工具，授权走 tools/pre-execute 三态网关。
   const controller = new DshController({
@@ -203,12 +212,98 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     },
     // AI 终端清单里带上各终端最近知道的 cwd（不触发 pwd 探测），问目录时不用为此跑命令、弹授权
     terminalCwd: (tid) => terminals.cachedCwd(tid),
+    // AI 读 / 写应用设置（白名单见 shared/ai/appSettings.ts）。写入走 SettingsStore.save 落盘：
+    // 字号 / 主题这类立即生效，超时、上下文阈值等要下次读取才用到新值
+    appSettings: () => settings.get() as unknown as Record<string, unknown>,
+    saveAppSettings: (patch) => {
+      const cur = settings.get()
+      if (!cur.system) return { applied: [] }
+      const { next, applied } = mergeSystemPatch(cur.system, patch)
+      if (applied.length) {
+        settings.save({ ...cur, system: next })
+        // 界面侧的外观（终端字号 / 配色 / 字体）来自渲染层的内存单例，不广播的话只有重启才生效
+        send({ type: 'app:settingsChanged', patch })
+      }
+      return { applied }
+    },
+    /**
+     * 四类可配置实体（Skill / 数据库连接 / 模型配置 / MCP）：AI 能列、能新建与修改，删除不在工具里。
+     * 校验在 shared/ai/entityConfig.ts 做完，这里只管落盘；密钥一律不经过 AI：
+     *  - 数据库连接：密码只接受密钥保险箱里的名称（secretNames 校验）
+     *  - 模型配置：apiKey 完全不碰，新建的配置要用户自己去填
+     *  - MCP：env / headers 的敏感值已被换成中文占位，存的就是占位文本
+     */
+    configEntities: {
+      list: (kind) => {
+        switch (kind) {
+          case 'skill': return (skillsRef.current?.list() ?? Promise.resolve([])) as unknown as Record<string, unknown>[]
+          case 'db_connection': return (ctx.dbConns?.list() ?? []) as unknown as Record<string, unknown>[]
+          case 'model_profile': return (settings.get().modelProfiles ?? []) as unknown as Record<string, unknown>[]
+          case 'mcp_server': return mcpStore.list() as unknown as Record<string, unknown>[]
+        }
+      },
+      secretNames: () => { try { return vault.values().map((s) => s.name) } catch { return [] } },
+      saveSkill: async (input) => {
+        const lib = skillsRef.current
+        if (!lib) throw new Error(tr('Skill 库还没准备好，稍后再试'))
+        const before = await lib.list()
+        const created = !before.some((s) => s.name === input.name)
+        await lib.save({ name: input.name, description: input.description, body: input.body }, created ? undefined : input.name)
+        if (input.enabled !== undefined || input.modelInvocable !== undefined) {
+          await lib.setFlags(input.name, { enabled: input.enabled, modelInvocable: input.modelInvocable })
+        }
+        return { name: input.name, created }
+      },
+      saveDbConn: (conn) => {
+        if (!ctx.dbConns) throw new Error(tr('数据库模块还没准备好，稍后再试'))
+        const r = ctx.dbConns.upsert(conn)
+        return { id: r.conn.id, name: r.conn.name, created: r.created }
+      },
+      saveModelProfile: (draft) => {
+        const cur = settings.get()
+        const list = cur.modelProfiles ?? []
+        const prev = draft.id ? list.find((p) => p.id === draft.id) : undefined
+        const id = draft.id ?? newProfileId()
+        const next: ModelProfile = {
+          id,
+          name: draft.name,
+          provider: draft.provider as ModelProfile['provider'],
+          model: draft.model,
+          baseUrl: draft.baseUrl ?? prev?.baseUrl ?? providerMeta(draft.provider).defaultBaseUrl,
+          ...(draft.contextWindow !== undefined ? { contextWindow: draft.contextWindow } : prev?.contextWindow ? { contextWindow: prev.contextWindow } : {}),
+          ...(draft.thinking ? { thinking: draft.thinking } : prev?.thinking ? { thinking: prev.thinking } : {}),
+          ...(draft.protocol ? { protocol: draft.protocol as ModelProfile['protocol'] } : prev?.protocol ? { protocol: prev.protocol } : {}),
+          ...(draft.multimodal !== undefined ? { multimodal: draft.multimodal } : prev?.multimodal !== undefined ? { multimodal: prev.multimodal } : {}),
+        }
+        settings.save({ ...cur, modelProfiles: prev ? list.map((p) => (p.id === id ? next : p)) : [...list, next] })
+        // 新建的配置没有 Key（apiKey 不经 AI），hasApiKey 一定是 false
+        return { id, name: next.name, created: !prev, needsApiKey: !prev?.hasApiKey }
+      },
+      saveMcpServer: (draft) => {
+        const before = mcpStore.list()
+        const created = !draft.id || !before.some((s) => s.id === draft.id)
+        const saved = mcpStore.save({
+          ...(draft.id ? { id: draft.id } : {}),
+          name: draft.name,
+          transport: draft.transport,
+          ...(draft.enabled !== undefined ? { enabled: draft.enabled } : {}),
+          ...(draft.command ? { command: draft.command } : {}),
+          ...(draft.args?.length ? { args: draft.args } : {}),
+          ...(draft.cwd ? { cwd: draft.cwd } : {}),
+          ...(draft.url ? { url: draft.url } : {}),
+          ...(draft.env ? { env: draft.env } : {}),
+          ...(draft.headers ? { headers: draft.headers } : {}),
+        } as McpServerInput)
+        void applyMcp()   // 立即重连，用户在设置页能看到状态
+        return { id: saved.id, name: saved.name, created }
+      },
+    },
     proposeKnowledge: (sessionId, req) => {
       const p = knowledge.propose(req)
       send({ type: 'knowledge:proposal', proposalId: randomUUID(), sessionId, ...p })
       return { targetLabel: p.targetLabel }
     },
-    hostKnowledge: (keys) => knowledge.context(keys),
+    hostKnowledge: (keys, window) => knowledge.context(keys, window),
     // 跨主机提问：只给名称 / id / 分组 / 环境；只读判定同巡检白名单
     fleetHosts: () => hostStore.list().map((h) => ({ id: h.id, label: h.label, ...(h.group ? { group: h.group } : {}), ...(h.env ? { env: h.env } : {}) })),
     runOnHosts: (hosts, command, ms, signal, sid) => runOnHosts(hosts, sid && unattended.has(sid) ? fleetOpenUnattended : fleetOpen, command, ms, signal),
@@ -257,7 +352,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     // 一套模型配置（缺省 / 已删 = 默认配置），明文 key 只在主进程内
     resolveSettings: (profileId) => {
       const p = settings.resolveProfile(profileId)
-      return { profileId: p.id, provider: p.provider, model: p.model, baseUrl: p.baseUrl, apiKey: p.apiKey, contextWindow: p.contextWindow, thinking: p.thinking, protocol: p.protocol, multimodal: p.multimodal }
+      return { profileId: p.id, provider: p.provider, model: p.model, baseUrl: p.baseUrl, apiKey: p.apiKey, contextWindow: p.contextWindow, compactRatio: p.compactRatio, thinking: p.thinking, protocol: p.protocol, multimodal: p.multimodal }
     },
     listTerminals: () => terminals.list().map((t) => ({ id: t.id, title: t.title, type: t.type, os: t.os })),
     beforeChange: (sid, tids, cmd) => hostCheck().beforeChange(sid, tids, cmd),   // 变更保险（见 hostCheck.ts）
@@ -289,8 +384,15 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
 
   // agent handlers
   ipcMain.handle('agent:createSession', (_e, opts) => controller.createSession(opts))
+  // 子代理列表（会话标题栏下拉）：某个会话派过哪些子代理、各自状态
+  ipcMain.handle('subagent:list', (_e, sessionId: string) => controller.subagentsOf(String(sessionId ?? '')))
   ipcMain.handle('agent:listSessions', () => controller.listSessions())
-  ipcMain.handle('agent:sendTurn', (_e, sessionId: string, prompt: string) => controller.sendTurn(sessionId, prompt))
+  // 兜底：输入框已限长（INPUT_MAX），这里防绕过界面直接把几 MB 文本塞进模型请求
+  const guardPrompt = (p: string): string => {
+    if (tooLong(p)) throw new Error(tr('消息太长（{n} 字，上限 {max} 字）：请拆成几条发', { n: p.length, max: INPUT_MAX }))
+    return p
+  }
+  ipcMain.handle('agent:sendTurn', (_e, sessionId: string, prompt: string) => controller.sendTurn(sessionId, guardPrompt(String(prompt ?? ''))))
   ipcMain.handle('agent:interruptTurn', (_e, sessionId: string) => controller.interruptTurn(sessionId))
   // 回合进行中追问（见 DshController.steer）；附件同 attach:send 校验
   ipcMain.handle('agent:steer', (_e, sessionId: string, prompt: unknown, atts: unknown) => controller.steer(String(sessionId), typeof prompt === 'string' ? prompt : '', parseAttachments(atts ?? [])))
@@ -369,7 +471,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     sessionThinking: (sid) => controller.sessionThinking(sid),
   })
   // 设置 → Skills（见 skillsIpc.ts）：<数据目录>/skills，接到 dsh 的 ctx.skills
-  registerSkills({ handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'skills'), attach: (lib) => controller.attachSkills(lib), openPath: (p) => shell.openPath(p), log: (lv, m, d) => log(lv, 'main', 'skills', m, d),
+  skillsRef.current = registerSkills({ handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'skills'), attach: (lib) => controller.attachSkills(lib), openPath: (p) => shell.openPath(p), log: (lv, m, d) => log(lv, 'main', 'skills', m, d),
     pickPath: async (kind) => (await dialog.showOpenDialog(win, kind === 'folder' ? { title: tr('选择 Skill 文件夹（含 SKILL.md）'), properties: ['openDirectory'] } : { title: tr('选择 Skill 包'), properties: ['openFile'], filters: [{ name: tr('Skill 包'), extensions: ['zip', 'skill'] }] })).filePaths[0] })
 
   // AI 对话附件：选择文件 / 目录 / 图片、带附件发送、历史回放取图、打开附件（见 attachIpc.ts）

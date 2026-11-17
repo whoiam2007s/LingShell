@@ -44,5 +44,6 @@ export function registerDbIpc(ctx: MainContext) {
       return pushAlerts(targets, { scheduleName: title, status: ok ? 'normal' : 'abnormal', hosts, time: new Date().toLocaleString(dateLocale(), { hour12: false }), summary: lines.join('\n') })
     },
   })
+  ctx.dbConns = dbReg   // 只取 list / upsert：AI 列 / 存数据库连接时用（stop 由 ipc.ts 的收尾统一调）
   return { dbReg }
 }

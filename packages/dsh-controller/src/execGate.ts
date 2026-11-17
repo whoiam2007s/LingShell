@@ -16,7 +16,7 @@ import {
 
 // 跑命令的工具（有 command 才判只读 / 危险）。check_background 没有 command，只是查日志，算读。
 const EXEC_TOOLS = new Set(['exec_in_terminal', 'exec_on_terminals', 'start_background', 'run_on_hosts'])
-const WRITE_TOOLS = new Set(['write_file', 'upload_file'])
+const WRITE_TOOLS = new Set(['write_file', 'upload_file', 'set_app_setting', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server'])
 // 以后新加的写类工具按前缀归属（现在还没有 move_file / delete_* 工具，先留住规则）
 const WRITE_PREFIXES = ['move_file', 'create_', 'delete_', 'remove_']
 

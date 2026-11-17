@@ -241,6 +241,10 @@ keys.importPicked → keys:importPicked
 keys.list → keys:list
 keys.pickImport → keys:pickImport
 keys.useForHost → keys:useForHost
+knowledge.consolidate → knowledge:consolidate
+knowledge.consolidateApply → knowledge:consolidateApply
+knowledge.consolidatePending → knowledge:consolidatePending
+knowledge.consolidatePendingClear → knowledge:consolidatePendingClear
 knowledge.list → knowledge:list
 knowledge.remove → knowledge:remove
 knowledge.save → knowledge:save
@@ -351,6 +355,7 @@ skills.save → skills:save
 skills.setFlags → skills:setFlags
 sshAuth.answer → sshAuth:answer
 sshUrl.takePending → sshUrl:takePending
+subagent.list → subagent:list
 system.appInfo → system:appInfo
 system.checkUpdate → system:checkUpdate
 system.downloadUpdate → system:downloadUpdate

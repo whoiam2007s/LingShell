@@ -1,5 +1,14 @@
 // 英文译文：键 = 中文原文（见 ../../i18n.ts）。desktop 主进程（apps/desktop/src/main）里用到的文案，按文件分组
 export const desktop: Record<string, string> = {
+  // ai/register.ts：AI 读写四类配置时模块未就绪
+  'Skill 库还没准备好，稍后再试': 'The skill library is not ready yet, please try again',
+  '数据库模块还没准备好，稍后再试': 'The database module is not ready yet, please try again',
+  // ai/knowledgeIpc.ts：知识库梳理
+  '这台机器上没有可用的模型通道，无法梳理': 'No model channel is available on this machine, so consolidation cannot run',
+  '至少要有 2 张卡才值得整理': 'At least 2 cards are needed for consolidation to be worthwhile',
+  '模型没有给出整理清单': 'The model did not return a consolidation list',
+  '模型给的整理清单不合法：{err}': 'The consolidation list from the model is invalid: {err}',
+  '清单不合法：{err}': 'Invalid list: {err}',
   // dbIpc.ts
   '密钥保险箱里的这个密码含换行，不能用作数据库密码': 'This password in the secret vault contains a line break and cannot be used as a database password',
   '执行超时（{n} 秒）': 'Timed out ({n} s)',

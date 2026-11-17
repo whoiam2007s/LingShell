@@ -10,6 +10,8 @@ import { ChevronDown } from 'lucide-react'
 import { tr, type SessionMeta } from '@lingshell/shared'
 import { cn } from '../../lib/cn.js'
 import { RECENT_N, recentSessions, tabTitle } from './sessionTabsModel.js'
+import { useRunStates } from '../../lib/sessionStates.js'
+import { RunStateDot } from '../sessions/index.js'
 
 export interface SessionSwitcherProps {
   sessions: SessionMeta[]
@@ -39,6 +41,7 @@ const CLOSE_DELAY = 180    // 移开后多久收起（给鼠标从箭头移到�
 
 export function SessionSwitcher(p: SessionSwitcherProps) {
   const [open, setOpen] = useState(false)
+  const runState = useRunStates()   // 每个会话的执行状态（与历史会话列表同一套）
   const boxRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   // 浮层挂 body、fixed 定位（同全局 tooltip）：不会被消息气泡 / 工具卡片盖住
@@ -112,7 +115,11 @@ export function SessionSwitcher(p: SessionSwitcherProps) {
                     <span className="truncate">{tabTitle(s.title) || tr('新会话')}</span>
                     {s.workDir && <span data-session-workdir className="truncate text-[10px] text-[var(--color-text-muted)]">{s.workDir}</span>}
                   </span>
-                  <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{whenOf(s.lastActiveAt)}</span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    {/* 状态点与历史会话列表同一套逻辑（RunStateDot） */}
+                    <RunStateDot state={runState(s.id)} corner={false} />
+                    <span className="text-[10px] text-[var(--color-text-muted)]">{whenOf(s.lastActiveAt)}</span>
+                  </span>
                 </button>
               )
             })}

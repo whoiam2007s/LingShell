@@ -104,6 +104,10 @@ export type ResetSuggestedEvent = {
 // 上下文用量（每次模型请求后更新；重连时按历史最后一次请求给出）。limit=0 表示未设上限
 export type ContextUsageEvent = {
   type: 'agent:contextUsage'; sessionId: string; inputTokens: number; limit: number
+  /** 模型上下文窗口：界面百分比的分母（用户理解的口径） */
+  window?: number
+  /** 自动压缩阈值（= 窗口 × 压缩比例）：达到它才会压缩，不是"上下文用完" */
+  compactAt?: number
 }
 
 // 重连时会话历史读不回来（如 dsh 升级后旧日志迁移被拒且修不了）：已换成新的空会话继续用。
@@ -178,6 +182,20 @@ export type KnowledgeProposalEvent = {
   previous?: { title: string; content: string }    // 更新时的原卡内容（卡片上对照）
 }
 
+// 后台自动梳理攒出了建议清单（卡片满 50 张 / 距上次超 7 天）：界面在知识库入口提示，不弹窗
+export type KnowledgeConsolidatePendingEvent = {
+  type: 'knowledge:consolidatePending'
+  at: string
+  plan: import('../ai/index.js').ConsolidatePlan
+}
+
+// 应用设置被改过（AI 通过 set_app_setting，或任何非渲染层的写入）：
+// 界面据此重拉设置并热更新终端外观（字号 / 配色 / 字体…），否则只有重启才生效
+export type AppSettingsChangedEvent = {
+  type: 'app:settingsChanged'
+  patch: Record<string, unknown>
+}
+
 // ── 阶段三：资源上传/下载进度 ────────────────────────────
 export type TransferProgressEvent = {
   type: 'transfer:progress'
@@ -245,6 +263,8 @@ export type AppEvent =
   | AgentEvent
   | AuthRequestEvent | AuthResolvedEvent | PlanRequestEvent
   | KnowledgeProposalEvent
+  | KnowledgeConsolidatePendingEvent
+  | AppSettingsChangedEvent
   | TransferProgressEvent
   | PortForwardChangedEvent
   | InspectionRunEvent | InspectionOpenSessionEvent

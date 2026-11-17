@@ -115,10 +115,12 @@ export function registerFilesIpc(ctx: MainContext) {
     return unifiedDiff(base, next, p)
   })
   ipcMain.handle('fs:writeText', async (_e, scope: FsScope, p: string, base: string, next: string) => {
-    const r = await saveText(await scopeAccess(scope), p, base, next)
+    // 人工编辑不备份（见 saveText 注释）：备份目录只留给 AI 写入与远端回传
+    const r = await saveText(await scopeAccess(scope), p, base, next, { backup: false })
     auditTerminal(isLocal(scope) ? '' : scope.terminalId, {
-      command: `手动编辑 ${p}`, decision: 'user_edit', filePath: p, backupPath: r.backupPath,   // i18n-ignore 执行记录原文
+      command: `手动编辑 ${p}`, decision: 'user_edit', filePath: p,   // i18n-ignore 执行记录原文
     }, { logCommand: true })
+    return r
   })
   // 资源管理器预览（见 filePreviewIpc.ts）
   registerFilePreview({ handle: (ch, fn) => ipcMain.handle(ch, fn), access: scopeAccess, tempDir: join(app.getPath('temp'), 'lingshell-preview'), openPath: (p) => shell.openPath(p) })

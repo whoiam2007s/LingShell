@@ -351,7 +351,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
         <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-[var(--color-border-subtle)] px-3">
           <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--color-text-primary)]" title={path}>{dirty ? '● ' : ''}{path}</span>
           {sudo && <span title={tr('以 root 身份读写（sudo）')} className="shrink-0 rounded bg-[var(--color-danger)] px-1.5 text-[10px] font-semibold leading-[18px] text-[var(--color-on-danger)]">sudo</span>}
-          {saved && !dirty && <span className="shrink-0 text-[11px] text-[var(--color-success)]">{tr('已保存（原文件已备份，可在执行记录里还原）')}</span>}
+          {saved && !dirty && <span className="shrink-0 text-[11px] text-[var(--color-success)]">{tr('已保存（人工编辑不备份，不能一键还原）')}</span>}
           {base !== undefined && (
             <>
               <button data-ed-find title={tr('查找 / 替换（Ctrl+F / Ctrl+H）\n跳到行：Ctrl+G')} onClick={() => openFind(false)} className={tool(!!find)}><Search className="h-3.5 w-3.5" /></button>
@@ -473,7 +473,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
             <div className="w-[min(900px,88vw)] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-4 shadow-2xl">
               <div className="mb-2 text-[14px] font-semibold text-[var(--color-text-primary)]">{tr('确认保存改动')}</div>
-              <p className="mb-2 text-[12px] text-[var(--color-text-secondary)]">{tr('保存前会先备份原文件，之后可在「执行记录」里还原。')}</p>
+              <p className="mb-2 text-[12px] text-[var(--color-text-secondary)]">{tr('保存后会记一条「手动编辑」执行记录；人工编辑不写备份，所以不能一键还原（要退回请用编辑器撤销）。')}</p>
               <DiffView diff={diff} maxHeight="max-h-[55vh]" />
               <div className="mt-3 flex justify-end gap-2">
                 <button onClick={() => setDiff(undefined)} className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('取消')}</button>

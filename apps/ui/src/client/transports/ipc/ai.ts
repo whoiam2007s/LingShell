@@ -96,6 +96,13 @@ export function createAiIpc(): AiApi {
       list: () => window.electronAPI.invoke('knowledge:list') as ReturnType<AppClient['knowledge']['list']>,
       save: (input) => window.electronAPI.invoke('knowledge:save', input) as ReturnType<AppClient['knowledge']['save']>,
       remove: (id) => window.electronAPI.invoke('knowledge:remove', id) as Promise<void>,
+      consolidate: (trigger) => window.electronAPI.invoke('knowledge:consolidate', trigger) as ReturnType<AppClient['knowledge']['consolidate']>,
+      consolidateApply: (actions) => window.electronAPI.invoke('knowledge:consolidateApply', actions) as ReturnType<AppClient['knowledge']['consolidateApply']>,
+      consolidatePending: () => window.electronAPI.invoke('knowledge:consolidatePending') as ReturnType<AppClient['knowledge']['consolidatePending']>,
+      consolidatePendingClear: () => window.electronAPI.invoke('knowledge:consolidatePendingClear') as Promise<void>,
+    },
+    subagent: {
+      list: (sid) => window.electronAPI.invoke('subagent:list', sid) as ReturnType<AppClient['subagent']['list']>,
     },
     chatPlus: {
       digest: (sid) => window.electronAPI.invoke('chatPlus:digest', sid) as Promise<string>,

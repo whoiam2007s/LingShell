@@ -419,6 +419,7 @@ export interface ModelProfile {
   model: string
   baseUrl: string
   contextWindow?: number    // 0/缺省 = 按模型自动
+  compactRatio?: number     // 自动压缩阈值占窗口的百分比（20–95，默认 60）；也接受 0.2–0.95 的小数
   apiKey?: string
   hasApiKey?: boolean
   keyFrom?: string          // 仅保存 / 测试方向：「复制」出的新配置沿用这套已存的 key（同提供商才生效）
@@ -1000,6 +1001,22 @@ export interface SkillImportPreview {
   suggestedName: string   // 冲突时建议的新名字
 }
 export interface SkillInput { name: string; description: string; body: string }
+
+// 子代理（主会话派出去做单一任务的独立会话）：会话标题栏下拉里显示
+export interface SubagentView {
+  subagentId: string
+  /** 下拉里显示的一句话标题（模型给过就用它，否则是 task 首句截 40 字） */
+  title: string
+  task: string
+  permission: 'read' | 'write'
+  status: 'running' | 'done' | 'blocked' | 'failed'
+  startedAt: string
+  elapsedMs?: number
+  summary?: string
+  blocked?: { question: string; context: string }
+  /** 最近一步在干什么（节流更新）：让用户在下拉里看得见进度，而不只是「运行中」 */
+  step?: { kind: 'tool' | 'text'; label: string; at: string }
+}
 
 // ── 模型接口协议 ────────────────────────────────────────
 // anthropic = Anthropic Messages（{base}/v1/messages，x-api-key）；

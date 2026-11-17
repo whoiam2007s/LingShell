@@ -5,7 +5,7 @@ import {
   terminalToolDefs, decideFor, commitGrant, terminalIdOf, type TerminalToolDeps,
   buildStartBackgroundCommand, buildCheckBackgroundCommand, parseStartBackgroundOutput, parseCheckBackgroundOutput,
   newJobId, isJobId, JOB_DIR, applyEdit, editModeOf, sliceLines, groupSameOutput, approvalView, explainOf, describeCall,
-  rollbackOf, missingRollback, rollbackDeny,
+  rollbackOf, missingRollback, rollbackDeny, neededFor,
 } from './terminalTools.js'
 
 function deps(over: Partial<TerminalToolDeps> = {}): TerminalToolDeps & { audit: ReturnType<typeof vi.fn>; grant: ReturnType<typeof vi.fn> } {
@@ -30,9 +30,9 @@ const exec = (extra: Record<string, unknown> = {}) => ({ agent: { id: 'sess_1' }
 const defOf = (d: TerminalToolDeps, name: string) => terminalToolDefs(d).find((t: { name: string }) => t.name === name)!
 
 describe('工具定义', () => {
-  it('十六个工具齐全，顺序稳定', () => {
+  it('二十四个工具齐全，顺序稳定', () => {
     const names = terminalToolDefs(deps()).map((t) => t.name)
-    expect(names).toEqual(['list_terminals', 'read_terminal', 'exec_in_terminal', 'exec_on_terminals', 'start_background', 'check_background', 'wait', 'create_terminal', 'propose_host_knowledge', 'propose_quick_commands', 'propose_runbook', 'run_on_hosts', 'upload_file', 'read_file', 'write_file', 'download_file'])
+    expect(names).toEqual(['list_terminals', 'read_terminal', 'exec_in_terminal', 'exec_on_terminals', 'start_background', 'check_background', 'wait', 'create_terminal', 'propose_host_knowledge', 'propose_quick_commands', 'propose_runbook', 'run_on_hosts', 'upload_file', 'read_file', 'write_file', 'download_file', 'get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
   })
 
   it('propose_quick_commands / propose_runbook：只校验不写、无需授权；不合法报错回给模型', async () => {
@@ -780,5 +780,173 @@ describe('run_on_hosts（跨主机提问）', () => {
     expect(hostsTouchedBy(d, 'create_terminal', { type: 'local' })).toEqual(['local'])
     expect(hostsTouchedBy(d, 'run_on_hosts', { targets: ['db'] })).toEqual(['h3'])
     expect(hostsTouchedBy(d, 'list_terminals', {})).toEqual([])
+  })
+})
+
+describe('四类实体：list_config / save_*', () => {
+  const io = (over: Record<string, unknown> = {}) => ({
+    list: (k: string) => (k === 'skill' ? [{ name: 'nginx-check', description: '检查 nginx' }] : []),
+    secretNames: () => ['mysql-root'],
+    saveSkill: vi.fn(async (i: { name: string }) => ({ name: i.name, created: true })),
+    saveDbConn: vi.fn((i: { id: string; name: string }) => ({ id: i.id, name: i.name, created: true })),
+    saveModelProfile: vi.fn((i: { name: string }) => ({ id: 'p_new', name: i.name, created: true, needsApiKey: true })),
+    saveMcpServer: vi.fn((i: { name: string }) => ({ id: 'm_new', name: i.name, created: true })),
+    ...over,
+  })
+
+  it('没注入 configEntities：五个工具都明确报错，不是静默失败', async () => {
+    const d = deps()
+    await expect(defOf(d, 'list_config').execute({} as never, exec() as never)).rejects.toThrow(/配置读取/)
+    await expect(defOf(d, 'save_skill').execute({ name: 'a', description: 'b', body: 'c' } as never, exec() as never)).rejects.toThrow(/配置写入/)
+  })
+
+  it('list_config：不传 kind 列四类，非法 kind 回可选值', async () => {
+    const d = deps({ configEntities: io() as never })
+    const all = JSON.parse(await defOf(d, 'list_config').execute({} as never, exec() as never))
+    expect(Object.keys(all)).toEqual(['ok', 'skill', 'db_connection', 'model_profile', 'mcp_server'])
+    expect(all.skill.count).toBe(1)
+    expect(all.skill.text).toContain('nginx-check')
+    expect(all.db_connection.text).toContain('还没有')
+    const bad = JSON.parse(await defOf(d, 'list_config').execute({ kind: 'host' } as never, exec() as never))
+    expect(bad.ok).toBe(false)
+    expect(bad.error).toContain('mcp_server')
+  })
+
+  it('list_config：某一类读失败只影响那一类', async () => {
+    const d = deps({ configEntities: io({ list: (k: string) => { if (k === 'mcp_server') throw new Error('坏了'); return [] } }) as never })
+    const out = JSON.parse(await defOf(d, 'list_config').execute({} as never, exec() as never))
+    expect(out.mcp_server.error).toContain('坏了')
+    expect(out.skill.count).toBe(0)
+  })
+
+  it('save_skill：校验不过回模型原因；通过则落盘并进执行记录', async () => {
+    const c = io()
+    const d = deps({ configEntities: c as never })
+    const bad = JSON.parse(await defOf(d, 'save_skill').execute({ name: 'Bad Name', description: 'x', body: 'y' } as never, exec() as never))
+    expect(bad.ok).toBe(false)
+    expect(c.saveSkill).not.toHaveBeenCalled()
+    const ok = JSON.parse(await defOf(d, 'save_skill').execute({ name: 'nginx-check', description: '检查 nginx', body: '## 步骤' } as never, exec() as never))
+    expect(ok).toEqual({ ok: true, name: 'nginx-check', created: true })
+    expect(d.audit.mock.calls[0][0]).toEqual(expect.objectContaining({ decision: 'config_changed', sessionId: 'sess_1' }))
+  })
+
+  it('save_db_connection：密码必须是保险箱里已有的名称', async () => {
+    const c = io()
+    const d = deps({ configEntities: c as never })
+    const bad = JSON.parse(await defOf(d, 'save_db_connection').execute({ name: '订单库', kind: 'mysql', secret: 'hunter2' } as never, exec() as never))
+    expect(bad.ok).toBe(false)
+    expect(bad.error).toContain('mysql-root')
+    const ok = JSON.parse(await defOf(d, 'save_db_connection').execute({ name: '订单库', kind: 'mysql', secret: 'mysql-root', host_key: 'local' } as never, exec() as never))
+    expect(ok.ok).toBe(true)
+    expect(c.saveDbConn).toHaveBeenCalledWith(expect.objectContaining({ name: '订单库', secret: 'mysql-root', hostKey: 'local' }))
+  })
+
+  it('save_db_connection：不给密码也能建（提示用户自己补）', async () => {
+    const d = deps({ configEntities: io() as never })
+    const out = JSON.parse(await defOf(d, 'save_db_connection').execute({ name: '订单库', kind: 'mysql' } as never, exec() as never))
+    expect(out.ok).toBe(true)
+    expect(out.note).toContain('没有密码')
+  })
+
+  it('save_mcp_server：env 里的 token 换成中文占位，并把 note 告诉模型', async () => {
+    const c = io()
+    const d = deps({ configEntities: c as never })
+    const out = JSON.parse(await defOf(d, 'save_mcp_server').execute({
+      name: 'gh', transport: 'stdio', command: 'npx', env: 'GITHUB_TOKEN=ghp_fake\nLOG_LEVEL=debug',
+    } as never, exec() as never))
+    expect(out.ok).toBe(true)
+    const saved = c.saveMcpServer.mock.calls[0][0] as unknown as { env: Record<string, string>; masked: string[] }
+    expect(saved.env.GITHUB_TOKEN).toContain('请替换成真实的')
+    expect(saved.env.LOG_LEVEL).toBe('debug')
+    expect(saved.masked).toEqual(['env.GITHUB_TOKEN'])
+    expect(out.note).toContain('GITHUB_TOKEN')
+  })
+
+  it('save_mcp_server：stdio 缺命令直接拒', async () => {
+    const d = deps({ configEntities: io() as never })
+    const out = JSON.parse(await defOf(d, 'save_mcp_server').execute({ name: 'x', transport: 'stdio' } as never, exec() as never))
+    expect(out.ok).toBe(false)
+  })
+
+  it('save_model_profile：新建的配置要提示用户去填 Key', async () => {
+    const d = deps({ configEntities: io() as never })
+    const out = JSON.parse(await defOf(d, 'save_model_profile').execute({ provider: 'deepseek', model: 'deepseek-chat' } as never, exec() as never))
+    expect(out.ok).toBe(true)
+    expect(out.needsApiKey).toBe(true)
+    expect(out.note).toContain('API Key')
+  })
+
+  it('五个新工具都登记了权限档：list_config 只读、四个 save_* 写入', () => {
+    const d = deps()
+    expect(decideFor(d, 'sess_1', 'list_config', {})).toEqual({ kind: 'allow' })
+    for (const n of ['save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server']) {
+      expect(neededFor(n)).toBe('write')
+    }
+    expect(neededFor('list_config')).toBe('read')
+  })
+
+  it('应用级工具不需要 terminal_id，终端类工具仍然要', () => {
+    const d = deps()
+    for (const n of ['get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server']) {
+      expect(decideFor(d, 'sess_1', n, {})).toEqual({ kind: 'allow' })
+    }
+    expect(decideFor(d, 'sess_1', 'read_file', {})).toEqual(expect.objectContaining({ kind: 'deny' }))
+  })
+
+  it('应用级工具授权落到伪主机键，不污染本地终端写权限', () => {
+    const d = deps()
+    commitGrant(d, 'sess_1', 'save_skill', { name: 'a' }, 'user')
+    expect(d.grant.mock.calls[0]).toEqual(['sess_1', 'app', 'write'])
+    expect(d.audit.mock.calls[0][0]).toEqual(expect.objectContaining({ sessionId: 'sess_1', terminalId: 'app', decision: 'allow:user' }))
+    // 派子代理是另一个键：批准它不该把本地写权限一起放开
+    commitGrant(d, 'sess_1', 'spawn_subagent', { task: 't' }, 'user')
+    expect(d.grant.mock.calls[1]).toEqual(['sess_1', 'subagent', 'read'])
+  })
+})
+
+describe('spawn_subagent', () => {
+  it('没注入 spawnSubagent：明确报错', async () => {
+    const d = deps()
+    await expect(defOf(d, 'spawn_subagent').execute({ task: '看看 nginx 版本' } as never, exec() as never)).rejects.toThrow(/没有提供子代理/)
+  })
+
+  it('task 为空 / 超长直接回给模型，不派', async () => {
+    const spawn = vi.fn()
+    const d = deps({ spawnSubagent: spawn } as never)
+    const bad = JSON.parse(await defOf(d, 'spawn_subagent').execute({ task: '  ' } as never, exec() as never))
+    expect(bad.ok).toBe(false)
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('缺省只授只读，并把父会话 id、超时传给控制器', async () => {
+    const spawn = vi.fn(async () => ({ subagentId: 'sess_sub', status: 'done', summary: '关键发现：nginx 1.24', elapsedMs: 1200 }))
+    const d = deps({ spawnSubagent: spawn } as never)
+    const out = JSON.parse(await defOf(d, 'spawn_subagent').execute({ task: '查 nginx 版本', context_hint: '生产机' } as never, exec() as never))
+    expect(out.ok).toBe(true)
+    expect(out.summary).toContain('nginx 1.24')
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ task: '查 nginx 版本', permission: 'read', contextHint: '生产机', parentSessionId: 'sess_1' }))
+    expect(d.audit.mock.calls[0][0]).toEqual(expect.objectContaining({ decision: 'subagent' }))
+  })
+
+  it('显式 permission=write 才传出写权限', async () => {
+    const spawn = vi.fn(async () => ({ subagentId: 's', status: 'done', summary: 'x', elapsedMs: 1 }))
+    const d = deps({ spawnSubagent: spawn } as never)
+    await defOf(d, 'spawn_subagent').execute({ task: '改配置', permission: 'write' } as never, exec() as never)
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({ permission: 'write' }))
+  })
+
+  it('blocked / failed 的结果原样带给模型（含问题与上下文）', async () => {
+    const spawn = vi.fn(async () => ({ subagentId: 's2', status: 'blocked', summary: 'BLOCKED…', blocked: { question: '要跳过吗？', context: 'web2 没日志' }, elapsedMs: 900 }))
+    const d = deps({ spawnSubagent: spawn } as never)
+    const out = JSON.parse(await defOf(d, 'spawn_subagent').execute({ task: '看三台机器' } as never, exec() as never))
+    expect(out.status).toBe('blocked')
+    expect(out.blocked.question).toBe('要跳过吗？')
+    expect(out.ok).toBe(true)
+
+    const failed = vi.fn(async () => ({ subagentId: 's3', status: 'failed', summary: '超时', error: 'timeout', elapsedMs: 600000 }))
+    const d2 = deps({ spawnSubagent: failed } as never)
+    const out2 = JSON.parse(await defOf(d2, 'spawn_subagent').execute({ task: '跑很久' } as never, exec() as never))
+    expect(out2.ok).toBe(false)
+    expect(out2.error).toBe('timeout')
   })
 })

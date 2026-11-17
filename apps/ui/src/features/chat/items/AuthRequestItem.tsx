@@ -40,8 +40,13 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
   }, [resolved])
 
   const danger = a.risk === 'dangerous'
+  // 应用配置 / 派子代理用的是伪主机键（'app' / 'subagent'）：卡片上不谈"终端"
+  const isSubagent = a.terminalId === 'subagent'
+  const isPseudoKey = isSubagent || a.terminalId === 'app'
+  const pseudoLabel = isSubagent ? tr('子代理') : tr('应用设置')
   const reasonText =
-    a.mcp ? tr('外部工具可能产生副作用，每次调用都需确认（可在 设置 → MCP 服务 里把该工具标为免确认）')
+    isPseudoKey ? (isSubagent ? tr('AI 要派一个子代理去跑这个任务') : tr('AI 要改动应用设置（不是某台主机上的操作）'))
+    : a.mcp ? tr('外部工具可能产生副作用，每次调用都需确认（可在 设置 → MCP 服务 里把该工具标为免确认）')
     : a.tool === 'write_file' ? tr('确认以下改动？覆盖前会自动备份原文件，可在执行记录里还原')
     : a.tool === 'download_file' ? tr('确认把该文件下载到本机？')
     : a.reason === 'dangerous_command' ? tr('此命令命中危险模式，确认执行？')
@@ -152,6 +157,19 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
                   </code>
                 ))}
               </div>
+            </div>
+          ) : isPseudoKey ? (
+            // 应用配置 / 派子代理：不涉及任何终端，别写"对终端…的权限"（会让人以为在给本地终端授权）
+            <div className="text-[12px] text-[var(--color-text-secondary)]">
+              {trx('给{who}的{perm}权限', {
+                who: <code className="mx-1 rounded bg-[var(--color-bg-raised)] px-1 py-0.5 text-[11px] text-[var(--color-text-primary)]">{pseudoLabel}</code>,
+                perm: <span className={cn('mx-1 font-medium', danger ? 'text-[var(--color-danger)]' : 'text-[var(--color-accent)]')}>{tr('【{perm}】', { perm: permText })}</span>,
+              })}
+              {isSubagent && (
+                <div className="mt-1 text-[11px] text-[var(--color-text-muted)]">
+                  {tr('子代理会独立跑完这个任务：运行中不再询问、不能跟你对话、不能删除东西、不能再派子代理；需要你拍板时它会停下来把问题交回主代理。写权限继承本会话已有的授权。')}
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-[12px] text-[var(--color-text-secondary)]">

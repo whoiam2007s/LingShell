@@ -43,9 +43,13 @@ import {
   type TerminalToolDeps, type UserOverride,
 } from './terminalTools.js'
 import { unifiedDiff } from './diff.js'
+import {
+  SUBAGENT_BRIEF, SUBAGENT_MAX_CONCURRENT, checkSubagentTask, clampTimeoutSec, composeSubagentTask,
+  parseSubagentSummary, subagentTitleOf, subagentToolDeny, type SubagentPermission, type SubagentRecord, type SubagentResult,
+} from './subagent.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
-import { compactionConfig, effectiveLimit, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
+import { compactionConfig, effectiveLimit, clampCompactRatio, AUTO_COMPACT_RATIO, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
 import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, RETRY_POLICY, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
 import { mcpDecision, mcpArgsView, stripExplain, MCP_GUIDANCE, type McpManager, type McpToolRef } from './mcp.js'
 import { withRedaction, placeholderError, REDACT_GUIDANCE } from './redaction.js'
@@ -104,7 +108,7 @@ export interface DshControllerConfig extends TerminalToolDeps {
   // contextWindow：用户覆盖的上下文窗口（0/缺省 = 按 provider/模型自动）
   // protocol：接口协议（缺省按 protocolOf：DeepSeek = anthropic，其它 = openai）；切协议 = 换路由，下一回合生效
   // multimodal：这套配置开了「支持图片」（附图片的消息只在开了时才发；路由按它声明模型的输入模态）
-  resolveSettings(profileId?: string): { profileId?: string; provider: string; model: string; apiKey: string; baseUrl: string; contextWindow?: number; protocol?: ModelProtocol; multimodal?: boolean; thinking?: ThinkingLevel }
+  resolveSettings(profileId?: string): { profileId?: string; provider: string; model: string; apiKey: string; baseUrl: string; contextWindow?: number; compactRatio?: number; protocol?: ModelProtocol; multimodal?: boolean; thinking?: ThinkingLevel }
   requestApproval(req: ApprovalRequest): Promise<ApprovalAnswer>
   // 计划审批卡（propose_plan）；缺省则该工具报不可用
   requestPlan?(req: PlanRequest): Promise<ApprovalAnswer>
@@ -122,7 +126,7 @@ export interface DshControllerConfig extends TerminalToolDeps {
   // 全局自定义规则（系统设置），每次模型请求现读注入系统提示词
   customRules?(): string
   // 主机知识库：这些主机（hostKey）相关的知识卡注入文本（已截断），没有返回 ''。每次模型请求现求值
-  hostKnowledge?(hostKeys: string[]): string
+  hostKnowledge?(hostKeys: string[], window?: number): string
   // MCP：连接管理器（boot 时把已连上的服务工具注册进来）；授权要看会话信任档与是否无人值守巡检
   mcp?: McpManager
   trustOf?(sessionId: string): TrustLevel
@@ -145,7 +149,8 @@ type Settings = ReturnType<DshControllerConfig['resolveSettings']>
 interface Live {
   info: SessionInfo
   dshId: string           // 当前对应的 dsh 会话 id（首次返回时间侧车按它存）
-  window: number         // 本会话模型的上下文窗口（进度条上限按它夹）
+  window: number         // 本会话模型的上下文窗口（进度条的分母：用量 / 窗口）
+  compactRatio: number   // 自动压缩阈值占窗口的比例（默认 0.6，按模型配置）
   provider: string        // 本会话当前生效的 provider / 模型（用量统计按它记）
   model: string
   profileId?: string      // 会话选的模型配置（缺省 = 默认配置）；回合进行中改了要等下一回合才生效
@@ -251,6 +256,8 @@ export class DshController {
         sessionIdOf: (agentId) => this.dshToOurs.get(agentId) ?? agentId,
         takeUserOverride: (callId) => { const o = this.overrides.get(callId); this.overrides.delete(callId); return o },
         isPreview: (sid: string) => this.preview.has(sid),   // 预演模式：propose_plan 不弹审批，只出「方案步骤」
+        // 子代理：主代理派单一任务出去（工具里已校验 task / 超时，这里只管编排）
+        spawnSubagent: (req) => this.spawnSubagent(req),
       }
       // 发给 AI 前脱敏：终端工具在 terminalToolDefs 里已包好；plan / MCP 在这里包（见 redaction.ts）
       const secrets = () => this.cfg.aiSecrets?.()
@@ -300,7 +307,9 @@ export class DshController {
       // 主机知识库（按会话：只注入本会话用到过的主机）+ 跨主机提问的用法与主机清单
       installKnowledgeSection(ctx, (agentId) => {
         const keys = this.touched.get(this.dshToOurs.get(agentId) ?? agentId)
-        return keys?.size ? this.cfg.hostKnowledge?.([...keys]) ?? '' : ''
+        const sid = this.dshToOurs.get(agentId) ?? agentId
+        // 带上窗口：注入上限按模型窗口算（大窗口多给，小窗口少给）
+        return keys?.size ? this.cfg.hostKnowledge?.([...keys], this.sessions.get(sid)?.window) ?? '' : ''
       })
       installFleetSection(ctx, () => this.cfg.fleetHosts?.() ?? [])
       // 分层规则（分组 / 主机按本会话用到过的主机，工作目录按会话绑定的目录）+ 预演模式的做法（只在开着时出现）
@@ -311,6 +320,11 @@ export class DshController {
       ;(ctx as any).systemPrompt.section({ name: 'lingshell:preview', order: 155, text: (c: any) => {
         const id = String(c?.agent?.id ?? '')
         return this.preview.has(this.dshToOurs.get(id) ?? id) ? PREVIEW_GUIDANCE : ''
+      } })
+      // 子代理专用说明：只在子会话里出现（「你只做这一件事、不能交互、总结按五块写」见 subagent.ts）
+      ;(ctx as any).systemPrompt.section({ name: 'lingshell:subagent', order: 156, text: (c: any) => {
+        const id = String(c?.agent?.id ?? '')
+        return this.subagents.has(this.dshToOurs.get(id) ?? id) ? SUBAGENT_BRIEF : ''
       } })
       this.installAuthGate(ctx)
       this.ctx = ctx
@@ -362,7 +376,7 @@ export class DshController {
     // 压缩：每个用过的路由+模型一条按其窗口换算的策略；阈值或目标变了就用新 config 重启压缩插件
     const adapterWindow = pi ? window : DEEPSEEK_WINDOW
     // 已有的原位更新（不挪到末尾）：一次性调用（如 AI 复核用另一套配置）与会话交替用两套配置时，顺序不变就不必反复重启压缩插件
-    const target = { provider: route, model: s.model, contextWindow: window, adapterWindow }
+    const target = { provider: route, model: s.model, contextWindow: window, adapterWindow, compactRatio: s.compactRatio }
     const at = this.compactTargets.findIndex((t) => t.provider === route && t.model === s.model)
     this.compactTargets = at < 0 ? [...this.compactTargets, target] : this.compactTargets.map((t, i) => (i === at ? target : t))
     const cc = compactionConfig(this.cfg.contextLimitTokens?.() ?? 0, this.compactTargets)
@@ -432,6 +446,14 @@ export class DshController {
     this.cfg.log?.('info', 'deepseek route registered', { route, baseURL })
   }
 
+  // 弹授权卡前的统一入口：子代理一律不弹卡（它没有交互能力，弹了只会挂到超时），
+  // 直接拒掉让工具报错进它的上下文，它按提示走 blocked 把问题交回主代理。
+  private async askFor(req: ApprovalRequest): Promise<ApprovalAnswer> {
+    const sub = this.subagents.get(req.sessionId)
+    if (sub) return { decision: 'deny', note: tr('子代理不能与你交互：请用 blocked 状态把问题交回主代理') }
+    return this.cfg.requestApproval(req)
+  }
+
   // ── 授权网关：AuthRegistry 的三态直接落在 tools/pre-execute 上 ──
   // ask 的应答走 approval/request（弹我们自己的授权卡）。注意两条实测约束：
   //  1) ask 只在执行带 agent 时才真的问，agent-less 一律退化成 deny；
@@ -442,10 +464,23 @@ export class DshController {
       const agentId = String(exec?.agent?.id ?? '')
       if (!agentId) return next()
       const sessionId = this.dshToOurs.get(agentId) ?? agentId
+      // 子代理：不能跟用户交互、不能再派子代理、不能删除；只读子代理连写工具都不给。
+      // 放在最前面——先于预演 / 计划 / 信任档，子代理的任何越权都不进模型重试循环之外的分支
+      const sub = this.subagents.get(sessionId)
+      if (sub) {
+        const why = subagentToolDeny(String(exec.name), sub.permission, sub.allowed, exec.arguments, this.cfg.isReadOnly)
+        if (why) {
+          const tids = targetTerminalsOf(exec.name, exec.arguments)
+          for (const tid of tids.length ? tids : ['']) this.cfg.audit({ sessionId, terminalId: tid, command: describeCall(exec.name, exec.arguments), decision: `deny:subagent` })
+          return { kind: 'deny', reason: why }
+        }
+      }
+      // 授权主体：子代理不另立授权，一切以父会话为准（用户定的口径：主会话授权过写就自动继承）
+      const subject = sub ? sub.parent : sessionId
       this.touch(sessionId, exec.name, exec.arguments)
       const mcp = this.cfg.mcp?.lookup(String(exec.name))
       // 预演模式：写类工具一律拦（原因进模型，让它改成列计划），只读照常。最先判，计划 / 规则放行都不突破
-      if (this.execModeOf(sessionId) === 'preview' && (mcp ? previewBlocksMcp(mcp.autoApproved) : previewBlocks(String(exec.name), exec.arguments, this.cfg.isReadOnly))) {
+      if (this.execModeOf(subject) === 'preview' && (mcp ? previewBlocksMcp(mcp.autoApproved) : previewBlocks(String(exec.name), exec.arguments, this.cfg.isReadOnly))) {
         if (mcp) this.mcpAudit(sessionId, mcp, exec.arguments, 'deny:preview_mode')
         else {
           const tids = targetTerminalsOf(exec.name, exec.arguments)
@@ -457,7 +492,7 @@ export class DshController {
         const d = mcpDecision({ autoApproved: mcp.autoApproved, trust: this.cfg.trustOf?.(sessionId), unattended: this.cfg.isUnattended?.(sessionId) })
         if (d.kind === 'allow') return next()
         if (d.kind === 'deny') { this.mcpAudit(sessionId, mcp, exec.arguments, `deny:${d.reason}`); return d }
-        this.pendingAsk.set(String(exec.callId), { sessionId, name: exec.name, args: exec.arguments, reason: d.reason })
+        this.pendingAsk.set(String(exec.callId), { sessionId: subject, name: exec.name, args: exec.arguments, reason: d.reason })
         return { kind: 'ask', reason: d.reason }
       }
       // 入参带脱敏占位符：不弹卡，放行到工具体直接报错（原因进模型）；记成 fail，执行前用户关了脱敏也照样拒。
@@ -478,17 +513,17 @@ export class DshController {
       if (rb) return rb
       // 已批准计划内的步骤免卡（只读信任档、命令规则「禁止」照样拒，见 planDecision）
       if (planDecision(this.cfg, this.plans, sessionId, exec.name, exec.arguments)) return next()
-      const d = decideFor(this.cfg, sessionId, exec.name, exec.arguments)
+      const d = decideFor(this.cfg, subject, exec.name, exec.arguments)
       // 四档执行模式：auto / trust 档在既有结论之上放宽（只放宽、不收紧）。
       // confirm 与 preview 在这里恒为 false，各自走原路径 —— 默认档行为与升级前完全一致
-      if (this.relaxedByMode(sessionId, String(exec.name), exec.arguments, d)) {
+      if (this.relaxedByMode(subject, String(exec.name), exec.arguments, d)) {
         this.overrides.set(String(exec.callId), { sessionId, rule: this.modeRuleOf(sessionId) })   // 执行记录注明是哪个档放行的
         return next()
       }
       // 目录外的写：授权记录只到「主机 + 级别」（不带路径），auto / trust 档不能让它替路径判定放行。
       // confirm 本来就每条写都问、preview 已在上面拒掉，这条只补 auto / trust 批过写入后的缺口。
-      if (d.kind === 'allow' && this.needsAskOutside(sessionId, String(exec.name), exec.arguments)) {
-        this.pendingAsk.set(String(exec.callId), { sessionId, name: exec.name, args: exec.arguments, reason: 'elevation' })
+      if (d.kind === 'allow' && this.needsAskOutside(subject, String(exec.name), exec.arguments)) {
+        this.pendingAsk.set(String(exec.callId), { sessionId: subject, name: exec.name, args: exec.arguments, reason: 'elevation' })
         return { kind: 'ask', reason: 'elevation' }
       }
       if (d.kind === 'allow') {
@@ -503,7 +538,7 @@ export class DshController {
       }
       if (d.kind === 'deny') return d
       // 记住这次 ask 的上下文，approval/request 里拿不到入参
-      this.pendingAsk.set(String(exec.callId), { sessionId, name: exec.name, args: exec.arguments, reason: d.reason, rule: d.rule })
+      this.pendingAsk.set(String(exec.callId), { sessionId: subject, name: exec.name, args: exec.arguments, reason: d.reason, rule: d.rule })
       return { kind: 'ask', reason: d.reason }
     }) as any)
 
@@ -553,7 +588,7 @@ export class DshController {
         commitGrant(withReview, pend.sessionId, pend.name, pend.args, pend.reason, pend.rule ? `${pend.rule} · ${tr('AI 复核通过')}` : tr('AI 复核通过'))
         return 'allowed-once'
       }
-      const ans = await this.cfg.requestApproval({
+      const ans = await this.askFor({
         sessionId: pend.sessionId,
         needed: neededForCall(this.cfg, pend.name, pend.args),
         reason: (pend.reason as any) ?? 'first_access',
@@ -696,7 +731,7 @@ export class DshController {
   // ── MCP：授权卡 / 工具体外包一层 / 审计 ──
   private async askMcp(callId: string, sessionId: string, ref: McpToolRef, args: unknown): Promise<string> {
     const explain = explainOf(args)
-    const ans = await this.cfg.requestApproval({
+    const ans = await this.askFor({
       sessionId, terminalId: `mcp:${ref.server}`, needed: 'write', reason: 'first_access', risk: 'safe',
       tool: ref.publicName, command: `${ref.server} · ${ref.tool}`, ...(explain ? { explain } : {}),
       mcp: { server: ref.server, tool: ref.tool, args: mcpArgsView(args) },
@@ -743,9 +778,22 @@ export class DshController {
   // dsh 会话 id → 我方会话 id（上下文重置后两者不再相同）
   private dshToOurs = new Map<string, string>()
 
+  // 子代理：这些会话是主代理派出来的，工具受限、不弹授权卡、不写进会话列表
+  private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string; allowed?: string[] }>()
+  // 每个主会话派过哪些子代理（界面标题栏下拉用；只存内存，重启就没了——列表不是存档）
+  private subagentLog = new Map<string, SubagentRecord[]>()
+  /** 被主会话「停止」连带取消的子代理：结束时不报「执行失败」，而是写「已随主会话一起停止」 */
+  private subagentStopNote = new Map<string, string>()
+
+  /** 某会话派过的子代理（新的在前）：运行中的也在里面 */
+  subagentsOf(sessionId: string): SubagentRecord[] {
+    return [...(this.subagentLog.get(sessionId) ?? [])].reverse()
+  }
+
   // ── 会话 ────────────────────────────────────────────
   // 随机 id，删除后不复用：复用会撞上 dsh 磁盘上的旧日志（拒绝新建），还会继承旧会话的授权。
-  async createSession(opts?: { title?: string }): Promise<SessionInfo> {
+  // hidden：子代理会话——不写进会话列表（UI 上只从主会话的下拉里进去看）
+  async createSession(opts?: { title?: string; hidden?: boolean }): Promise<SessionInfo> {
     const id = `sess_${randomUUID().slice(0, 8)}`
     const createdAt = new Date().toISOString()
     const workDir = homedir()
@@ -753,8 +801,125 @@ export class DshController {
     const modelProfileId = this.cfg.resolveSettings().profileId
     const meta: SessionMeta = { id, title: opts?.title ?? id, threadId: id, createdAt, lastActiveAt: createdAt, workDir, ...(modelProfileId ? { modelProfileId } : {}) }
     const info = await this.spawn(id, meta)
-    this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
+    if (!opts?.hidden) this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
     return info
+  }
+
+  /**
+   * 派一个子代理：建隐藏会话 → 发任务 → 等它结束 → 把结构化总结交回主代理。
+   *
+   * 授权在调用方（spawn_subagent 工具）已经一次性判定过——这里不再弹卡；
+   * 子代理运行中越权（只读子代理想写、想删除、想跟用户对话、想再派子代理）由授权网关直接拒。
+   */
+  async spawnSubagent(req: {
+    task: string
+    /** 给人看的一句话标题（界面下拉里只显示它）；缺省取 task 首句 */
+    title?: string
+    timeoutSec?: number
+    contextHint?: string
+    tools?: string[]
+    permission: SubagentPermission
+    parentSessionId: string
+  }): Promise<SubagentResult> {
+    const t = checkSubagentTask(req.task)
+    if (!t.ok) throw new Error(t.error)
+    if (this.subagents.size >= SUBAGENT_MAX_CONCURRENT) {
+      throw new Error(tr('同时最多 {n} 个子代理在跑，等一个结束再派', { n: SUBAGENT_MAX_CONCURRENT }))
+    }
+    const t0 = Date.now()
+    const info = await this.createSession({ title: tr('子任务：{t}', { t: t.value.slice(0, 20) }), hidden: true })
+    const sid = info.id
+    this.subagents.set(sid, { permission: req.permission, parent: req.parentSessionId, task: t.value, ...(req.tools?.length ? { allowed: req.tools } : {}) })
+    // 子会话继承父会话的执行模式：预演模式下子代理自然只有读权限（网关最前面就拦写），
+    // 信任档下也不会比主代理更严——否则子代理会卡在自己那份 confirm 档上
+    this.setExecMode(sid, this.execModeOf(req.parentSessionId))
+    // 记一笔给界面看（运行中）；结束时更新同一条
+    const rec: SubagentRecord = { subagentId: sid, title: subagentTitleOf(t.value, req.title), task: t.value, permission: req.permission, status: 'running', startedAt: new Date(t0).toISOString() }
+    const log = this.subagentLog.get(req.parentSessionId) ?? []
+    this.subagentLog.set(req.parentSessionId, [...log, rec])
+    const settle = (patch: Partial<SubagentRecord>) => {
+      const at = (this.subagentLog.get(req.parentSessionId) ?? []).findIndex((r) => r.subagentId === sid)
+      if (at < 0) return
+      const next = [...this.subagentLog.get(req.parentSessionId)!]
+      next[at] = { ...next[at], ...patch }
+      this.subagentLog.set(req.parentSessionId, next)
+    }
+
+    // 收集最后一条完整的助手消息当总结；轮次结束 / 失败即收
+    // 同时把「最近一步」写进记录（节流 400ms）：下拉里能看见子代理在干什么，而不是只有一个「运行中」
+    let text = ''
+    let turnError: string | undefined
+    let stepAt = 0
+    const bumpStep = (kind: 'tool' | 'text', label: string) => {
+      const now = Date.now()
+      if (now - stepAt < 400) return
+      stepAt = now
+      settle({ step: { kind, label: label.replace(/\s+/g, ' ').trim().slice(0, 120), at: new Date(now).toISOString() } })
+    }
+    const finished = new Promise<void>((resolve) => {
+      const off = this.onEvent((ev) => {
+        if (ev.sessionId !== sid) return
+        if (ev.type === 'agent:itemStarted') {
+          if (ev.tool?.name) bumpStep('tool', tr('调用 {tool}', { tool: ev.tool.name }))
+        }
+        if ((ev.type === 'agent:itemDelta' || ev.type === 'agent:itemUpdated') && ev.text?.trim()) {
+          const tail = ev.text.trim().slice(-80)
+          if (tail) bumpStep('text', tail)
+        }
+        if (ev.type === 'agent:itemUpdated' && ev.kind === 'agent_message' && ev.status === 'completed' && ev.text?.trim()) text = ev.text
+        if (ev.type === 'agent:turnCompleted') { off(); resolve() }
+        if (ev.type === 'agent:turnFailed') { turnError = ev.error || tr('子代理的这一轮失败了'); off(); resolve() }
+      })
+    })
+
+    const timeoutMs = clampTimeoutSec(req.timeoutSec) * 1000
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      void this.interruptTurn(sid).catch(() => { /* 没有活跃轮次时是 no-op */ })
+    }, timeoutMs)
+
+    try {
+      await this.sendTurn(sid, composeSubagentTask(t.value, req.contextHint))
+      await finished
+    } catch (e) {
+      turnError = e instanceof Error ? e.message : String(e)
+    } finally {
+      clearTimeout(timer)
+      this.subagents.delete(sid)
+    }
+
+    // 被主会话「停止」连带取消的（见 interruptTurn）：收尾时写「已随主会话一起停止」，不报成执行失败
+    const stopNote = this.subagentStopNote.get(sid)
+    this.subagentStopNote.delete(sid)
+
+    const elapsedMs = Date.now() - t0
+    const logPath = join(this.cfg.baseDir, 'dsh-sessions', sid)
+    if (timedOut) {
+      const r: SubagentResult = {
+        subagentId: sid, status: 'failed', summary: tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value }), error: 'timeout', elapsedMs, logPath,
+      }
+      settle({ status: 'failed', elapsedMs, summary: r.summary })
+      return r
+    }
+    if (turnError) {
+      // 用户点了「停止」连带取消：说清楚是被停的，不是子代理自己出错（避免主代理以为要重派）
+      const summary = stopNote
+        ? tr('{note}（{t}）', { note: stopNote, t: t.value })
+        : tr('子代理执行失败：{err}', { err: turnError })
+      const r: SubagentResult = { subagentId: sid, status: 'failed', summary, error: turnError, elapsedMs, logPath }
+      settle({ status: 'failed', elapsedMs, summary: r.summary })
+      return r
+    }
+    const parsed = parseSubagentSummary(text)
+    // 被主会话停止的（turn 以完成收尾而不是失败）：同样不要当成正常结论
+    if (stopNote) {
+      const summary = tr('{note}（{t}）', { note: stopNote, t: t.value })
+      settle({ status: 'failed', elapsedMs, summary })
+      return { subagentId: sid, status: 'failed', summary, error: 'cancelled', elapsedMs, logPath }
+    }
+    settle({ status: parsed.status, elapsedMs, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}) })
+    return { subagentId: sid, status: parsed.status, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}), elapsedMs, logPath }
   }
 
   // 起一个 agent。dsh 的 sessionId 默认就是我方 id；上下文重置后换成 meta.dshId
@@ -803,7 +968,7 @@ export class DshController {
     } else handle = await (fork ? forkAs(dshId, fork) : createAs(dshId))
     const info: SessionInfo = { id, title: meta.title, createdAt: meta.createdAt }
     const live: Live = {
-      info, dshId, window, provider: s.provider, model: s.model, profileId: meta.modelProfileId, applied: s.profileId, route: agentOptions,
+      info, dshId, window, compactRatio: clampCompactRatio(s.compactRatio), provider: s.provider, model: s.model, profileId: meta.modelProfileId, applied: s.profileId, route: agentOptions,
       handle: handle as any, relay, ctxTokens: 0, steps: 0, compactions: 0, lastUsed: Date.now(), turning: false,
       ...(meta.thinking ? { thinking: meta.thinking } : {}),   // 会话级思考深度：从会话记录恢复（重启后还在）
     }
@@ -971,9 +1136,11 @@ export class DshController {
   }
 
   // dsh 的 usage 按**请求**给，inputTokens+cacheReadTokens 就是这次请求的真实提示词长度。
-  // 上限按本会话模型窗口夹（小窗口模型上 60 万的阈值没有意义）
+  // 界面上的百分比用**模型窗口**做分母（用户理解的口径），压缩阈值另给一个字段：
+  // 阈值 = min(上限, 窗口 × 比例)，比例按模型配置（默认 60%）
   private emitUsage(sessionId: string, s: Live): void {
-    this.emit({ type: 'agent:contextUsage', sessionId, inputTokens: s.ctxTokens, limit: effectiveLimit(this.cfg.contextLimitTokens?.() ?? 0, s.window) })
+    const compactAt = effectiveLimit(this.cfg.contextLimitTokens?.() ?? 0, s.window, s.compactRatio)
+    this.emit({ type: 'agent:contextUsage', sessionId, inputTokens: s.ctxTokens, limit: compactAt, window: s.window, compactAt })
   }
 
   // ── turn ────────────────────────────────────────────
@@ -1038,6 +1205,7 @@ export class DshController {
     // 会话级思考深度：会话里选过就用它，否则用模型配置里的默认值
     const s = live.thinking !== undefined ? { ...base, thinking: live.thinking } : base
     live.window = await this.applySettings(s)
+    live.compactRatio = clampCompactRatio(s.compactRatio)
     live.route = { provider: routeOf(s.provider, s.profileId, s.protocol), model: s.model }
     live.provider = s.provider
     live.model = s.model
@@ -1169,6 +1337,17 @@ export class DshController {
   // 在途 exec 由 dsh 经 exec.signal 中止（Terminal.execCapture 收到 abort 发 Ctrl-C）。
   // 不自己发 turnFailed：dsh 取消后会发真实的 turn/end，带正确 turnId，由 relay 转出。
   async interruptTurn(sessionId: string): Promise<void> {
+    // 先连带停掉这个会话派出去的子代理：否则用户点了「停止」，子代理还在后台跑（最多跑满 10 分钟超时）。
+    // 子代理是独立隐藏会话，必须逐个 cancel；状态由它自己的 turnFailed 收尾（记成「已随主会话一起停止」）
+    for (const [sid, sub] of [...this.subagents]) {
+      if (sub.parent !== sessionId) continue
+      this.subagentStopNote.set(sid, tr('已随主会话一起停止'))
+      const child = this.sessions.get(sid)
+      if (child) {
+        try { child.handle.agent.cancel({ kind: 'user' }) } catch { /* 没活跃 turn 时是 no-op */ }
+      }
+      this.dropPendingAsks(sid)
+    }
     const live = this.sessions.get(sessionId)
     // cause 是对象（0.2 的 AgentCancelCause）。0.1.1 时代这里传字符串 'user'，被原样写进 turn/end，
     // 0.2 的迁移器读不回来（升级后旧会话打不开的根因，见 legacyRepair.ts）；0.2 下传字符串也不认（kind 缺失）

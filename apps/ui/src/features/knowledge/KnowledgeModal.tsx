@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm'
 import { X, Plus, Pencil, Trash2, BookMarked, Globe, Folder, Server, Library, Sparkles, Search } from 'lucide-react'
 import {
   KNOWLEDGE_CATEGORIES, filterKnowledge, knowledgeCategoryLabel, knowledgeScopeText, tr,
-  type HostSummary, type KnowledgeCard, type KnowledgeCategory, type KnowledgeFilter, type KnowledgeInput,
+  type HostSummary, type KnowledgeCard, type KnowledgeCategory, type KnowledgeFilter, type KnowledgeInput, type ConsolidatePlan,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
@@ -14,6 +14,7 @@ import { HelpTip, BTN2 } from '../../components/ui/form.js'
 import { Input, Textarea } from '../../components/ui/Input.js'
 import { Select } from '../../components/ui/Select.js'
 import { ConfirmDialog } from '../common/index.js'
+import { ConsolidateDialog } from './ConsolidateDialog.js'
 import { KNOWLEDGE_OPEN_EVENT, scopeValue, parseScopeValue } from './knowledgeBus.js'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -41,9 +42,16 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
   const [q, setQ] = useState(initial.q ?? '')
   const [edit, setEdit] = useState<Draft | null>(null)
   const [del, setDel] = useState<KnowledgeCard | null>(null)
+  const [consolidating, setConsolidating] = useState(false)
+  // 后台自动梳理攒下的建议（打开知识库时查一次）：按钮上显示条数，点开直接用这份清单
+  const [pendingConsolidate, setPendingConsolidate] = useState<{ at: string; plan: ConsolidatePlan } | null>(null)
   const [err, setErr] = useState('')
   const load = () => client.knowledge.list().then(setCards).catch((e) => setErr(errText(e)))
-  useEffect(() => { void load(); client.hosts.list().then(setHosts).catch(() => {}) }, [])
+  useEffect(() => {
+    void load(); client.hosts.list().then(setHosts).catch(() => {})
+    // 后台自动梳理攒下的建议：有就显示在「梳理」按钮上（不打扰、不自动改数据）
+    client.knowledge.consolidatePending().then(setPendingConsolidate).catch(() => {})
+  }, [])
 
   const hostLabel = (k: string) => (k === 'local' ? tr('host|本机') : hosts.find((h) => h.id === k)?.label)
   // 左侧导航：分组 = 主机的分组 ∪ 卡片引用过的分组；主机 = 本机 + 已保存主机 + 卡片引用了但已删除的主机
@@ -121,7 +129,17 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
               {tr('给主机、分组或全局记下部署方式、日志位置、启停方式、已知问题等长期知识。AI 用到某台主机后，会自动读到该主机、所属分组与全局的知识卡（按更新时间，总长约 4000 字）；')}
               {' '}{tr('排障中发现值得记住的事，AI 会在对话里提议保存，你点「保存」才写入。旧的「主机备注」已自动迁移成该主机的一张「主机备注」卡。')}
             </HelpTip>
-            {!edit && <button onClick={startNew} className={cn('ml-auto flex items-center gap-1 py-1', BTN2)}><Plus className="h-3.5 w-3.5" />{tr('新建卡片')}</button>}
+            {!edit && (
+              <button onClick={() => setConsolidating(true)} title={tr('让 AI 把重复 / 过时的知识卡整理一遍（清单由你勾选后才生效）')}
+                className={cn('relative ml-auto flex items-center gap-1 py-1', BTN2)}>
+                <Sparkles className="h-3.5 w-3.5" />{tr('梳理')}
+                {/* 后台自动梳理攒了建议：显示条数；卡片满 50 张也点个圆点提醒该整理了 */}
+                {pendingConsolidate && pendingConsolidate.plan.actions.length > 0
+                  ? <span className="rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-medium text-[var(--color-bg-base)]">{pendingConsolidate.plan.actions.length}</span>
+                  : cards.length >= 50 && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />}
+              </button>
+            )}
+            {!edit && <button onClick={startNew} className={cn('flex items-center gap-1 py-1', BTN2)}><Plus className="h-3.5 w-3.5" />{tr('新建卡片')}</button>}
             <button onClick={onClose} title={tr('关闭（Esc）')} className={cn('flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]', edit && 'ml-auto')}><X className="h-4 w-4" /></button>
           </div>
           {edit ? (
@@ -195,6 +213,8 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
         </div>
       </div>
       <ConfirmDialog open={!!del} title={tr('删除知识卡')} message={tr('确定删除「{title}」？删除后 AI 不再读到这条知识。', { title: tr(del?.title ?? '') })} onConfirm={remove} onCancel={() => setDel(null)} />
+      <ConsolidateDialog open={consolidating} cards={cards} pending={pendingConsolidate}
+        onClose={() => setConsolidating(false)} onApplied={() => { setPendingConsolidate(null); void load() }} />
     </div>
   )
 }

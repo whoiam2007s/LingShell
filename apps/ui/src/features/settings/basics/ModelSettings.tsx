@@ -211,10 +211,14 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
         </Row>
         <Row label={tr('上下文窗口')} hint={tr('{window} · 自动压缩阈值 {threshold}', {
           window: form.contextWindow ? 'tokens' : tr('tokens，0 = 自动（{n}）', { n: autoWindow.toLocaleString(dateLocale()) }),
-          threshold: Math.min(600_000, Math.floor((form.contextWindow || autoWindow) * 0.6)).toLocaleString(dateLocale()),
+          threshold: Math.min(600_000, Math.floor((form.contextWindow || autoWindow) * ((form.compactRatio ?? 60) / 100))).toLocaleString(dateLocale()),
         })}
-          tip={tr('填 0 = 按模型自动。对话上下文超过「自动压缩阈值」时，自动把较早的对话压缩成摘要、任务不中断。阈值 = 上下文窗口的 60%，最多 600K，不用单独设置。')}>
+          tip={tr('填 0 = 按模型自动。对话上下文超过「自动压缩阈值」时，自动把较早的对话压缩成摘要、任务不中断。')}>
           <NumberInput className="w-36" value={form.contextWindow ?? 0} min={0} max={2_000_000} step={1024} onChange={(n) => set({ contextWindow: n })} />
+        </Row>
+        <Row label={tr('压缩阈值')} hint={tr('{n}%（占上下文窗口）', { n: form.compactRatio ?? 60 })}
+          tip={tr('上下文用到窗口的这个百分比时自动压缩，默认 60%。小窗口模型可以调低（更早压缩、更省钱但更早丢细节）；想尽量保留原文可以调高到 80~90%。范围 20%~95%。界面上那个百分比始终按「用量 / 上下文窗口」显示，跟这个阈值无关。')}>
+          <NumberInput className="w-24" value={form.compactRatio ?? 60} min={20} max={95} step={5} onChange={(n) => set({ compactRatio: n })} />
         </Row>
         <Row label={tr('测试连接')} hint={protocol === 'anthropic' ? tr('点了才发请求：按 Anthropic 协议发一个极小请求') : tr('点了才发请求：先查模型列表，查不到再发一个极小请求')}
           tip={tr('用表单当前的地址、模型、Key 和接口协议测试（Key 留空用已存的），不会自动测试。OpenAI 兼容：先请求 /models（不耗 token），端点不提供模型列表时发一条 1 token 的对话请求。OpenAI Responses：先同样查 /models，再向 /responses 发一条最小请求；返回 404 / 405 说明这个地址多半不支持该协议。Anthropic Messages：向 /v1/messages 发一条 1 token 的请求；返回 404 / 405 或格式不对时，多半是这个地址不支持 Anthropic 协议，可一键改用 OpenAI 兼容并重试。')}>

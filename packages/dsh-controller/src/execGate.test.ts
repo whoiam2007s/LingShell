@@ -84,21 +84,22 @@ describe('四档执行模式接进网关', () => {
     expect(relaxByMode('auto', { kind: 'deny' }, second)).toBe(false)
   })
 
-  it('trust（信任）：目录内写与只读命令放行，目录外写 / 删除 / 会改东西的命令仍问', () => {
+  it('trust（信任）：只有删除与危险命令仍问，其余一律放行', () => {
     const trust = (name: string, args: unknown) => relaxByMode('trust', { kind: 'ask' }, modeFacts({ name, args, workDir: WD, isReadOnly: ro }))
     expect(trust('write_file', { path: `${WD}/notes.md` })).toBe(true)                 // cwd 内写 → 不弹
-    expect(trust('write_file', { path: '/etc/hosts' })).toBe(false)                     // 目录外写 → 弹
-    expect(trust('write_file', { path: 'relative/a.txt' })).toBe(false)                 // 相对路径判不出落点 → 弹
+    expect(trust('write_file', { path: '/etc/hosts' })).toBe(true)                     // 目录外写 → 信任模式也放行
+    expect(trust('write_file', { path: 'relative/a.txt' })).toBe(true)                 // 相对路径 → 信任模式也放行
     expect(trust('exec_in_terminal', { command: 'rm a.txt' })).toBe(false)              // 删除 → 任何档都弹
-    expect(trust('exec_in_terminal', { command: 'sed -i s/a/b/ x' })).toBe(false)       // 会改东西 → 弹
+    expect(trust('exec_in_terminal', { command: 'sed -i s/a/b/ x' })).toBe(true)       // 普通改动 → 信任模式放行
     expect(trust('exec_in_terminal', { command: 'rm -rf /tmp/x' })).toBe(false)         // 危险命令 → 弹
+    expect(trust('exec_in_terminal', { command: 'mkdir -p /tmp/foo' })).toBe(true)     // 建目录 → 放行
     expect(trust('exec_in_terminal', { command: 'ls -l /tmp' })).toBe(true)             // 只读命令 → 不弹
     expect(trust('exec_on_terminals', { command: 'df -h', terminal_ids: ['term_1', 'term_ssh'] })).toBe(true)
-    expect(trust('upload_file', { local_path: 'C:/a.txt', target_dir: '/tmp' })).toBe(false)   // 上传仍问（veto 由网关传）
-    expect(relaxByMode('trust', { kind: 'ask' }, modeFacts({ name: 'upload_file', args: { local_path: 'C:/a.txt', target_dir: '/tmp' }, workDir: WD }), true)).toBe(false)
-    // 没有工作目录时（不知道工作目录）：写操作按目录外处理，保守多问一次
+    expect(trust('upload_file', { local_path: 'C:/a.txt', target_dir: '/tmp' })).toBe(true)   // 信任模式下上传也放行
+    expect(relaxByMode('trust', { kind: 'ask' }, modeFacts({ name: 'upload_file', args: { local_path: 'C:/a.txt', target_dir: '/tmp' }, workDir: WD }), true)).toBe(false)   // 网关传 veto 时仍拦
+    // 没有工作目录时（不知道工作目录）：写操作按目录外处理；信任模式下照样放行
     expect(isOutsideWorkDir(`${WD}/a.txt`, undefined)).toBe(true)
-    expect(relaxByMode('trust', { kind: 'ask' }, modeFacts({ name: 'write_file', args: { path: `${WD}/a.txt` } }))).toBe(false)
+    expect(relaxByMode('trust', { kind: 'ask' }, modeFacts({ name: 'write_file', args: { path: `${WD}/a.txt` } }))).toBe(true)
   })
 
   it('preview（预演）：写文件被拒且理由正确，删除类理由不同', () => {

@@ -79,7 +79,7 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
   const indexMap = useRef<Map<string, Map<string, number>>>(new Map())  // sessionId → (itemId → idx)
   const busyRef = useRef<Set<string>>(new Set())
   const ctxRef = useRef<Map<string, ContextState>>(new Map())   // sessionId → 上下文超线状态
-  const usageRef = useRef<Map<string, { inputTokens: number; limit: number }>>(new Map())   // sessionId → 上下文用量
+  const usageRef = useRef<Map<string, { inputTokens: number; limit: number; window?: number; compactAt?: number }>>(new Map())   // sessionId → 上下文用量（百分比分母用 window）
   // 本轮进行中用户补发的消息（thread 同时只允许一个活跃 turn，发不进去）→ 排队，本轮结束逐条发出。
   // 排队消息不进 items（否则本轮后续步骤会被 groupTurns 归到它名下），由 ChatPanel 在时间线底部单独显示，真正发出时才入 items。
   const queueRef = useRef<Map<string, { text: string; atts?: OutgoingAttachments }[]>>(new Map())
@@ -318,7 +318,7 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
           break
         }
         case 'agent:contextUsage':
-          usageRef.current.set(e.sessionId, { inputTokens: e.inputTokens, limit: e.limit })
+          usageRef.current.set(e.sessionId, { inputTokens: e.inputTokens, limit: e.limit, ...(e.window ? { window: e.window } : {}), ...(e.compactAt ? { compactAt: e.compactAt } : {}) })
           rerender()
           break
         case 'agent:contextCompacting':

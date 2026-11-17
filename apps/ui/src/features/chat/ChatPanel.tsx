@@ -7,16 +7,18 @@ import { MessageItem, MsgActionsContext, type MsgActions } from './items/Message
 import { ToolSessionContext } from '../auth/index.js'
 import { ReasoningItem } from './items/ReasoningItem.js'
 import { ToolItem } from './items/ToolItem.js'
+import { SubagentBadge } from './SubagentBadge.js'
 import { TodoItem } from './items/TodoItem.js'
 import { AuthRequestItem } from './items/AuthRequestItem.js'
 import { PlanRequestItem } from './items/PlanRequestItem.js'
 import { KnowledgeItem } from './items/KnowledgeItem.js'
+import { TurnSummaryBar } from './items/TurnSummaryBar.js'
 import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
 import type { TurnTimes, SessionMeta } from '@lingshell/shared'
-import { tr, tk , type ThinkingLevel , type ExecMode } from '@lingshell/shared'
+import { tr, tk , type ThinkingLevel , type ExecMode, INPUT_MAX, insertCapped, capInput } from '@lingshell/shared'
 import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
 import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
 import { prefillAsk } from './askPrefill.js'
@@ -721,10 +723,16 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
             const pm = isPostmortemRequest(turn.userMsg?.text) && !(busy && i === turns.length - 1) ? turn.final.filter((x) => x.kind === 'agent_message' && x.text.trim()).at(-1)?.text : undefined
             // 预演模式：最后一轮回复末尾的「方案步骤」（可勾选执行）
             const pv = i === turns.length - 1 && !busy ? previewPlanOfTurn(turn, preview.on) : undefined
+            // 知识卡提议会被提到 final 前面，模型写在工具调用前的总结被折进【执行过程】。
+            // final 里没有文字、但有知识卡时，把那条总结补到回合末（纯 UI 复现，不请求模型）
+            const hasFinalText = turn.final.some((x) => x.kind === 'agent_message' && x.text.trim())
+            const sum = !hasFinalText && turn.final.some((x) => x.kind === 'host_note')
+              ? turn.steps.filter((x) => x.kind === 'agent_message' && x.text.trim()).at(-1)?.text
+              : undefined
             // 追问开头的这一组：本轮的「开始回答」时间早于追问，不显示（只留结束时间）
             const tt = turn.turnId ? turnTimes?.get(turn.turnId) : undefined
             return <TurnBlock key={turn.key} turn={turn} active={busy && i === turns.length - 1} last={i === turns.length - 1} times={turn.userMsg?.steered && tt ? { endedAt: tt.endedAt } : tt}
-              end={(fc || hc || pm || pv) && <>{pm && <PostmortemSaveBar text={pm} title={titleOf(sessionTitle)} />}{fc && <TurnChangesBar sessionId={activeSessionId} data={fc} onChanged={turnChanges.refresh} />}{hc && <TurnHostChangesBar data={hc} />}{pv && <PreviewPlanCard key={turn.key} sessionId={activeSessionId} plan={pv} busy={busy} onSend={send} />}</>} />
+              end={(fc || hc || pm || pv || sum) && <>{pm && <PostmortemSaveBar text={pm} title={titleOf(sessionTitle)} />}{fc && <TurnChangesBar sessionId={activeSessionId} data={fc} onChanged={turnChanges.refresh} />}{hc && <TurnHostChangesBar data={hc} />}{pv && <PreviewPlanCard key={turn.key} sessionId={activeSessionId} plan={pv} busy={busy} onSend={send} />}{sum && <TurnSummaryBar text={sum} />}</>} />
           })
         })()}
         </ToolFocusContext.Provider></ToolSessionContext.Provider></MsgActionsContext.Provider>
@@ -813,7 +821,7 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
               skills={{ onPick: (n) => { setSkill(n); requestAnimationFrame(() => taRef.current?.focus()) }, onManage: onManageSkills }}
               attach={{ multimodal: !!models.current?.multimodal, onFiles: att.pickFiles, onDirs: att.pickDirs }} />
             <TemplatePicker hideTrigger disabled={!canChat} onManage={onManageTemplates} preset={tplPreset}
-              onPick={(t) => { setInput(t); requestAnimationFrame(() => taRef.current?.focus()) }} />
+              onPick={(t) => { setInput(capInput(t).value); requestAnimationFrame(() => taRef.current?.focus()) }} />
             <RunbookPicker hideTrigger disabled={!canChat} onManage={onManageRunbooks} onRun={(p) => { send(p) }} preset={rbPreset} />
           </div>
           {/* `!` 开头：终端模式标记（回车在当前终端执行，不发给 AI） */}
@@ -826,13 +834,28 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
           <textarea
             ref={taRef} data-chat-input
             value={input}
+            maxLength={INPUT_MAX}
             onChange={(e) => { setInput(e.target.value); setCaret(e.target.selectionStart) }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={(e) => {
               if (atMenu.onKey(e)) return
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(e.altKey ? { queue: true } : undefined) }
             }}
-            onPaste={att.onPaste}
+            onPaste={(e) => {
+              // 纯文本：超过剩余额度就必须自己截断再插入。浏览器是"先插入再按 maxLength 裁剪"，
+              // 6MB 那一下已经能把界面卡死（受控 textarea 每字符重渲染 + 自动增高重算布局）。
+              const text = e.clipboardData.getData('text/plain')
+              if (!text) { att.onPaste(e); return }   // 文件 / 图片交给附件逻辑
+              const start = taRef.current?.selectionStart ?? input.length
+              const end = taRef.current?.selectionEnd ?? input.length
+              if (text.length <= INPUT_MAX - (input.length - (end - start))) { att.onPaste(e); return }   // 不超限：保留原生粘贴
+              e.preventDefault()
+              const r = insertCapped(input, text, start, end)
+              setInput(r.value)
+              setCaret(r.caret)
+              requestAnimationFrame(() => { const el = taRef.current; if (el) el.selectionStart = el.selectionEnd = r.caret })
+              att.setHint(tr('已粘贴 {kept} 字，超过上限 {max} 字的部分已截掉（{cut} 字）', { kept: r.kept, max: INPUT_MAX, cut: r.cut }))
+            }}
             disabled={!canChat}
             rows={1}
             placeholder={canChat ? (busy ? tr('追问…（Enter 在下一步前插入，Alt+Enter 本轮结束后再发）') : tr('跟 AI 对话…（Enter 发送，@ 引用，! 开头跑命令）')) : tr('等待引擎就绪…')}
@@ -1066,7 +1089,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
 // 本会话累计 tokens（用量统计）：每次请求后 contextUsage 变 → 重新取一次；改了单价也重取（花费跟着变）
 // 头部用量小标签：「本会话累计 tokens · 上下文进度条 %」合成一个，悬停看明细，点击立即压缩上下文。
 // 累计 tokens 每次请求后（contextUsage 变）重取；改了单价也重取（花费跟着变）
-function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { inputTokens: number; limit: number }; busy?: boolean }) {
+function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { inputTokens: number; limit: number; window?: number; compactAt?: number }; busy?: boolean }) {
   const [t, setT] = useState<(UsageTotals & { currency: UsageCurrency }) | null>(null)
   const [priceTick, setPriceTick] = useState(0)
   // 点击标签 = 立即压缩上下文（会话空闲时才有意义；忙时 dsh 会报 busy）
@@ -1115,11 +1138,17 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
   }, [sessionId, tick, priceTick])
   if (!t?.requests && !usage) return null
   const K = (n: number) => `${Math.round(n / 1000)}K`
-  const pct = usage && usage.limit > 0 ? Math.min(100, Math.round((usage.inputTokens / usage.limit) * 100)) : undefined
+  // 分母用**模型上下文窗口**（用户理解的口径）——以前用压缩阈值当分母，
+  // 阈值是窗口的 60%，于是用量一直在 96% 附近徘徊，看着像"上下文快满了"，其实才用了一半多
+  const denom = usage?.window || 0
+  const pct = usage && denom > 0 ? Math.min(100, Math.round((usage.inputTokens / denom) * 100)) : undefined
   const color = pct === undefined ? '' : pct >= 95 ? 'var(--color-danger)' : pct >= 80 ? 'var(--color-warn)' : 'var(--color-accent)'
   const tip = [
-    usage && (usage.limit > 0
-      ? tr('上下文 {used} / {limit}（{pct}%），达到上限会自动压缩后继续', { used: K(usage.inputTokens), limit: K(usage.limit), pct: pct ?? 0 })
+    usage && (denom > 0
+      ? tr('上下文 {used} / {window}（{pct}%）；达到 {compactAt}（{ratio}%）时自动压缩后继续', {
+        used: K(usage.inputTokens), window: K(denom), pct: pct ?? 0, compactAt: K(usage.compactAt || usage.limit),
+        ratio: Math.round(((usage.compactAt || usage.limit) / denom) * 100),
+      })
       : tr('上下文 {used}（未设上限）', { used: K(usage.inputTokens) })),
     t?.requests && tr('本会话 {n} 次请求，共 {total} tokens\n输入 {input}（未命中缓存）\n命中缓存 {cache}（{rate}%）\n输出 {output}\n花费 {cost}', {
       n: t.requests, total: fmtTokens(totalTokens(t)), input: t.input.toLocaleString(), cache: t.cacheRead.toLocaleString(),
@@ -1251,7 +1280,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   postmortem?: PostmortemAction
   hasSession: boolean
   sessionId?: string | null
-  usage?: { inputTokens: number; limit: number }
+  usage?: { inputTokens: number; limit: number; window?: number; compactAt?: number }
   onExport?: (mode: ExportMode, redact: boolean) => void
   title: string
   workDir?: string   // 当前会话绑定的工作目录（hover 标题时和名称一起显示）
@@ -1286,6 +1315,8 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
             </button>
           )}
           {onExport && <ExportMenu onExport={onExport} postmortem={postmortem} />}
+          {/* 这个会话派过子代理时，名称后面显示数量与状态；点开看各自结论 */}
+          {sessionId && <SubagentBadge sessionId={sessionId} live={busy} />}
         </div>
       )}
       {hasSession && models?.note && <span className={`max-w-[160px] shrink-0 truncate text-[11px] ${models.note.ok ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-danger)]'}`} title={models.note.text}>{models.note.text}</span>}
