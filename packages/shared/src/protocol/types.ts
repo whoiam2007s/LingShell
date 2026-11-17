@@ -1005,6 +1005,8 @@ export interface SkillInput { name: string; description: string; body: string }
 // 子代理（主会话派出去做单一任务的独立会话）：会话标题栏下拉里显示
 export interface SubagentView {
   subagentId: string
+  /** 下拉里显示的一句话标题（模型给过就用它，否则是 task 首句截 40 字） */
+  title: string
   task: string
   permission: 'read' | 'write'
   status: 'running' | 'done' | 'blocked' | 'failed'

@@ -45,7 +45,7 @@ import {
 import { unifiedDiff } from './diff.js'
 import {
   SUBAGENT_BRIEF, SUBAGENT_MAX_CONCURRENT, checkSubagentTask, clampTimeoutSec, composeSubagentTask,
-  parseSubagentSummary, subagentToolDeny, type SubagentPermission, type SubagentRecord, type SubagentResult,
+  parseSubagentSummary, subagentTitleOf, subagentToolDeny, type SubagentPermission, type SubagentRecord, type SubagentResult,
 } from './subagent.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
@@ -468,7 +468,7 @@ export class DshController {
       // 放在最前面——先于预演 / 计划 / 信任档，子代理的任何越权都不进模型重试循环之外的分支
       const sub = this.subagents.get(sessionId)
       if (sub) {
-        const why = subagentToolDeny(String(exec.name), sub.permission, sub.allowed)
+        const why = subagentToolDeny(String(exec.name), sub.permission, sub.allowed, exec.arguments, this.cfg.isReadOnly)
         if (why) {
           const tids = targetTerminalsOf(exec.name, exec.arguments)
           for (const tid of tids.length ? tids : ['']) this.cfg.audit({ sessionId, terminalId: tid, command: describeCall(exec.name, exec.arguments), decision: `deny:subagent` })
@@ -782,6 +782,8 @@ export class DshController {
   private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string; allowed?: string[] }>()
   // 每个主会话派过哪些子代理（界面标题栏下拉用；只存内存，重启就没了——列表不是存档）
   private subagentLog = new Map<string, SubagentRecord[]>()
+  /** 被主会话「停止」连带取消的子代理：结束时不报「执行失败」，而是写「已随主会话一起停止」 */
+  private subagentStopNote = new Map<string, string>()
 
   /** 某会话派过的子代理（新的在前）：运行中的也在里面 */
   subagentsOf(sessionId: string): SubagentRecord[] {
@@ -811,6 +813,8 @@ export class DshController {
    */
   async spawnSubagent(req: {
     task: string
+    /** 给人看的一句话标题（界面下拉里只显示它）；缺省取 task 首句 */
+    title?: string
     timeoutSec?: number
     contextHint?: string
     tools?: string[]
@@ -830,7 +834,7 @@ export class DshController {
     // 信任档下也不会比主代理更严——否则子代理会卡在自己那份 confirm 档上
     this.setExecMode(sid, this.execModeOf(req.parentSessionId))
     // 记一笔给界面看（运行中）；结束时更新同一条
-    const rec: SubagentRecord = { subagentId: sid, task: t.value, permission: req.permission, status: 'running', startedAt: new Date(t0).toISOString() }
+    const rec: SubagentRecord = { subagentId: sid, title: subagentTitleOf(t.value, req.title), task: t.value, permission: req.permission, status: 'running', startedAt: new Date(t0).toISOString() }
     const log = this.subagentLog.get(req.parentSessionId) ?? []
     this.subagentLog.set(req.parentSessionId, [...log, rec])
     const settle = (patch: Partial<SubagentRecord>) => {
@@ -885,6 +889,10 @@ export class DshController {
       this.subagents.delete(sid)
     }
 
+    // 被主会话「停止」连带取消的（见 interruptTurn）：收尾时写「已随主会话一起停止」，不报成执行失败
+    const stopNote = this.subagentStopNote.get(sid)
+    this.subagentStopNote.delete(sid)
+
     const elapsedMs = Date.now() - t0
     const logPath = join(this.cfg.baseDir, 'dsh-sessions', sid)
     if (timedOut) {
@@ -895,11 +903,21 @@ export class DshController {
       return r
     }
     if (turnError) {
-      const r: SubagentResult = { subagentId: sid, status: 'failed', summary: tr('子代理执行失败：{err}', { err: turnError }), error: turnError, elapsedMs, logPath }
+      // 用户点了「停止」连带取消：说清楚是被停的，不是子代理自己出错（避免主代理以为要重派）
+      const summary = stopNote
+        ? tr('{note}（{t}）', { note: stopNote, t: t.value })
+        : tr('子代理执行失败：{err}', { err: turnError })
+      const r: SubagentResult = { subagentId: sid, status: 'failed', summary, error: turnError, elapsedMs, logPath }
       settle({ status: 'failed', elapsedMs, summary: r.summary })
       return r
     }
     const parsed = parseSubagentSummary(text)
+    // 被主会话停止的（turn 以完成收尾而不是失败）：同样不要当成正常结论
+    if (stopNote) {
+      const summary = tr('{note}（{t}）', { note: stopNote, t: t.value })
+      settle({ status: 'failed', elapsedMs, summary })
+      return { subagentId: sid, status: 'failed', summary, error: 'cancelled', elapsedMs, logPath }
+    }
     settle({ status: parsed.status, elapsedMs, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}) })
     return { subagentId: sid, status: parsed.status, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}), elapsedMs, logPath }
   }
@@ -1319,6 +1337,17 @@ export class DshController {
   // 在途 exec 由 dsh 经 exec.signal 中止（Terminal.execCapture 收到 abort 发 Ctrl-C）。
   // 不自己发 turnFailed：dsh 取消后会发真实的 turn/end，带正确 turnId，由 relay 转出。
   async interruptTurn(sessionId: string): Promise<void> {
+    // 先连带停掉这个会话派出去的子代理：否则用户点了「停止」，子代理还在后台跑（最多跑满 10 分钟超时）。
+    // 子代理是独立隐藏会话，必须逐个 cancel；状态由它自己的 turnFailed 收尾（记成「已随主会话一起停止」）
+    for (const [sid, sub] of [...this.subagents]) {
+      if (sub.parent !== sessionId) continue
+      this.subagentStopNote.set(sid, tr('已随主会话一起停止'))
+      const child = this.sessions.get(sid)
+      if (child) {
+        try { child.handle.agent.cancel({ kind: 'user' }) } catch { /* 没活跃 turn 时是 no-op */ }
+      }
+      this.dropPendingAsks(sid)
+    }
     const live = this.sessions.get(sessionId)
     // cause 是对象（0.2 的 AgentCancelCause）。0.1.1 时代这里传字符串 'user'，被原样写进 turn/end，
     // 0.2 的迁移器读不回来（升级后旧会话打不开的根因，见 legacyRepair.ts）；0.2 下传字符串也不认（kind 缺失）

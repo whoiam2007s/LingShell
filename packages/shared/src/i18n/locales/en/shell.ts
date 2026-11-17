@@ -397,8 +397,9 @@ export const shell: Record<string, string> = {
   // features/knowledge/ConsolidateDialog.tsx：知识库梳理
   '知识库梳理': 'Consolidate knowledge',
   'AI 读一遍全部知识卡，把重复的合并、过时的更新、没用的删掉。清单只是建议——勾选你想采纳的，点「应用」才会改。': 'The AI reads every knowledge card and merges duplicates, updates stale ones and drops useless ones. The list is only a suggestion — tick the items you want and click Apply to make the change.',
-  'AI 正在读全部知识卡，请稍等…': 'The AI is reading all knowledge cards, one moment…',
-  '没发现需要整理的地方，卡片已经比较整齐了。': 'Nothing to tidy up — the cards are already in good shape.',
+  'AI 正在读全部知识卡，请稍等…（已等待 {n} 秒）': 'The AI is reading all knowledge cards — {n}s elapsed…',
+  '没发现需要整理的地方：{n} 张卡已经比较整齐了。': 'Nothing to tidy up: the {n} cards are already in good shape.',
+  '任务：': 'Task:',
   '卡片 {n} 张 → 应用全部后约 {m} 张': '{n} cards → about {m} after applying everything',
   '（已选 {k} 项）': '({k} selected)',
   '应用中…': 'Applying…',

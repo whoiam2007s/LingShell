@@ -78,6 +78,9 @@ export function initAppearance() {
   render()
   void reloadLook()
   client.on((ev) => { if (ev.type === 'app:lock' && !ev.locked) void reloadLook() })   // 启动即锁定时设置读不到，解锁后补
+  // AI 改外观（set_app_setting → system.uiTheme / uiZoom / iconSize）时主进程只广播 patch，
+  // 不重新应用就会出现「设置写进去了、界面没变」——这里按最新设置重算一次
+  client.on((ev) => { if (ev.type === 'app:settingsChanged') void reloadLook() })
   mq.addEventListener('change', render)
   window.addEventListener('keydown', (e) => {
     const dir = isAction(e, 'app.zoomIn') ? 1 : isAction(e, 'app.zoomOut') ? -1 : isAction(e, 'app.zoomReset') ? 0 : null

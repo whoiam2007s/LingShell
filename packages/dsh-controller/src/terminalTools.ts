@@ -117,6 +117,8 @@ export interface TerminalToolDeps {
     timeoutSec?: number
     contextHint?: string
     tools?: string[]
+    /** 给人看的一句话标题（下拉里只显示它）；缺省由 task 首句截 */
+    title?: string
     permission: 'read' | 'write'
     parentSessionId: string
   }): Promise<SubagentResult>
@@ -1373,9 +1375,10 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
     },
     {
       name: 'spawn_subagent',
-      description: '把一个**单一、明确**的子任务派给子代理：它用独立会话去做，只把结构化总结交回来。子代理不能跟你或用户交互、不能删除东西、不能再派子代理——它遇到需要拍板的事会返回 status=blocked 并带回问题，由你决定换做法还是去问用户。适合：多台机器上重复同一套检查、翻一批文件找线索、跑一段耗时命令。不适合：需要边做边判断的大任务（自己拆成几次调用）。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      description: '把一个**单一、明确**的子任务派给子代理：它用独立会话去做，只把结构化总结交回来。子代理不能跟你或用户交互、不能删除东西、不能再派子代理——它遇到需要拍板的事会返回 status=blocked 并带回问题，由你决定换做法还是去问用户。适合：多台机器上重复同一套检查、翻一批文件找线索、跑一段耗时命令。不适合：需要边做边判断的大任务（自己拆成几次调用）。写 task 时：① 目标终端要写清 id（如 term_28ae，从「当前终端」段取），只写主机名不算；② 当前没有合适的终端就让它先 create_terminal 新开一个（会自动 cd 到会话工作目录）；③ 只读子代理（permission=read，缺省）只能用查看类命令（cat / ls / grep / ps / df / systemctl status / nginx -v…），要改系统状态请派 permission=write 或自己做。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
-        task: str('要子代理做的事：一句话说清、范围明确（2000 字以内）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        task: str('要子代理做的事：一句话说清、范围明确（2000 字以内）；写明用哪个终端（term_xxx）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        title: optStr('给人看的一句话标题（≤40 字，如「查生产 nginx 版本」）：界面下拉里只显示它；不填就取 task 首句'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         permission: optStr('read = 只读（缺省，最安全）；write = 允许它改文件 / 跑变更命令（会单独弹一次授权卡）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         timeout_sec: optInt('超时秒数（缺省 600，最少 30，最多 1800）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         tools: optStr('限制它能用的工具，逗号分隔（如 read_file,list_terminals）；留空 = 除交互 / 递归 / 删除外都能用'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1389,6 +1392,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const permission = args?.permission === 'write' ? 'write' : 'read'
         const r: SubagentResult = await deps.spawnSubagent({
           task: t.value,
+          ...(typeof args?.title === 'string' && args.title.trim() ? { title: args.title.trim() } : {}),
           timeoutSec: clampTimeoutSec(args?.timeout_sec),
           contextHint: typeof args?.context_hint === 'string' ? args.context_hint : undefined,
           ...(parseToolList(args?.tools) ? { tools: parseToolList(args?.tools) } : {}),

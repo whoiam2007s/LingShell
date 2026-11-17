@@ -55,7 +55,7 @@ export function extractJson(text: string): unknown {
 export function parseConsolidateReply(text: string): { actions?: ConsolidateAction[]; error?: string } {
   const raw = extractJson(text) as { actions?: unknown } | undefined
   if (!raw || !Array.isArray((raw as { actions?: unknown }).actions)) {
-    return { error: '模型没有按要求返回 { actions: [...] } 结构' }
+    return { error: '模型回复的格式不对（不是 { actions: [...] }），可以再试一次' }
   }
   const actions: ConsolidateAction[] = []
   for (const item of (raw as { actions: unknown[] }).actions) {
@@ -76,7 +76,8 @@ export function parseConsolidateReply(text: string): { actions?: ConsolidateActi
       reason: typeof a.reason === 'string' ? a.reason.slice(0, 300) : '',
     })
   }
-  if (!actions.length) return { error: '模型没有给出任何可用的整理动作' }
+  // 空清单是**合法结果**（不是异常）：卡片本来就整齐时模型会返回 { actions: [] }，
+  // 界面该显示「没发现需要整理的地方」，不该报错（问题 13）
   return { actions }
 }
 

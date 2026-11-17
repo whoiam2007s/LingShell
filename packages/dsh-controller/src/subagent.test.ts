@@ -1,8 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import {
-  SUBAGENT_DEFAULT_TIMEOUT_SEC, SUBAGENT_MAX_TIMEOUT_SEC, SUBAGENT_SUMMARY_MAX, SUBAGENT_TASK_MAX,
-  checkSubagentTask, clampTimeoutSec, composeSubagentTask, isWriteTool, parseSubagentSummary, parseToolList, subagentToolDeny,
+  SUBAGENT_DEFAULT_TIMEOUT_SEC, SUBAGENT_MAX_TIMEOUT_SEC, SUBAGENT_SUMMARY_MAX, SUBAGENT_TASK_MAX, SUBAGENT_TITLE_MAX,
+  checkSubagentTask, clampTimeoutSec, composeSubagentTask, isWriteTool, parseSubagentSummary, parseToolList, subagentTitleOf, subagentToolDeny,
 } from './subagent.js'
+
+describe('subagentTitleOf', () => {
+  it('优先用模型给的 title', () => {
+    expect(subagentTitleOf('查一下这台机器上 nginx 的版本和是否在跑', '查生产 nginx 版本')).toBe('查生产 nginx 版本')
+  })
+
+  it('没给 title 就取 task 第一句（句号 / 问号 / 换行都算断句）', () => {
+    expect(subagentTitleOf('查 nginx 版本。顺便看下磁盘')).toBe('查 nginx 版本')
+    expect(subagentTitleOf('查 nginx 版本\n再跑 ps')).toBe('查 nginx 版本')
+    expect(subagentTitleOf('日志在哪？')).toBe('日志在哪')
+  })
+
+  it('超过 40 字截断加省略号（下拉里只有一行）', () => {
+    const t = subagentTitleOf('x'.repeat(80))
+    expect(t.length).toBe(SUBAGENT_TITLE_MAX)
+    expect(t.endsWith('…')).toBe(true)
+  })
+
+  it('空白输入不炸', () => {
+    expect(subagentTitleOf('   ')).toBe('')
+  })
+})
 
 describe('subagentToolDeny', () => {
   it('不许递归、不许跟用户交互', () => {
@@ -15,11 +37,21 @@ describe('subagentToolDeny', () => {
     expect(subagentToolDeny('remove_card', 'write')).toBeTruthy()
   })
 
-  it('只读子代理不能写', () => {
+  it('只读子代理不能写文件类工具；exec 类按命令内容判（问题 11）', () => {
     expect(subagentToolDeny('write_file', 'read')).toMatch(/只授了只读权限/)
-    expect(subagentToolDeny('exec_in_terminal', 'read')).toMatch(/只授了只读权限/)
+    expect(subagentToolDeny('upload_file', 'read')).toMatch(/只授了只读权限/)
+    // 只读命令放行——以前这里按工具名一刀切，连 `nginx -v` 都被拒
+    const ro = (c: string) => /^(nginx -v|ps|cat |ls|grep |df |systemctl status)/.test(c)
+    expect(subagentToolDeny('exec_in_terminal', 'read', undefined, { command: 'nginx -v' }, ro)).toBeUndefined()
+    expect(subagentToolDeny('exec_in_terminal', 'read', undefined, { command: 'nginx -v && ps aux' }, ro)).toBeUndefined()
+    // 写命令拒绝，并指出是哪一段
+    expect(subagentToolDeny('exec_in_terminal', 'read', undefined, { command: 'systemctl restart nginx' }, ro)).toMatch(/是写命令/)
+    expect(subagentToolDeny('exec_in_terminal', 'read', undefined, { command: 'nginx -v && rm -rf /tmp/x' }, ro)).toMatch(/是写命令/)
+    expect(subagentToolDeny('start_background', 'read', undefined, { command: 'touch /tmp/x' }, ro)).toMatch(/是写命令/)
     // 写权限的子代理照常
-    expect(subagentToolDeny('write_file', 'write')).toBeUndefined()
+    expect(subagentToolDeny('exec_in_terminal', 'write', undefined, { command: 'systemctl restart nginx' }, ro)).toBeUndefined()
+    // 参数没带命令：交给工具体报参数错，不在这里拦
+    expect(subagentToolDeny('exec_in_terminal', 'read', undefined, {}, ro)).toBeUndefined()
     // 只读工具谁都放行
     expect(subagentToolDeny('read_file', 'read')).toBeUndefined()
     expect(subagentToolDeny('list_terminals', 'read')).toBeUndefined()

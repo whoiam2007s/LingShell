@@ -18,6 +18,10 @@ export interface SettingSpec {
   type: SettingType
   min?: number
   max?: number
+  /** 数字项的步长：省略 = 必须是整数（如字号）；给了就按它校验小数（如界面缩放 0.05） */
+  step?: number
+  /** 数字项的合法取值清单（如界面缩放只能选固定档位）；给了就只认这些值 */
+  choices?: readonly number[]
   maxLen?: number
   values?: readonly string[]
   /** 中文名（给模型和授权卡看） */
@@ -44,6 +48,28 @@ export const APP_SETTING_SPECS: readonly SettingSpec[] = [
   { key: 'system.uploadEncrypt', type: 'boolean', label: '上传默认加密', writable: true },
   { key: 'system.contextLimitTokens', type: 'number', min: 10000, max: 2000000, label: '自动压缩阈值（tokens）', writable: true },
   { key: 'system.contextResetSteps', type: 'number', min: 10, max: 1000, label: '建议开新会话的步数', writable: true },
+  // ── 界面外观（与 shared/ui/appearance.ts 的 UI_THEMES / UI_ZOOMS / ICON_SIZES 对齐）──
+  // 「界面主题」和「终端配色」是两件事：uiTheme 换整个界面，terminalTheme 只换终端区域
+  {
+    key: 'system.uiTheme', type: 'enum', writable: true, label: '界面主题（跟随系统 / 深色 7 套 / 浅色 3 套）',
+    values: ['system', 'dark', 'midnight', 'dracula', 'nord', 'solarized', 'rose', 'contrast', 'light', 'lavender', 'sepia'],
+  },
+  {
+    key: 'system.uiThemeDark', type: 'enum', writable: true, label: '跟随系统时用的深色主题',
+    values: ['dark', 'midnight', 'dracula', 'nord', 'solarized', 'rose', 'contrast'],
+  },
+  {
+    key: 'system.uiThemeLight', type: 'enum', writable: true, label: '跟随系统时用的浅色主题',
+    values: ['light', 'lavender', 'sepia'],
+  },
+  { key: 'system.uiZoom', type: 'number', min: 0.8, max: 1.5, choices: [0.8, 0.9, 1, 1.1, 1.25, 1.5], label: '界面缩放（只能选档位 0.8 / 0.9 / 1 / 1.1 / 1.25 / 1.5）', writable: true },
+  { key: 'system.iconSize', type: 'enum', writable: true, label: '图标大小', values: ['small', 'medium', 'large'] },
+  // 提醒与锁屏：用户常让 AI 顺手关掉「桌面通知」「锁屏时间」
+  { key: 'system.notifyDesktop', type: 'boolean', label: '任务完成弹桌面通知', writable: true },
+  { key: 'system.notifySound', type: 'boolean', label: '通知带提示音', writable: true },
+  { key: 'system.lockIdleMinutes', type: 'number', min: 0, max: 1440, label: '空闲自动锁定（分钟，0 = 不按空闲锁）', writable: true },
+  { key: 'system.terminalFontFamily', type: 'string', maxLen: 60, label: '终端字体（留空 = 默认等宽）', writable: true },
+  { key: 'system.terminalScrollback', type: 'number', min: 1000, max: 200000, label: '终端回滚行数', writable: true },
   { key: 'system.localNotes', type: 'string', maxLen: 2000, label: '本机备注（AI 处理本地终端时可见）', writable: true },
   // 只读：改了会直接影响当前会话或涉及安全策略，让 AI 看但不让动
   { key: 'system.customRules', type: 'string', maxLen: 8000, label: '全局自定义规则', writable: false },
@@ -69,9 +95,19 @@ export function validateSetting(key: string, value: unknown): string | undefined
       return typeof value === 'boolean' ? undefined : `「${spec.label}」要布尔值 true / false`
     case 'number': {
       if (typeof value !== 'number' || !Number.isFinite(value)) return `「${spec.label}」要数字`
-      if (!Number.isInteger(value)) return `「${spec.label}」要整数`
-      if (spec.min !== undefined && value < spec.min) return `「${spec.label}」不能小于 ${spec.min}`
-      if (spec.max !== undefined && value > spec.max) return `「${spec.label}」不能大于 ${spec.max}`
+      // 固定档位（如界面缩放）：只认清单里的值，避免改成一个界面上没有的中间值
+      if (spec.choices) {
+        return spec.choices.includes(value) ? undefined : `「${spec.label}」只能是：${spec.choices.join(' / ')}`
+      }
+      if (spec.step === undefined) {
+        if (!Number.isInteger(value)) return `「${spec.label}」要整数`
+      } else {
+        // 带步长的项（如界面缩放 0.05）：按步长校验，浮点比较留一点余量
+        const k = value / spec.step
+        if (Math.abs(k - Math.round(k)) > 1e-6) return `「${spec.label}」只能按 ${spec.step} 递增`
+      }
+      if (spec.min !== undefined && value < spec.min - 1e-9) return `「${spec.label}」不能小于 ${spec.min}`
+      if (spec.max !== undefined && value > spec.max + 1e-9) return `「${spec.label}」不能大于 ${spec.max}`
       return undefined
     }
     case 'enum':
@@ -112,7 +148,7 @@ export function mergeSystemPatch(cur: SystemSettings, patch: Record<string, unkn
 export function describeSettings(): string {
   return APP_SETTING_SPECS.map((s) => {
     const range = s.type === 'number'
-      ? `${s.min}–${s.max}`
+      ? `${s.min}–${s.max}${s.step !== undefined ? `（步长 ${s.step}）` : ''}`
       : s.type === 'enum'
         ? (s.values ?? []).join('|')
         : s.type === 'string'

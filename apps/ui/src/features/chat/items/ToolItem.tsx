@@ -62,8 +62,11 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
     : name === 'propose_quick_commands' && typeof input?.set_name === 'string' ? input.set_name
     : name === 'ask_user' && typeof input?.question === 'string' ? input.question
     : name === 'run_on_hosts' && Array.isArray(input?.targets) && command ? `[${(input.targets as string[]).join(', ')}] ${command}` : command
-  // spawn_subagent：预览直接显示派出去的任务（一眼看出子代理在干什么）
-  const preview = name === 'spawn_subagent' && typeof input?.task === 'string' ? String(input.task) : name === 'wait' && input?.seconds ? tr('等待 {n} 秒', { n: String(input.seconds) }) + (input.reason ? ` · ${String(input.reason)}` : '') : preview0
+  // spawn_subagent：卡片上只显示一句话标题（完整 task 收在展开的参数里，一眼看出在干什么）
+  const subTitle = name === 'spawn_subagent'
+    ? (typeof input?.title === 'string' && input.title.trim() ? String(input.title).trim() : typeof input?.task === 'string' ? String(input.task) : '')
+    : ''
+  const preview = name === 'spawn_subagent' && subTitle ? subTitle : name === 'wait' && input?.seconds ? tr('等待 {n} 秒', { n: String(input.seconds) }) + (input.reason ? ` · ${String(input.reason)}` : '') : preview0
   const output = tool?.output
   // write_file 结果带 diff：展开时按对比视图展示，而不是一坨 JSON
   const fileWrite = name === 'write_file' ? parseWriteResult(output) : undefined

@@ -68,20 +68,44 @@ export function registerKnowledge(d: {
     try { mkdirSync(d.dir, { recursive: true }); writeFileSync(stateFile, JSON.stringify(s, null, 2)) } catch { /* 状态存不下不影响主流程 */ }
   }
 
-  // 跑一次梳理（不落库）：手动 / 后台共用
-  const runConsolidate = async (trigger: ConsolidatePlan['trigger']): Promise<ConsolidatePlan> => {
+  /** 一次整理最多等这么久：模型要读完全部卡片，超过就是卡住了（以前没超时，关掉弹窗请求还在跑） */
+  const CONSOLIDATE_TIMEOUT_MS = 60_000
+  // 同时只跑一路：后台 tick 与手动点击很容易撞在一起，撞上就复用在跑的那次，不并发烧 token
+  let inflight: Promise<ConsolidatePlan> | null = null
+
+  // 跑一次梳理（不落库）：手动 / 后台共用。单飞包装在下面（runConsolidate），
+  // 先定义 once —— 常量在函数定义处就求值，别让 const 互相前向引用
+  const runConsolidateOnce = async (trigger: ConsolidatePlan['trigger']): Promise<ConsolidatePlan> => {
     if (!d.complete) throw new Error(tr('这台机器上没有可用的模型通道，无法梳理'))
     const all = cards()
     if (all.length < 2) throw new Error(tr('至少要有 2 张卡才值得整理'))
     const hosts = knowledgeHosts(d.hosts())
     const { system, user } = buildConsolidatePrompt(all, (k) => hosts.find((h) => h.hostKey === k)?.label ?? k)
     const ac = new AbortController()
-    const text = await d.complete(system, user, ac.signal, 'knowledge-consolidate')
+    const timer = setTimeout(() => ac.abort(), CONSOLIDATE_TIMEOUT_MS)
+    let text: string
+    try {
+      text = await d.complete(system, user, ac.signal, 'knowledge-consolidate')
+    } catch (e) {
+      if (ac.signal.aborted) {
+        throw new Error(tr('整理超时（{n} 秒）：卡片较多时可以先删掉几张没用的再试', { n: Math.round(CONSOLIDATE_TIMEOUT_MS / 1000) }), { cause: e })
+      }
+      throw e
+    } finally {
+      clearTimeout(timer)
+    }
     const parsed = parseConsolidateReply(text)
     if (parsed.error || !parsed.actions) throw new Error(parsed.error ?? tr('模型没有给出整理清单'))
     const errs = validateConsolidateActions(parsed.actions, all)
     if (errs.length) throw new Error(tr('模型给的整理清单不合法：{err}', { err: errs.slice(0, 5).join('；') }))   // i18n-ignore 列表分隔符（中文分号）
     return { trigger, before: all.length, after: countAfter(parsed.actions, all.length), actions: parsed.actions }
+  }
+
+  /** 单飞：正在跑就复用同一个 Promise（后台 tick 与手动点击撞上时只发一次模型请求） */
+  const runConsolidate = (trigger: ConsolidatePlan['trigger']): Promise<ConsolidatePlan> => {
+    if (inflight) return inflight
+    inflight = runConsolidateOnce(trigger).finally(() => { inflight = null })
+    return inflight
   }
 
   // 后台那一趟：只出清单、绝不写回（合并 / 删除知识卡必须用户自己确认）

@@ -119,6 +119,9 @@ export function sanitizeProfile(x: unknown): PersistedProfile | undefined {
   return {
     id: p.id, name, provider: p.provider, model: canonicalModel(p.provider, model, baseUrl), baseUrl,
     ...(typeof p.contextWindow === 'number' && Number.isFinite(p.contextWindow) ? { contextWindow: p.contextWindow } : {}),
+    // 压缩阈值：范围外丢弃（与界面 / AI 的校验一致，20–95 的整数百分比）
+    ...(typeof p.compactRatio === 'number' && Number.isFinite(p.compactRatio) && p.compactRatio >= 20 && p.compactRatio <= 95
+      ? { compactRatio: Math.round(p.compactRatio) } : {}),
     ...(p.protocol ? { protocol: p.protocol } : {}),
     ...(typeof p.multimodal === 'boolean' ? { multimodal: p.multimodal } : {}),
     ...(p.thinking && THINKING_LEVELS.includes(p.thinking) ? { thinking: p.thinking } : {}),
@@ -133,6 +136,8 @@ function withCanonicalModel<T extends { provider: string; model: string; baseUrl
 
 const view = (x: PersistedProfile): ModelProfile => ({
   id: x.id, name: x.name, provider: x.provider, model: x.model, baseUrl: x.baseUrl, contextWindow: x.contextWindow ?? 0, hasApiKey: hasKey(x),
+  // 压缩阈值不传回渲染层就会出现「改了自动保存、重开又变回 60%」——它是 ModelProfile 上的真实字段
+  compactRatio: x.compactRatio,
   thinking: x.thinking, protocol: protocolOf(x.provider, x.protocol), multimodal: multimodalOf(x),
 })
 
@@ -177,7 +182,7 @@ export class SettingsStore {
   resolveProfile(id?: string): ResolvedProfile {
     const { profiles, defaultProfileId } = profilesOf(this.read())
     const x = profiles.find((pr) => pr.id === id) ?? profiles.find((pr) => pr.id === defaultProfileId)!
-    return { id: x.id, name: x.name, provider: x.provider, model: x.model, baseUrl: x.baseUrl, contextWindow: x.contextWindow, thinking: x.thinking, protocol: protocolOf(x.provider, x.protocol), multimodal: multimodalOf(x), apiKey: this.keyOf(x) }
+    return { id: x.id, name: x.name, provider: x.provider, model: x.model, baseUrl: x.baseUrl, contextWindow: x.contextWindow, compactRatio: x.compactRatio, thinking: x.thinking, protocol: protocolOf(x.provider, x.protocol), multimodal: multimodalOf(x), apiKey: this.keyOf(x) }
   }
 
   /** 默认配置的明文 key（兼容旧调用） */
@@ -245,6 +250,7 @@ export class SettingsStore {
       const meta = providerMeta(provider)
       const model = canonicalModel(provider, String(x.model ?? '').trim() || meta.models[0].id, String(x.baseUrl ?? ''))
       const cw = Number(x.contextWindow)
+      const cr = Number(x.compactRatio)
       // 没填新 key：沿用同 id 的；复制出的新配置沿用来源配置的（keyFrom）
       const old = prev.find((o) => o.id === id) ?? (x.keyFrom ? prev.find((o) => o.id === x.keyFrom) : undefined)
       const slot = x.apiKey ? this.seal(x.apiKey) : old && old.provider === provider ? pickSlot(old) : {}
@@ -257,6 +263,8 @@ export class SettingsStore {
         id, name: String(x.name ?? '').trim().slice(0, 60) || model, provider, model,
         baseUrl: String(x.baseUrl ?? '').trim() || meta.defaultBaseUrl,
         ...(Number.isFinite(cw) && cw > 0 ? { contextWindow: Math.floor(cw) } : {}),
+        // 压缩阈值：只认 20–95（范围外的当没填，回落默认 60%），取整
+        ...(Number.isFinite(cr) && cr >= 20 && cr <= 95 ? { compactRatio: Math.round(cr) } : {}),
         ...(proto !== protocolOf(provider) ? { protocol: proto } : {}),
         ...(typeof x.multimodal === 'boolean' ? { multimodal: x.multimodal } : {}),
         ...(x.thinking && THINKING_LEVELS.includes(x.thinking) ? { thinking: x.thinking } : {}),

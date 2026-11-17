@@ -17,6 +17,19 @@ export const SUBAGENT_DEFAULT_TIMEOUT_SEC = 600
 export const SUBAGENT_MAX_TIMEOUT_SEC = 1800
 /** task 长度上限：子任务描述不该写成一篇方案 */
 export const SUBAGENT_TASK_MAX = 2000
+/** 下拉里那一行标题的上限（再长就截断，详情里看全文） */
+export const SUBAGENT_TITLE_MAX = 40
+
+/**
+ * 给人看的短标题：优先用模型给的 title；没给就取 task 的第一句（按中文句号 / 问号 / 换行切），
+ * 再长截到 40 字加省略号。下拉里只显示它，完整 task 收进详情。
+ */
+export function subagentTitleOf(task: string, title?: unknown): string {
+  const given = typeof title === 'string' ? title.trim() : ''
+  const firstSentence = String(task ?? '').trim().split(/[\n。！？!?；;]/)[0] ?? ''
+  const clean = (given || firstSentence).replace(/\s+/g, ' ').trim()
+  return clean.length > SUBAGENT_TITLE_MAX ? `${clean.slice(0, SUBAGENT_TITLE_MAX - 1)}…` : clean
+}
 /** summary 上限：原定 2000 太紧，装不下路径与报错原文 */
 export const SUBAGENT_SUMMARY_MAX = 4000
 
@@ -26,6 +39,8 @@ export type SubagentStatus = 'done' | 'blocked' | 'failed' | 'running'
 /** 界面用的子代理列表项（主会话标题栏下拉里显示） */
 export interface SubagentRecord {
   subagentId: string
+  /** 给人看的一句话标题（下拉里只显示它；模型没给就从 task 首句截） */
+  title: string
   task: string
   permission: SubagentPermission
   status: SubagentStatus
@@ -60,6 +75,11 @@ export const SUBAGENT_BRIEF = `你现在是一个子代理（subagent），由�
    多个方案取舍），**立刻停下来**，按下面的 blocked 格式返回，不要猜。
 3. 你不能派子代理。任务太大、需要多步判断或跨多个系统时，直接返回 blocked，说明建议怎么拆。
 4. 不要把大段日志贴进结论：只摘关键行（报错原文、关键数字、版本号），其余给文件路径。
+5. **用哪个终端**：任务里给了终端 id（如 term_28ae）就用它；没给就从「当前终端」段里挑一个匹配的。
+   一个合适的都没有时，先用 create_terminal 新开一个（会自动 cd 到会话工作目录），**不要因此直接 blocked**。
+6. **只读档只能跑查看类命令**：cat / ls / grep / ps / df / systemctl status / journalctl / nginx -v 这类可以；
+   restart、rm、重定向（>）、写文件会被直接拒绝——那是设计如此，不要反复重试，返回 blocked 说明需要主代理来做。
+7. 结论里写清你用的是哪个终端（term_xxx + 主机名），主代理转述给用户时靠它定位。
 
 总结必须按下面五块写，缺一块就算不合格：
 - 做了什么：一句话，执行了哪些操作
@@ -85,16 +105,28 @@ export function composeSubagentTask(task: string, contextHint?: string): string 
 const ALWAYS_DENY = new Set(['ask_user', 'spawn_subagent'])
 const DENY_PREFIXES = ['delete_', 'remove_']
 
-/**
- * 子代理调用某工具时的拒绝原因（undefined = 放行）。
- * permission=read 的子代理连写工具都不给——spawn 时已一次性判定过，运行中不再弹卡。
- */
+/** 跑命令的工具：只读子代理能不能用要看命令内容（不能按工具名一刀切） */
+const EXEC_COMMAND_TOOLS = new Set(['exec_in_terminal', 'exec_on_terminals', 'start_background'])
+
+/** 复合命令拆段：&& / || / ; / | / 换行 都逐段判只读，任一段不是就整条拒 */
+export function splitCompoundCommand(cmd: string): string[] {
+  return String(cmd ?? '').split(/&&|\|\||[;|\n]/).map((s) => s.trim()).filter(Boolean)
+}
+
 /**
  * 子代理调用某工具时的拒绝原因（undefined = 放行）。
  * permission=read 的子代理连写工具都不给——spawn 时已一次性判定过，运行中不再弹卡。
  * allowed：主代理指定的工具白名单（空 = 除下面几类禁用的以外都可用）。
+ * args / isReadOnly：exec 类工具**按命令内容**判只读（与主会话同一套白名单），
+ *   不能按工具名一刀切——否则只读子代理连 `nginx -v` 都跑不了（问题 11）。
  */
-export function subagentToolDeny(toolName: string, permission: SubagentPermission, allowed?: string[]): string | undefined {
+export function subagentToolDeny(
+  toolName: string,
+  permission: SubagentPermission,
+  allowed?: string[],
+  args?: unknown,
+  isReadOnly?: (command: string) => boolean,
+): string | undefined {
   const name = String(toolName)
   if (ALWAYS_DENY.has(name)) {
     return name === 'spawn_subagent'
@@ -104,6 +136,15 @@ export function subagentToolDeny(toolName: string, permission: SubagentPermissio
   if (DENY_PREFIXES.some((p) => name.startsWith(p))) return tr('子代理不能删除东西：需要删除时交回主代理')
   if (allowed?.length && !allowed.includes(name)) {
     return tr('这个子任务只允许用这些工具：{list}；需要别的就交回主代理', { list: allowed.join('、') })   // i18n-ignore 列表分隔符（中文顿号）
+  }
+  if (permission === 'read' && EXEC_COMMAND_TOOLS.has(name)) {
+    const cmd = typeof (args as { command?: unknown } | null)?.command === 'string' ? String((args as { command: string }).command) : ''
+    // 没带命令（模型参数写错了）：放给工具体报参数错误，不在这里判
+    if (!cmd.trim() || !isReadOnly) return undefined
+    const segs = splitCompoundCommand(cmd)
+    const bad = segs.find((s) => !isReadOnly(s))
+    if (bad === undefined) return undefined
+    return tr('「{cmd}」是写命令（改状态 / 删改文件 / 重定向），只读子代理不能执行：只读档只能用查看类命令（cat / ls / grep / ps / df / systemctl status / nginx -v…）；需要改系统状态请把任务交回主代理', { cmd: bad })
   }
   if (permission === 'read' && isWriteTool(name)) {
     return tr('这个子任务只授了只读权限，不能执行写操作；需要写就交回主代理')
@@ -123,7 +164,7 @@ export function parseToolList(v: unknown): string[] | undefined {
 /** 写类工具（与 execGate 的判定保持一致的子集；只用于「只读子代理」的拦截） */
 const WRITE_TOOLS = new Set([
   'write_file', 'upload_file', 'set_app_setting', 'save_skill', 'save_db_connection',
-  'save_model_profile', 'save_mcp_server', 'exec_in_terminal', 'exec_on_terminals', 'start_background',
+  'save_model_profile', 'save_mcp_server', ...EXEC_COMMAND_TOOLS,
 ])
 export const isWriteTool = (name: string): boolean => WRITE_TOOLS.has(name)
 

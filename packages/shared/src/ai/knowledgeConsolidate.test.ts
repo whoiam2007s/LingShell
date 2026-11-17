@@ -16,9 +16,12 @@ describe('知识库梳理', () => {
     expect(r2.actions?.[0]?.kind).toBe('drop')
   })
 
-  it('解析失败要给出可读原因', () => {
-    expect(parseConsolidateReply('我不知道怎么整理').error).toContain('没有按要求返回')
-    expect(parseConsolidateReply('{"actions":[]}').error).toContain('没有给出任何可用的整理动作')
+  it('解析失败要给出可读原因；空清单不算失败（问题 13）', () => {
+    expect(parseConsolidateReply('我不知道怎么整理').error).toContain('格式不对')
+    // { actions: [] } 是合法结果：卡片本来就整齐，界面显示 empty 态而不是报错
+    const empty = parseConsolidateReply('{"actions":[]}')
+    expect(empty.error).toBeUndefined()
+    expect(empty.actions).toEqual([])
   })
 
   it('不允许 create：模型编造 kind=create 会被忽略', () => {

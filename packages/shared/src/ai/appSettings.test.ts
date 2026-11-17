@@ -34,6 +34,36 @@ describe('AI 应用设置白名单', () => {
     expect(validateSetting('system.localNotes', 'x'.repeat(2001))).toContain('最长 2000 字')
   })
 
+  it('界面外观可改：主题 / 跟随系统的深浅 / 缩放 / 图标大小', () => {
+    expect(specOf('system.uiTheme')?.writable).toBe(true)
+    expect(validateSetting('system.uiTheme', 'light')).toBeUndefined()
+    expect(validateSetting('system.uiTheme', 'system')).toBeUndefined()
+    expect(validateSetting('system.uiTheme', 'rainbow')).toContain('只能是')
+    // 深 / 浅两张表各只管自己那一半：sepia 是浅色主题，不能当跟随系统的深色用
+    expect(validateSetting('system.uiThemeDark', 'sepia')).toContain('只能是')
+    expect(validateSetting('system.uiThemeLight', 'midnight')).toContain('只能是')
+    expect(validateSetting('system.uiZoom', 0.9)).toBeUndefined()
+    expect(validateSetting('system.uiZoom', 1.25)).toBeUndefined()
+    // 固定档位：0.95 不在档位清单里，不能改成一个界面上没有的缩放
+    expect(validateSetting('system.uiZoom', 0.95)).toContain('只能是')
+    expect(validateSetting('system.uiZoom', '1.5')).toContain('要数字')
+    expect(validateSetting('system.iconSize', 'large')).toBeUndefined()
+    expect(validateSetting('system.iconSize', 'huge')).toContain('只能是')
+  })
+
+  it('外观补丁能合并进 system，并出现在给模型看的清单里', () => {
+    const { next, applied } = mergeSystemPatch(sys, {
+      'system.uiTheme': 'light',
+      'system.uiZoom': 0.9,
+      'system.iconSize': 'medium',
+    })
+    expect(next.uiTheme).toBe('light')
+    expect(next.uiZoom).toBe(0.9)
+    expect(applied).toEqual(['system.uiTheme', 'system.uiZoom', 'system.iconSize'])
+    expect(describeSettings()).toContain('system.uiTheme')
+    expect(describeSettings()).toContain('system.uiZoom')
+  })
+
   it('只读项与不存在的键一律拒绝', () => {
     expect(validateSetting('provider', 'openai')).toContain('只读')
     expect(validateSetting('system.customRules', 'x')).toContain('只读')

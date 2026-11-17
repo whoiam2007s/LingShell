@@ -33,6 +33,13 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
   const [applying, setApplying] = useState(false)
   const [err, setErr] = useState('')
   const [checked, setChecked] = useState<Set<number>>(new Set())
+  /** 已等待秒数：模型读全部卡片要几秒到几十秒，给个计数才知道没卡死 */
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!loading) return
+    const t = setInterval(() => setElapsed((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [loading])
 
   // 打开即就绪：有后台清单直接展示，否则让模型读一遍（要几秒到十几秒）；关掉后丢弃结果
   useEffect(() => {
@@ -45,7 +52,7 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
       return
     }
     let alive = true
-    setLoading(true); setPlan(null)
+    setLoading(true); setPlan(null); setElapsed(0)
     client.knowledge.consolidate('manual')
       .then((p) => {
         if (!alive) return
@@ -86,10 +93,10 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
           <p className="mb-3 text-[12px] text-[var(--color-text-secondary)]">
             {tr('AI 读一遍全部知识卡，把重复的合并、过时的更新、没用的删掉。清单只是建议——勾选你想采纳的，点「应用」才会改。')}
           </p>
-          {loading && <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">{tr('AI 正在读全部知识卡，请稍等…')}</div>}
-          {err && <div className="text-[12px] text-[var(--color-danger)]">{err}</div>}
+          {loading && <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">{tr('AI 正在读全部知识卡，请稍等…（已等待 {n} 秒）', { n: elapsed })}</div>}
+          {err && <div className="rounded border border-[color:color-mix(in_srgb,var(--color-danger)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)] px-3 py-2 text-[12px] text-[var(--color-danger)]">{err}</div>}
           {!loading && plan && !plan.actions.length && (
-            <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">{tr('没发现需要整理的地方，卡片已经比较整齐了。')}</div>
+            <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">{tr('没发现需要整理的地方：{n} 张卡已经比较整齐了。', { n: plan.before })}</div>
           )}
           {!loading && plan && plan.actions.length > 0 && (
             <div className="space-y-2">
@@ -124,10 +131,12 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
             </span>
           )}
           <button onClick={onClose} className={cn('ml-auto', BTN2)}>{tr('取消')}</button>
-          <button onClick={apply} disabled={applying || !picked.length}
-            className="rounded-md border border-transparent bg-[var(--color-accent)] px-4 py-1.5 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:opacity-40">
-            {applying ? tr('应用中…') : picked.length ? tr('应用选中的 {k} 项', { k: picked.length }) : tr('应用')}
-          </button>
+          {plan && plan.actions.length > 0 && (
+            <button onClick={apply} disabled={applying || !picked.length}
+              className="rounded-md border border-transparent bg-[var(--color-accent)] px-4 py-1.5 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:opacity-40">
+              {applying ? tr('应用中…') : picked.length ? tr('应用选中的 {k} 项', { k: picked.length }) : tr('应用')}
+            </button>
+          )}
         </div>
       </div>
     </div>

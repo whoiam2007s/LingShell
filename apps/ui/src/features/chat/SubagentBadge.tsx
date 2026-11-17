@@ -1,5 +1,8 @@
 // 会话标题栏的「子代理」下拉：这个会话派过哪些子代理、各自状态与耗时，点一行看总结。
 // 只存内存（重启就没了）——列表是「这次在干什么」的窗口，不是存档；要看过程进子会话记录。
+//
+// 一行只显示「标题」（模型给的一句话，或 task 首句截 40 字）：完整 prompt 收进详情，
+// 下拉与悬停提示都出在按钮正下方居中（与对话区 hover 模型的 tooltip 一致），不再用原生 title。
 import { useEffect, useRef, useState } from 'react'
 import { Bot, ChevronDown, Loader2, Check, X, MessageCircleQuestion } from 'lucide-react'
 import { fmtMs, tr, type SubagentView } from '@lingshell/shared'
@@ -19,9 +22,13 @@ function StatusIcon({ status }: { status: SubagentView['status'] }) {
   return <X className="h-3 w-3" />
 }
 
+/** 浮层统一位置：按钮正下方居中（窗口再窄也不出屏） */
+const BELOW_CENTER = 'absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2'
+
 export function SubagentBadge({ sessionId, live = false }: { sessionId: string; live?: boolean }) {
   const [list, setList] = useState<SubagentView[]>([])
   const [open, setOpen] = useState(false)
+  const [hover, setHover] = useState(false)
   const [detail, setDetail] = useState<string | undefined>()
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -45,18 +52,26 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
 
   if (!list.length) return null
   const running = list.filter((x) => x.status === 'running').length
+  const tip = tr('这个会话派过的子代理（{n} 个）', { n: list.length })
 
   return (
     <div ref={rootRef} className="relative shrink-0">
-      <button onClick={() => setOpen((o) => !o)} title={tr('这个会话派过的子代理（{n} 个）', { n: list.length })}
+      <button onClick={() => setOpen((o) => !o)} aria-label={tip} aria-expanded={open}
+        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+        onFocus={() => setHover(true)} onBlur={() => setHover(false)}
         className={cn('flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] transition-colors hover:bg-[var(--color-bg-hover)]',
           running ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]')}>
         {running ? <Loader2 className="h-3 w-3 animate-spin-slow" /> : <Bot className="h-3 w-3" />}
         <span>{tr('子代理 {n}', { n: list.length })}</span>
         <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
       </button>
+      {hover && !open && (
+        <div data-subagent-tip className={`${BELOW_CENTER} pointer-events-none whitespace-nowrap rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] shadow-lg`}>
+          {tip}
+        </div>
+      )}
       {open && (
-        <div className="absolute left-0 top-full z-40 mt-1 max-h-[min(420px,60vh)] w-[min(760px,92vw)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-xl">
+        <div className={`${BELOW_CENTER} max-h-[min(420px,60vh)] w-[min(500px,calc(100vw-24px))] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-xl`}>
           {list.map((x) => (
             <div key={x.subagentId} className="rounded-md border-b border-[var(--color-border-subtle)] px-2 py-1.5 last:border-b-0">
               <button onClick={() => setDetail(detail === x.subagentId ? undefined : x.subagentId)}
@@ -64,11 +79,13 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
                 <span className={cn('flex shrink-0 items-center gap-1 text-[11px]', statusTone(x.status))}>
                   <StatusIcon status={x.status} />{statusText(x.status)}
                 </span>
-                <span className="line-clamp-2 min-w-0 flex-1 text-[12px] text-[var(--color-text-secondary)]">{x.task}</span>
+                {/* 只看标题：一行放得下，能一眼分清谁是谁 */}
+                <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]">{x.title || x.task}</span>
                 {x.elapsedMs !== undefined && <span className="shrink-0 text-[10.5px] text-[var(--color-text-muted)]">{fmtMs(x.elapsedMs)}</span>}
+                <ChevronDown className={cn('h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-transform', detail === x.subagentId && 'rotate-180')} />
               </button>
               {/* 最近一步：只知道「运行中」看不出卡在哪，这里显示它正在调什么 / 正在写什么 */}
-              {x.status === 'running' && x.step && (
+              {x.status === 'running' && x.step && detail !== x.subagentId && (
                 <div className="mt-0.5 flex items-center gap-1 pl-[52px] text-[11px] text-[var(--color-text-muted)]">
                   <span className="shrink-0">{x.step.kind === 'tool' ? '⚙' : '✎'}</span>
                   <span className="truncate">{x.step.label}</span>
@@ -76,6 +93,12 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
               )}
               {detail === x.subagentId && (
                 <div className="mt-1 space-y-1">
+                  {x.task && (
+                    <div className="rounded border border-[var(--color-border-subtle)] px-2 py-1 text-[11px]">
+                      <div className="text-[var(--color-text-muted)]">{tr('任务：')}</div>
+                      <div className="mt-0.5 whitespace-pre-wrap break-words text-[var(--color-text-secondary)]">{x.task}</div>
+                    </div>
+                  )}
                   {x.blocked && (
                     <div className="rounded border border-[var(--color-border-default)] bg-[color:color-mix(in_srgb,var(--color-warn)_8%,transparent)] px-2 py-1 text-[11px]">
                       <div>{tr('问题：')}{x.blocked.question}</div>
