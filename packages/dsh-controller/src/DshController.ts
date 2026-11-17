@@ -49,7 +49,7 @@ import {
 } from './subagent.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
-import { compactionConfig, effectiveLimit, clampCompactRatio, AUTO_COMPACT_RATIO, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
+import { compactionConfig, effectiveLimit, clampCompactRatio, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
 import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, RETRY_POLICY, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
 import { mcpDecision, mcpArgsView, stripExplain, MCP_GUIDANCE, type McpManager, type McpToolRef } from './mcp.js'
 import { withRedaction, placeholderError, REDACT_GUIDANCE } from './redaction.js'
