@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
 import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
 import type { DbConn } from '@lingshell/shared'
-import { checkSubagentTask, clampTimeoutSec, parseToolList, type SubagentResult } from './subagent.js'
+import { checkSubagentTask, parseToolList, type SubagentResult } from './subagent.js'
 import { unifiedDiff } from './diff.js'
 import { withRedaction, type SecretsFn } from './redaction.js'
 import { wireOf, type SecretVault } from './secretVault.js'
@@ -627,7 +627,17 @@ export function decideFor(deps: TerminalToolDeps, sessionId: string, toolName: s
   }
   const needed = neededForCall(deps, toolName, args)
   const terminalId = terminalIdOf(args)
-  if (!terminalId) return { kind: 'deny', reason: tr('{tool} 缺少 terminal_id', { tool: toolName }) }
+  if (!terminalId) {
+    // 弱模型（GLM 5.3 实测）常漏这个必填参数：直接把当前可选的终端列出来，省它再猜一轮
+    const opened = deps.terminals.list().slice(0, 8).map((t) => `${t.id} · ${t.title}`).join('、')   // i18n-ignore 列表分隔符（中文顿号）
+    return {
+      kind: 'deny',
+      reason: tr('{tool} 缺少 terminal_id（必填）。当前打开的终端：{list}。补上后重新调用', {
+        tool: toolName,
+        list: opened || tr('（当前没有打开的终端，先用 create_terminal 开一个）'),
+      }),
+    }
+  }
   // 终端不存在（常见：应用重启后 id 变了，模型还拿着旧 id）→ 直接拒，别弹卡：
   // resolveHostKey 对未知 id 回落 'local'，弹出来的会是「本地」的授权卡，用户点允许就把本地写权限给错了
   if (!deps.terminals.list().some((t) => t.id === terminalId)) {
@@ -711,6 +721,12 @@ export function groupSameOutput(rs: { terminal_id: string; exit_code: number; fu
 }
 
 const str = (description: string) => ({ type: 'string' as const, required: true, description })
+/**
+ * terminal_id 的统一说明。
+ * schema 里它本来就是 required，但弱模型（实测 GLM 5.3）经常整条漏传，
+ * 所以描述里把「必填 + 长什么样 + 从哪拿」写死，不能只写「终端 id」四个字。
+ */
+const TID_DESC = '必填。终端 id，形如 term_3f2a；从系统提示的「当前终端」段取，不确定先调 list_terminals'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 const boolStr = (description: string) => ({ type: 'boolean' as const, description })
 const textOut = { schema: { type: 'string' as const }, render: (_a: unknown, v: string) => [{ type: 'text' as const, text: v }] }
 
@@ -788,7 +804,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
     {
       name: 'read_terminal',
       description: '读取指定终端的当前屏幕快照。需该主机的读取授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-      parameters: { terminal_id: str('终端 id，先用 list_terminals 取') },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: { terminal_id: str(TID_DESC) },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       output: textOut,
       async execute(args: any, exec: any) {
         userOverride(exec)
@@ -804,9 +820,10 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         + '同一终端是串行的：一次只发一条，多条命令请用 && 或 ; 串成一条。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '有执行超时上限：可能跑很久的命令（编译/安装/迁移/大文件下载/长时间脚本）改用 start_background。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '务必填 explain（给用户看的命令说明）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + 'terminal_id 必填（漏填会被直接拒绝）：从系统提示的「当前终端」段取现成的 id，别用对话里出现过的旧 id（应用重启后会变）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '变更类命令（改配置/启停服务/装删包/移动删除文件等）必须同时填 rollback（回滚命令）与 rollback_note（回滚说明），无法回滚的在 rollback_note 写明「不可回滚」及原因；生产主机上缺少会被拒绝。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
-        terminal_id: str('终端 id'), command: str('要执行的命令'), explain,   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        terminal_id: str(TID_DESC), command: str('要执行的命令'), explain,   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         rollback: optStr('变更类命令必填：撤销本次改动的回滚命令（可多行），用户可在执行记录里一键执行；只读命令不填'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         rollback_note: optStr('回滚说明：为什么这样回滚 / 注意事项；无法回滚时写「不可回滚」及原因'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
@@ -839,7 +856,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       parameters: {
         terminal_ids: {
           type: 'array' as const, required: true as const, items: { type: 'string' as const },
-          description: `目标终端 id 列表（${MULTI_MIN}–${MULTI_MAX} 个，不同终端），先用 list_terminals 取`,   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          description: `必填。目标终端 id 列表（${MULTI_MIN}–${MULTI_MAX} 个，不同终端），从系统提示的「当前终端」段取，不确定先调 list_terminals`,   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         },
         command: str('要在每台上执行的命令'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         explain,
@@ -891,7 +908,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         + '不要用 sleep 循环空等，也不要自己在 exec_in_terminal 里用 nohup / & / setsid 放后台。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '任务在独立通道里启动（不显示在用户终端里），工作目录同该终端的当前目录，但不继承终端里临时 export 的变量 / 激活的虚拟环境，需要时写进命令（如 source venv/bin/activate && …）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '需该主机的写入授权；危险命令会二次确认。务必填 explain（给用户看的命令说明）。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-      parameters: { terminal_id: str('终端 id'), command: str('要在后台执行的命令（可用 && 串多条）'), explain },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: { terminal_id: str(TID_DESC), command: str('要在后台执行的命令（可用 && 串多条）'), explain },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       output: textOut,
       async execute(args: any, exec: any) {
         const o = userOverride(exec)
@@ -921,7 +938,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         + '所以直接连续调用即可，无需自己间隔；预计很久的任务可把 wait_seconds 调大。需该主机的读取授权。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '须在启动该任务的同一主机的终端上查询。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
-        terminal_id: str('终端 id（与启动时同一主机）'), job_id: str('start_background 返回的 job_id'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        terminal_id: str(`${TID_DESC}；要与启动时同一主机`), job_id: str('start_background 返回的 job_id'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         wait_seconds: optInt('最多等待任务结束的秒数，默认 30（受命令超时限制，会自动收紧）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
       output: textOut,
@@ -1098,7 +1115,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         + '禁止用 exec_in_terminal 跑 scp/rsync/sftp/base64/cat>file 自行上传。需目标主机的写入授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
         local_path: str('运行本应用那台机器上的文件绝对路径'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        terminal_id: str('SSH 终端 id，据此确定目标主机'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        terminal_id: str(`${TID_DESC}；必须是 SSH 终端（连到已保存的主机）`),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         target_dir: str('服务器上的目标目录，不存在会自动创建'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
       output: textOut,
@@ -1119,7 +1136,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       description: '读取终端所在主机（本地或 SSH）上的文本文件，可指定行号区间（1 起，含两端）；单次最多 2000 行，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '截断时 truncated=true，用 start_line=end_line+1 续读。看文件内容请用本工具，不要在终端里 cat。需该主机的读取授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
-        terminal_id: str('终端 id，据此确定主机'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        terminal_id: str(TID_DESC),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         path: str('文件绝对路径（远程可用 ~/ 开头）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         start_line: optInt('起始行号，缺省 1'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         end_line: optInt('结束行号，缺省到文件末尾'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1141,9 +1158,10 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         + 'old_text=要被替换的原文片段（须逐字一致、在文件中唯一出现，改局部首选）；new_text=替换成的新片段，省略表示删除这一段（缺失时也可用 content 代替）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '父目录不存在会自动创建，**不要先跑 mkdir、也不要拆成「mkdir + 写文件」两步**（那样用户要点两次授权卡）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '首次写入该主机、或会话为「确认」档 / 生产主机时会把 diff 给用户确认；覆盖前自动备份原文件，用户可在执行记录里一键还原。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        + '改文件请用本工具，不要在终端里用 sed -i / echo > / cat <<EOF 改。需该主机的写入授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + '改文件请用本工具，不要在终端里用 sed -i / echo > / cat <<EOF 改。需该主机的写入授权。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + 'terminal_id 必填（漏填会被直接拒绝）：从系统提示的「当前终端」段取现成的 id，别用对话里出现过的旧 id（应用重启后会变）。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
-        terminal_id: str('终端 id，据此确定主机'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        terminal_id: str(TID_DESC),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         path: str('文件绝对路径（远程可用 ~/ 开头）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         content: optStr('整文件新内容：没有 old_text 时必填（新建或整体重写）；给了 old_text 但没给 new_text 时也可代替替换内容'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         old_text: optStr('要被替换的原文片段（须在文件中唯一出现）。给了它就按局部替换处理'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1181,7 +1199,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       description: '把 SSH 主机上的单个文件下载到本机（~/Downloads/lingshell/ 下，重名自动加时间前缀），返回本地路径。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '下载请用本工具，不要在终端里跑 scp/sftp/base64。每次都需用户确认。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
-        terminal_id: str('SSH 终端 id，据此确定主机（须为已保存的主机）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        terminal_id: str(`${TID_DESC}；必须是 SSH 终端、且是已保存的主机`),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         path: str('远程文件绝对路径'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
       output: textOut,
@@ -1375,7 +1393,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
     },
     {
       name: 'spawn_subagent',
-      description: '把一个**单一、明确**的子任务派给子代理：它用独立会话去做，只把结构化总结交回来。子代理不能跟你或用户交互、不能删除东西、不能再派子代理——它遇到需要拍板的事会返回 status=blocked 并带回问题，由你决定换做法还是去问用户。适合：多台机器上重复同一套检查、翻一批文件找线索、跑一段耗时命令。不适合：需要边做边判断的大任务（自己拆成几次调用）。写 task 时：① 目标终端要写清 id（如 term_28ae，从「当前终端」段取），只写主机名不算；② 当前没有合适的终端就让它先 create_terminal 新开一个（会自动 cd 到会话工作目录）；③ 只读子代理（permission=read，缺省）只能用查看类命令（cat / ls / grep / ps / df / systemctl status / nginx -v…），要改系统状态请派 permission=write 或自己做。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      description: '把一个**单一、明确**的子任务派给子代理：它用独立会话去做，只把结构化总结交回来。子代理不能跟你或用户交互、不能删除东西、不能再派子代理——它遇到需要拍板的事会返回 status=blocked 并带回问题，由你决定换做法还是去问用户。**必须是一个能独立完成的单一子任务：单一功能、短时间内做得完、尽量不跨模块**（跨模块的大改自己拆开、分几次派）。**适合派**：① 写代码类——改一个功能涉及的一批文件、跑测试/构建并修到通过、按某个思路重构一个模块、查清一个模块的实现（用 permission=write）；② 多台机器重复同一套检查、翻多个目录找线索、跑一段耗时命令（用缺省 permission=read）。**别派**：单条命令或单个文件的连续小修（自己做更快）；目标还没定、必须边看边决定的探索（先把范围定下来再派）；一次要改好几个模块的大重构（拆成几个子任务分别派）。写 task 时：① 目标终端要写清 id（如 term_28ae，从「当前终端」段取），只写主机名不算；② 当前没有合适的终端就让它先 create_terminal 新开一个（会自动 cd 到会话工作目录）；③ 只读子代理（permission=read，缺省）只能用查看类命令（cat / ls / grep / ps / df / systemctl status / nginx -v…），要改文件 / 跑测试 / 改系统状态用 permission=write——首次会弹一张授权卡，之后本会话内不再问。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
         task: str('要子代理做的事：一句话说清、范围明确（2000 字以内）；写明用哪个终端（term_xxx）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         title: optStr('给人看的一句话标题（≤40 字，如「查生产 nginx 版本」）：界面下拉里只显示它；不填就取 task 首句'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1393,7 +1411,8 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const r: SubagentResult = await deps.spawnSubagent({
           task: t.value,
           ...(typeof args?.title === 'string' && args.title.trim() ? { title: args.title.trim() } : {}),
-          timeoutSec: clampTimeoutSec(args?.timeout_sec),
+          // 原样交给控制器：默认值（设置页的「子代理默认超时」）在那边统一算，这里先夹会把默认值写死
+          timeoutSec: args?.timeout_sec as number | undefined,
           contextHint: typeof args?.context_hint === 'string' ? args.context_hint : undefined,
           ...(parseToolList(args?.tools) ? { tools: parseToolList(args?.tools) } : {}),
           permission,

@@ -207,9 +207,10 @@ export function checkSubagentTask(v: unknown): { ok: true; value: string } | { o
   return { ok: true, value: t }
 }
 
-/** 超时时长夹到合理区间（模型爱写 0 或 999999） */
-export function clampTimeoutSec(v: unknown): number {
+/** 超时时长夹到合理区间（模型爱写 0 或 999999）；没给 / 非法时用 defaultSec（缺省 600 秒，可被设置页覆盖） */
+export function clampTimeoutSec(v: unknown, defaultSec = SUBAGENT_DEFAULT_TIMEOUT_SEC): number {
+  const d = Number.isFinite(defaultSec) && defaultSec > 0 ? Math.min(Math.max(Math.round(defaultSec), 30), SUBAGENT_MAX_TIMEOUT_SEC) : SUBAGENT_DEFAULT_TIMEOUT_SEC
   const n = Number(v)
-  if (!Number.isFinite(n) || n <= 0) return SUBAGENT_DEFAULT_TIMEOUT_SEC
+  if (!Number.isFinite(n) || n <= 0) return d
   return Math.min(Math.max(Math.round(n), 30), SUBAGENT_MAX_TIMEOUT_SEC)
 }

@@ -1,8 +1,13 @@
 // AppClient 的Git 助手。主进程注册见 apps/desktop/src/main/git/register.ts，渲染层实现见 apps/ui/src/client/transports/ipc/git.ts
+import type { GitRepoHit } from '../../git/repoScan.js'
 
 export interface GitApi {
   // Git 助手（见 desktop/main/git/gitIpc.ts）：独立通道读状态 / diff；stage / commit 记执行记录；suggest = AI 写提交说明（一次性模型调用）
   git: {
+    // 对话头部 tag 用：读某个本地目录当前的 Git 分支（不是仓库 / 读失败 → undefined）。主进程带 5 秒缓存
+    branchOf(dir: string): Promise<string | undefined>
+    // Git 面板「周边 Git 项目」：向下 2 层 + 逐级向上到盘符根，只认 `.git` 存在（不跑 git 命令）；最多 1000 个目录
+    scanRepos(dir: string): Promise<{ repos: GitRepoHit[]; truncated: boolean }>
     status(terminalId: string, dir: string): Promise<import('../../git/index.js').GitStatusResult>
     diff(terminalId: string, root: string, path: string, mode: import('../../git/index.js').GitDiffMode): Promise<string>
     stage(terminalId: string, root: string, paths: string[], stage: boolean): Promise<void>

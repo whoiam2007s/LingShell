@@ -13,6 +13,8 @@ export interface AiApi {
     // 手动压缩上下文：把较早的历史压成摘要、保留最近原文（界面点用量百分比时直接触发）。
     // 返回 false = 没有可压缩的历史；会话正在跑回合时抛错（dsh 报 busy）
     compact(sessionId: string): Promise<boolean>
+    // 设置里改过模型配置（上下文窗口 / 压缩阈值）后调用：让主进程重算各空闲会话的窗口与压缩阈值并重推用量
+    refreshUsage(): Promise<void>
     // 回合进行中追问：当前步骤结束、模型下一次请求前插进对话（dsh steering）；返回消息 id（被接纳时 user_message 的 itemId 就是它）
     steer(sessionId: string, prompt: string, attachments?: import('../../ai/index.js').TurnAttachment[]): Promise<string>
     // 撤回还没插入的追问；已插入 / 已清掉返回 false

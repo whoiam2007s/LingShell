@@ -8,6 +8,7 @@ agent:interruptTurn
 agent:listPersisted
 agent:listSessions
 agent:reconnectSession
+agent:refreshUsage
 agent:renameSession
 agent:resetContext
 agent:search
@@ -174,6 +175,7 @@ fs:sudoForget
 fs:unpack
 fs:writeText
 git:blame
+git:branchOf
 git:changelog
 git:commit
 git:commitDiff
@@ -188,6 +190,7 @@ git:rebasePlan
 git:refs
 git:remotes
 git:review
+git:scanRepos
 git:show
 git:stage
 git:stashDiff

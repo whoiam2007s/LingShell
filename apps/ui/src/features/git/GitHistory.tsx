@@ -205,7 +205,7 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
                 {det.parents.length > 1 && <div className="mb-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('合并提交，下面是相对第一个父提交 {p} 的改动', { p: det.parents[0].slice(0, 7) })}</div>}
                 <div className="text-[10.5px] font-medium text-[var(--color-text-muted)]">{tr('改动的文件（{n}）', { n: det.files.length })}</div>
                 {det.files.map((f) => (
-                  <div key={f.path} className="group flex items-center">
+                  <div key={f.path} className="group flex h-6 items-center">
                     <button data-git-commit-file={f.path} onClick={() => showFile(f.path)} title={f.orig ? `${f.orig} → ${f.path}` : f.path}
                       className={cn('flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-[2px] text-left text-[11.5px] hover:bg-[var(--color-bg-hover)]', fileDiff?.path === f.path && 'bg-[var(--color-bg-raised)]')}>
                       <span className={cn('w-3 shrink-0 text-center font-mono font-semibold', CODE_CLS[f.code[0]] ?? 'text-[var(--color-text-muted)]')}>{f.code[0]}</span>

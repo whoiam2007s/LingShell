@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FlaskConical, ListChecks, Play, ShieldAlert, X } from 'lucide-react'
+import { FlaskConical, ListChecks, Play, ShieldAlert, X, ChevronDown } from 'lucide-react'
 import { previewPlanOf, codeBlockSteps, previewRunMessage, tr, type HostSummary, type PreviewPlan } from '@lingshell/shared'
 import { trx } from '../../lib/trx.js'
 import { client } from '../../client/index.js'
@@ -55,6 +55,10 @@ export function PreviewPlanCard({ sessionId, plan, busy, onSend }: { sessionId: 
   const [hosts, setHosts] = useState<HostSummary[]>([])
   const [done, setDone] = useState<number>()
   const [err, setErr] = useState('')
+  // 交给 AI 执行后自动收起（跟工具执行记录一样），点标题行能再展开看步骤
+  const [open, setOpen] = useState(true)
+  const [manual, setManual] = useState(false)
+  useEffect(() => { if (done !== undefined && !manual) setOpen(false) }, [done, manual])
   useEffect(() => { client.hosts.list().then(setHosts).catch(() => {}) }, [])
   const host = (k?: string) => (!k ? '' : k === 'local' ? tr('本地') : hosts.find((h) => h.id === k)?.label ?? k)
   const chosen = plan.steps.filter((_, i) => picked[i])
@@ -71,11 +75,17 @@ export function PreviewPlanCard({ sessionId, plan, busy, onSend }: { sessionId: 
   return (
     <div data-preview-plan className="px-3 py-1">
       <div className="overflow-hidden rounded-md border border-[color:color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[var(--color-bg-raised)]">
-        <div className="flex items-center gap-2 px-2.5 py-1.5">
+        <div className={cn('flex items-center gap-2 px-2.5 py-1.5', done !== undefined && 'cursor-pointer select-none')}
+          onClick={done !== undefined ? () => { setManual(true); setOpen((o) => !o) } : undefined}
+          title={done !== undefined ? tr('展开 / 收起步骤') : undefined}>
           <ListChecks className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[var(--color-text-primary)]" title={plan.title}>{tr('方案步骤：{title}', { title: plan.title })}</span>
-          <span className="shrink-0 rounded bg-[var(--color-bg-base)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)]">{tr('预演 · 未执行')}</span>
+          {done === undefined
+            ? <span className="shrink-0 rounded bg-[var(--color-bg-base)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)]">{tr('预演 · 未执行')}</span>
+            : <span className="shrink-0 rounded bg-[var(--color-bg-base)] px-1.5 py-0.5 text-[11px] text-[var(--color-success)]">{tr('已交 AI 执行 {n} 步', { n: done })}</span>}
+          {done !== undefined && <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)] transition-transform', !open && '-rotate-90')} />}
         </div>
+        {open && (
         <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3 py-2">
           <ol className="space-y-1">
             {plan.steps.map((s, i) => (
@@ -108,6 +118,7 @@ export function PreviewPlanCard({ sessionId, plan, busy, onSend }: { sessionId: 
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   )

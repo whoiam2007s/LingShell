@@ -158,6 +158,20 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "terminal",
   "kind": "section",
+  "label": "环境变量",
+  "tip": "新建的本地终端才生效，已打开的终端要关掉重开。"
+ },
+ {
+  "tab": "terminal",
+  "kind": "row",
+  "label": "自定义变量",
+  "section": "环境变量",
+  "hint": "每行一条：变量名 + 等号 + 值",
+  "tip": "常用于改语言环境：把 LC_ALL 设成 zh_CN.utf8 用中文排序；想按字节比较文件名就设成 C。以 # 开头是注释；LINGSHELL_ 开头的变量会被忽略（应用内部用）。"
+ },
+ {
+  "tab": "terminal",
+  "kind": "section",
   "label": "提醒"
  },
  {
@@ -378,6 +392,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   "section": "上下文",
   "hint": "0 = 不提示",
   "tip": "会话执行到这么多步、且已压缩过时，提示是否用压缩摘要开新会话（只是建议，可忽略）。"
+ },
+ {
+  "tab": "ai",
+  "kind": "row",
+  "label": "子代理默认超时",
+  "section": "上下文",
+  "hint": "秒，默认 600（10 分钟）",
+  "tip": "派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。"
  },
  {
   "tab": "ai",

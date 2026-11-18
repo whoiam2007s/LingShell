@@ -20,7 +20,7 @@ export interface AppApi {
   // 系统级：目录选择器等
   system: {
     // 打开原生目录选择器，返回选中的绝对路径（取消则 undefined）
-    pickDirectory(): Promise<string | undefined>
+    pickDirectory(defaultPath?: string): Promise<string | undefined>
     // 弹保存框写文本文件，返回路径（取消则 undefined）
     saveTextFile(defaultName: string, content: string): Promise<string | undefined>
     // 导出脱敏诊断包（弹保存框，完成后在文件管理器定位），返回路径（取消则 undefined）

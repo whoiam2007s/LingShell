@@ -275,6 +275,10 @@ export interface SystemSettings {
   contextLimitTokens: number
   // 会话执行到这么多步、且已压缩过时，弹窗建议用压缩摘要开新会话（只是建议，可忽略）
   contextResetSteps: number
+  // 子代理默认超时（秒，60–1800）：派子代理时没显式给 timeout_sec 就用它；默认 600 = 10 分钟
+  subagentTimeoutSec: number
+  // 本地终端的环境变量（每行一个 KEY=VALUE，# 开头为注释）：新建的终端才生效
+  terminalEnv: string
   // 危险命令（rm -rf / mkfs / curl|bash …）即便已有 write 授权也逐次确认。关掉=只认 write 授权。
   confirmDangerous: boolean
   // 发给 AI 前脱敏：工具结果（命令输出/文件内容/终端快照/MCP 结果）里的已知机密与密钥样式换成 [已脱敏]。默认开
@@ -370,7 +374,7 @@ export type TerminalThemeId = 'auto' | 'dark' | 'light' | 'solarized-dark' | 'dr
 export type TerminalCursorStyle = 'block' | 'underline' | 'bar'
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   historyLimit: 200, execTimeoutSec: 50, uploadEncrypt: true,
-  contextLimitTokens: 600000, contextResetSteps: 100, confirmDangerous: true, aiRedact: true,
+  contextLimitTokens: 600000, contextResetSteps: 100, subagentTimeoutSec: 600, terminalEnv: '', confirmDangerous: true, aiRedact: true,
   customRules: '', localNotes: '',
   terminalFontSize: 13, terminalTheme: 'auto',
   terminalRecording: false, recordingRetentionDays: 30,

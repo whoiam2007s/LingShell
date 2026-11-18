@@ -98,7 +98,7 @@ export function GitBranches({ ctx, onShowLog }: { ctx: GitCtx; onShowLog: (ref: 
         <div className="px-3 py-1 text-[10.5px] font-medium text-[var(--color-text-muted)]">{tr('{title}（{n}）', { title, n: rs.length })}</div>
         {rs.map((r) => (
           <div key={r.full} data-git-ref={r.name} onDoubleClick={() => kind === 'local' && !r.current && void ctx.run({ op: 'checkout', branch: r.name }, { done: tr('已切换到 {name}', { name: r.name }) })}
-            className={cn('group flex items-center gap-1.5 px-3 py-[3px] text-[11.5px] hover:bg-[var(--color-bg-hover)]', r.current && 'bg-[color:color-mix(in_srgb,var(--color-accent)_12%,transparent)]')}>
+            className={cn('group flex h-6 items-center gap-1.5 px-3 text-[11.5px] hover:bg-[var(--color-bg-hover)]', r.current && 'bg-[color:color-mix(in_srgb,var(--color-accent)_12%,transparent)]')}>
             <span className="flex w-3.5 shrink-0 justify-center">{r.current ? <Check className="h-3 w-3 text-[var(--color-accent)]" /> : kind === 'tag' ? <Tag className="h-3 w-3 text-[var(--color-text-muted)]" /> : null}</span>
             <span className={cn('min-w-0 truncate font-mono', r.current ? 'font-semibold text-[var(--color-accent)]' : 'text-[var(--color-text-primary)]')} title={r.full}>{r.name}</span>
             {r.upstream && <span className="shrink-0 font-mono text-[10px] text-[var(--color-text-muted)]" title={tr('上游 {name}', { name: r.upstream })}>→ {r.upstream}</span>}
@@ -138,7 +138,7 @@ export function GitBranches({ ctx, onShowLog }: { ctx: GitCtx; onShowLog: (ref: 
           <div className="px-3 py-1 text-[10.5px] font-medium text-[var(--color-text-muted)]">{tr('远程仓库（{n}）', { n: remotes.length })}</div>
           {!remotes.length && <div className="px-3 text-[11px] text-[var(--color-text-muted)]">{tr('没有远程仓库，点工具栏的地球图标添加')}</div>}
           {remotes.map((rm) => (
-            <div key={rm.name} data-git-remote={rm.name} className="group flex items-center gap-1.5 px-3 py-[3px] text-[11.5px] hover:bg-[var(--color-bg-hover)]">
+            <div key={rm.name} data-git-remote={rm.name} className="group flex h-6 items-center gap-1.5 px-3 text-[11.5px] hover:bg-[var(--color-bg-hover)]">
               <Globe className="h-3 w-3 shrink-0 text-[var(--color-text-muted)]" />
               <span className="shrink-0 font-mono text-[var(--color-text-primary)]">{rm.name}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-[var(--color-text-muted)]" title={rm.pushUrl && rm.pushUrl !== rm.fetchUrl ? tr('拉取：{fetch}\n推送：{push}', { fetch: rm.fetchUrl, push: rm.pushUrl }) : rm.fetchUrl}>{rm.fetchUrl}</span>

@@ -321,7 +321,12 @@ function AppShell() {
   useEffect(() => client.on((ev) => { noteSessionEvent(ev as { type?: string; sessionId?: string }) }), [])
   // 设置在渲染层之外被改过（AI 的 set_app_setting、导入配置等）：重拉设置并热更新终端外观，
   // 否则字号 / 配色要重启才生效
-  useEffect(() => client.on((ev) => { if (ev.type === 'app:settingsChanged') loadTermPrefs() }), [])
+  useEffect(() => client.on((ev) => {
+    if (ev.type !== 'app:settingsChanged') return
+    loadTermPrefs()
+    // 模型配置可能被改了（上下文窗口 / 压缩阈值）：让主进程按新配置重算用量并重推，顶部百分比当场更新
+    void client.agent.refreshUsage().catch(() => {})
+  }), [])
   useEffect(() => client.on((ev) => {
     if (ev.type === 'inspection:run' || ev.type === 'agent:turnStarted') void refreshSessions()
     else if (ev.type === 'inspection:openSession') {
@@ -395,6 +400,7 @@ function AppShell() {
             sessionTitle={activeTitle}
             seedDigest={activeSeed}
             workDir={activeWorkDir}
+            onOpenGit={() => void openGit()}
             onPickWorkDir={pickWorkDir}
             onRename={(t) => renameSession(activeId, t)}
             onNew={() => { void newSession() }}

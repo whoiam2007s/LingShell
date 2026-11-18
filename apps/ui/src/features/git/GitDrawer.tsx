@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowDownToDot, ArrowUp, Bot, CloudDownload, Crosshair, FolderOpen, GitBranch, Loader2, RefreshCw, Upload, X } from 'lucide-react'
-import { GIT_OP_LABEL, gitConflictPrompt, gitOpNetwork, groupGitFiles, tk, tr, type GitInProgress, type GitOp, type GitStatusResult, type TerminalInfo } from '@lingshell/shared'
+import { ArrowDown, ArrowDownToDot, ArrowUp, Bot, CloudDownload, ExternalLink, FolderOpen, FolderTree, GitBranch, Loader2, RefreshCw, Upload, X } from 'lucide-react'
+import { GIT_OP_LABEL, gitConflictPrompt, gitOpNetwork, groupGitFiles, tk, tr, type GitInProgress, type GitOp, type GitRepoHit, type GitStatusResult, type TerminalInfo } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { Input } from '../../components/ui/Input.js'
 import { sendToChat } from '../../lib/sendToChat.js'
@@ -32,6 +32,11 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
   const ok = !!term && !(term.type === 'ssh' && term.os === 'windows')
   const [dir, setDir] = useState('')
   const [dirDraft, setDirDraft] = useState('')   // 输入框草稿：回车 / 选择目录才成为当前仓库，操作后的自动刷新不会被没提交的路径带跑
+  // 周边 Git 项目（需求 2）：扫当前仓库所在目录的周围（向下 2 层 + 向上到盘符根）；SSH 远端暂不扫
+  const [repos, setRepos] = useState<GitRepoHit[]>([])
+  const [reposTrunc, setReposTrunc] = useState(false)
+  const [repoOpen, setRepoOpen] = useState(false)
+  const [repoBusy, setRepoBusy] = useState(false)
   const [res, setRes] = useState<GitStatusResult>()
   const [progress, setProgress] = useState<GitInProgress>()
   const [loading, setLoading] = useState(false)
@@ -75,6 +80,25 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
     setDir(d); setDirDraft(d); refresh(d)
   }, [tid, refresh, initialDir])
   useEffect(() => { if (ok) void followTerm() }, [ok])
+  // 目录变了就重扫周边项目；只本地终端（SSH 的目录在远端，扫描成本高，先不做）
+  useEffect(() => {
+    if (!dir || term?.type !== 'local') { setRepos([]); setReposTrunc(false); return }
+    let alive = true
+    setRepoBusy(true)
+    client.git.scanRepos(dir)
+      .then((r) => { if (alive) { setRepos(r.repos); setReposTrunc(r.truncated) } })
+      .catch(() => { if (alive) { setRepos([]); setReposTrunc(false) } })
+      .finally(() => { if (alive) setRepoBusy(false) })
+    return () => { alive = false }
+  }, [dir, term?.type])
+  const pickRepo = (p: string) => { setRepoOpen(false); setDir(p); setDirDraft(p); refresh(p) }
+  const repoRow = (r: GitRepoHit, text: string, badge?: string) => (
+    <button key={r.path} onClick={() => pickRepo(r.path)} title={r.path}
+      className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11.5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+      <span className="min-w-0 flex-1 truncate font-mono">{text}</span>
+      {badge && <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{badge}</span>}
+    </button>
+  )
 
   const note = (t: string) => { setFlash(t); setTimeout(() => setFlash((f) => (f === t ? '' : f)), 3000) }
   // 写操作串行：双击 / 连点不能让两个操作交叉（储藏 ref 会移位，临时 index 也会互相覆盖）
@@ -174,9 +198,34 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
       <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] px-3 py-1.5">
         <Input size="sm" value={dirDraft} onChange={(e) => setDirDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setDir(dirDraft); refresh(dirDraft) } }}
           placeholder={tr('仓库目录（回车读取）')} title={tr('仓库里的任意目录；默认取终端当前目录')} className="font-mono text-[11px]" data-git-dir />
-        <button title={tr('跟随终端当前目录')} onClick={() => void followTerm()} className={IB}><Crosshair className="h-3.5 w-3.5" /></button>
+        {/* 周边 Git 项目（需求 2）：本地终端才有；三组=当前 / 子目录 / 上级，点一项直接切过去 */}
+        {term?.type === 'local' && (
+          <div className="relative shrink-0">
+            <button data-git-repos onClick={() => setRepoOpen((o) => !o)} title={tr('周边 Git 项目（点击切换）')} className={IB}>
+              {repoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />}
+            </button>
+            {repoOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setRepoOpen(false)} />
+                <div data-git-repos-menu className="absolute right-0 top-full z-50 mt-1 max-h-[320px] w-[300px] overflow-y-auto rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1 shadow-2xl">
+                  {!repos.length && <div className="px-2 py-2 text-[11.5px] text-[var(--color-text-muted)]">{repoBusy ? tr('扫描中…') : tr('没找到周边 Git 项目')}</div>}
+                  {repos.some((r) => !r.up && !r.rel) && <div className="px-2 pb-0.5 pt-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('当前目录')}</div>}
+                  {repos.filter((r) => !r.up && !r.rel).map((r) => repoRow(r, r.name, tr('当前')))}
+                  {repos.some((r) => !r.up && r.rel) && <div className="px-2 pb-0.5 pt-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('子目录')}</div>}
+                  {repos.filter((r) => !r.up && r.rel).map((r) => repoRow(r, r.rel))}
+                  {repos.some((r) => r.up > 0) && <div className="px-2 pb-0.5 pt-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('上级目录')}</div>}
+                  {[...repos.filter((r) => r.up > 0)].sort((a, b) => a.up - b.up).map((r) => repoRow(r, r.name, `↑${r.up}`))}
+                  {reposTrunc && <div className="px-2 py-1 text-[10.5px] text-[var(--color-warn)]">{tr('已扫描 1000 个目录，结果可能不全')}</div>}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {/* 用系统资源管理器打开当前仓库目录（需求 3）；路径还没读出来时用输入框里的草稿 */}
+        <button data-git-open-dir title={tr('在资源管理器中打开当前目录')} className={IB}
+          onClick={() => { const p = dir || dirDraft; if (p) void client.fs.openLocal(p).catch(() => {}) }}><ExternalLink className="h-3.5 w-3.5" /></button>
         {term?.type === 'local' && <button title={tr('选择目录…')} className={IB}
-          onClick={() => client.system.pickDirectory().then((d) => { if (d) { setDir(d); setDirDraft(d); refresh(d) } }).catch(() => {})}><FolderOpen className="h-3.5 w-3.5" /></button>}
+          onClick={() => client.system.pickDirectory(dir || dirDraft || undefined).then((d) => { if (d) { setDir(d); setDirDraft(d); refresh(d) } }).catch(() => {})}><FolderOpen className="h-3.5 w-3.5" /></button>}
       </div>
       {st && (
         <div className="flex shrink-0 items-center gap-0.5 border-b border-[var(--color-border-subtle)] px-2">

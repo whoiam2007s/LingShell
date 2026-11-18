@@ -25,8 +25,10 @@ export function registerAppIpc(ctx: MainContext, deps: Deps) {
     startLog, layoutStore, settings, appLock, sessionStore, unattended, hostOf, hiddenTerms, transfer, hostStore, sendTaps,
     electronEncryptor } = ctx
   const { watchdogs } = deps
-  ipcMain.handle('system:pickDirectory', async () => {
-    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+  ipcMain.handle('system:pickDirectory', async (_e, defaultPath?: unknown) => {
+    // 调用方给了默认路径就打开到那里（Git 面板：默认当前仓库目录，别每次都弹到用户主目录）
+    const d = typeof defaultPath === 'string' && defaultPath.trim() ? defaultPath : undefined
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], ...(d ? { defaultPath: d } : {}) })
     return r.canceled || !r.filePaths[0] ? undefined : r.filePaths[0]
   })
   // 存文本文件（会话导出 Markdown）：弹原生保存框，返回存到的路径，取消则 undefined
@@ -119,6 +121,9 @@ export function registerAppIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('settings:save', async (_e, s: AppSettings) => {
     const prevLogDir = sessionLogDir()
     const r = settings.save(s)
+    // 模型配置（上下文窗口 / 压缩阈值）随时可能被改：通知界面刷新外观 + 让主进程重算各会话用量，
+    // 否则顶部用量百分比会一直卡在旧窗口算出来的数字上（patch 为空 = 只是"设置变了"的信号）
+    send({ type: 'app:settingsChanged', patch: {} } as never)
     // 关掉录屏功能 → 正在录的全部停掉
     if (!sys().terminalRecording) for (const id of [...recUnsub.keys()]) await stopRecording(id)
     // 会话日志：关了 / 换目录 → 结束现有文件；开着 → 已打开的终端补上（换目录的从新目录开新文件）

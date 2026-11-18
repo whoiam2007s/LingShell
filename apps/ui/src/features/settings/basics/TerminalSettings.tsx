@@ -14,6 +14,9 @@ import { Loading, Sub, useSystemSettings } from '../SystemSettings.js'
 
 const FONT_SUGGEST = ['JetBrains Mono', 'Cascadia Code', 'Cascadia Mono', 'Consolas', 'Fira Code', 'Source Code Pro', 'Sarasa Mono SC', 'Menlo', 'monospace']
 
+// 环境变量输入框的占位提示：只是给人看的配置示例，不进字典
+const ENV_PLACEHOLDER = '# 注释行以 # 开头'   // i18n-ignore 配置示例
+
 // 高亮规则里有不合法的正则：不保存（就地标红），改对了再自动保存。高亮关着时规则不显示也不生效，不拦
 const highlightError =(s: Sys) => (s.terminalHighlight && (s.highlightRules ?? []).some(badRegex) ? tr('关键字高亮里有不合法的正则') : null)
 
@@ -66,6 +69,20 @@ export function TerminalSettings() {
         <Row label={tr('AI 预测下一条命令')} hint={tr('提示符后灰色显示，→ 接受')}
           tip={tr('停在空提示符 0.8 秒后，按这个终端最近 5 条命令和最后一条输出的末尾（按「发给 AI 前脱敏」处理；生产主机只发命令、不发输出）问一次当前模型，把预测的命令用灰色显示在光标后。按 → 写进提示符（不回车），按其它键消失。同一个提示符只问一次，每分钟最多 6 次；没配 API Key 时不显示。补全浮层开着时不显示。会消耗少量 tokens。')}>
           <Switch checked={!!sys.terminalPredict} onCheckedChange={(v) => set({ terminalPredict: v })} />
+        </Row>
+      </Section>
+
+      <Section title={tr('环境变量')} tip={tr('新建的本地终端才生效，已打开的终端要关掉重开。')}>
+        <Row label={tr('自定义变量')} hint={tr('每行一条：变量名 + 等号 + 值')} wide
+          tip={tr('常用于改语言环境：把 LC_ALL 设成 zh_CN.utf8 用中文排序；想按字节比较文件名就设成 C。以 # 开头是注释；LINGSHELL_ 开头的变量会被忽略（应用内部用）。')}>
+          <textarea
+            value={sys.terminalEnv ?? ''}
+            placeholder={ENV_PLACEHOLDER}
+            onChange={(e) => set({ terminalEnv: e.target.value })}
+            rows={4}
+            spellCheck={false}
+            className="w-full resize-y rounded border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+          />
         </Row>
       </Section>
 

@@ -95,7 +95,8 @@ export function registerTerminalIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('terminal:list', () => terminals.list().filter((t) => !hiddenTerms.has(t.id))
     .map((t) => { const h = t.type === 'ssh' ? hostOf(termHostKey.get(t.id) ?? '') : undefined; return h ? { ...t, env: h.env, hostId: h.id } : t }))
   ipcMain.handle('terminal:createLocal', async (_e, opts) => {
-    const info = terminals.createLocal(opts)
+    // 设置 → 终端 → 环境变量：新建的本地终端带上（已有终端不受影响，要重开）
+    const info = terminals.createLocal({ ...(opts ?? {}), envText: sys().terminalEnv })
     termHostKey.set(info.id, 'local')
     terminals.onData(info.id, (chunk) => send({ type: 'terminal:data', terminalId: info.id, chunk }))
     startLog(info)

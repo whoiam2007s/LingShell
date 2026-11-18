@@ -159,7 +159,7 @@ export function GitChanges({ ctx, refresh, setErr, onFileHistory }: { ctx: GitCt
               {fs.map((f) => {
                 const code = codeOf(g, f), active = diff?.g === g && diff.path === f.path
                 return (
-                  <div key={f.path} data-git-file={f.path} className={cn('group flex items-center gap-1.5 px-3 py-[3px] text-[11.5px] hover:bg-[var(--color-bg-hover)]', active && 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)]')}>
+                  <div key={f.path} data-git-file={f.path} className={cn('group flex h-6 items-center gap-1.5 px-3 text-[11.5px] hover:bg-[var(--color-bg-hover)]', active && 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)]')}>
                     <Checkbox checked={sel.has(key(g, f.path))} onCheckedChange={() => toggle(g, f.path)} aria-label={f.path} />
                     <span title={gitCodeLabel(code)} className={cn('w-3 shrink-0 text-center font-mono font-semibold', CODE_CLS[code] ?? 'text-[var(--color-text-muted)]')}>{code}</span>
                     <button onClick={() => showDiff(g, f)} title={`${f.orig ? `${f.orig} → ` : ''}${f.path}\n${tr('点击查看改动')}`} className="min-w-0 flex-1 truncate text-left font-mono text-[var(--color-text-primary)]">
