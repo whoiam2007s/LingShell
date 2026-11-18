@@ -47,6 +47,7 @@ import {
   SUBAGENT_BRIEF, SUBAGENT_MAX_CONCURRENT, checkSubagentTask, clampTimeoutSec, composeSubagentTask,
   parseSubagentSummary, subagentTitleOf, subagentToolDeny, type SubagentPermission, type SubagentRecord, type SubagentResult,
 } from './subagent.js'
+import { loadSubagentLog, saveSubagentLog, SUBAGENT_LOG_MAX } from './subagentStore.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
 import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
 import { compactionConfig, effectiveLimit, clampCompactRatio, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
@@ -782,14 +783,41 @@ export class DshController {
 
   // 子代理：这些会话是主代理派出来的，工具受限、不弹授权卡、不写进会话列表
   private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string; allowed?: string[] }>()
-  // 每个主会话派过哪些子代理（界面标题栏下拉用；只存内存，重启就没了——列表不是存档）
+  // 每个主会话派过哪些子代理（界面标题栏下拉用）；落盘到 <baseDir>/subagents/<sessionId>.json，
+  // 重启后 subagentsOf 会惰性读回来（之前只存内存，重启就空了）
   private subagentLog = new Map<string, SubagentRecord[]>()
+  /** 已经尝试从磁盘加载过的会话（避免每次查询都读文件） */
+  private subagentLoaded = new Set<string>()
   /** 被主会话「停止」连带取消的子代理：结束时不报「执行失败」，而是写「已随主会话一起停止」 */
   private subagentStopNote = new Map<string, string>()
 
-  /** 某会话派过的子代理（新的在前）：运行中的也在里面 */
+  /** 某会话派过的子代理（新的在前）：运行中的也在里面；第一次查询时从磁盘补历史记录 */
   subagentsOf(sessionId: string): SubagentRecord[] {
+    if (!this.subagentLoaded.has(sessionId)) {
+      // 同步返回内存里的（通常是空的），同时后台读盘，读完推一条事件让界面再取一次
+      this.subagentLoaded.add(sessionId)
+      void loadSubagentLog(this.cfg.baseDir, sessionId).then((old) => {
+        if (!old.length) return
+        const cur = this.subagentLog.get(sessionId) ?? []
+        const known = new Set(cur.map((r) => r.subagentId))
+        const merged = [...old.filter((r) => !known.has(r.subagentId)), ...cur]
+        this.subagentLog.set(sessionId, merged.slice(-SUBAGENT_LOG_MAX))
+        // 不用发事件：界面（SubagentBadge）本来每 3 秒轮询 subagent:list，下次就看到了
+      }).catch(() => { /* 读不出来就当没有历史 */ })
+    }
     return [...(this.subagentLog.get(sessionId) ?? [])].reverse()
+  }
+
+  /** 把某个主会话的子代理记录异步写盘（失败静默：下次状态变化还会写） */
+  private subagentPersistTimer = new Map<string, ReturnType<typeof setTimeout>>()
+  private persistSubagentLog(sessionId: string): void {
+    // 步骤更新（400ms 一次）也会走进来：合并成 500ms 写一次，别一直写盘
+    const old = this.subagentPersistTimer.get(sessionId)
+    if (old) clearTimeout(old)
+    this.subagentPersistTimer.set(sessionId, setTimeout(() => {
+      this.subagentPersistTimer.delete(sessionId)
+      void saveSubagentLog(this.cfg.baseDir, sessionId, this.subagentLog.get(sessionId) ?? [])
+    }, 500))
   }
 
   // ── 会话 ────────────────────────────────────────────
@@ -839,12 +867,14 @@ export class DshController {
     const rec: SubagentRecord = { subagentId: sid, title: subagentTitleOf(t.value, req.title), task: t.value, permission: req.permission, status: 'running', startedAt: new Date(t0).toISOString() }
     const log = this.subagentLog.get(req.parentSessionId) ?? []
     this.subagentLog.set(req.parentSessionId, [...log, rec])
+    this.persistSubagentLog(req.parentSessionId)
     const settle = (patch: Partial<SubagentRecord>) => {
       const at = (this.subagentLog.get(req.parentSessionId) ?? []).findIndex((r) => r.subagentId === sid)
       if (at < 0) return
       const next = [...this.subagentLog.get(req.parentSessionId)!]
       next[at] = { ...next[at], ...patch }
       this.subagentLog.set(req.parentSessionId, next)
+      this.persistSubagentLog(req.parentSessionId)
     }
 
     // 收集最后一条完整的助手消息当总结；轮次结束 / 失败即收
