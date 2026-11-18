@@ -121,6 +121,9 @@ export function registerAppIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('settings:save', async (_e, s: AppSettings) => {
     const prevLogDir = sessionLogDir()
     const r = settings.save(s)
+    // 模型配置（上下文窗口 / 压缩阈值）随时可能被改：通知界面刷新外观 + 让主进程重算各会话用量，
+    // 否则顶部用量百分比会一直卡在旧窗口算出来的数字上（patch 为空 = 只是"设置变了"的信号）
+    send({ type: 'app:settingsChanged', patch: {} } as never)
     // 关掉录屏功能 → 正在录的全部停掉
     if (!sys().terminalRecording) for (const id of [...recUnsub.keys()]) await stopRecording(id)
     // 会话日志：关了 / 换目录 → 结束现有文件；开着 → 已打开的终端补上（换目录的从新目录开新文件）

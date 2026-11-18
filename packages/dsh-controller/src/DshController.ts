@@ -1143,6 +1143,20 @@ export class DshController {
     this.emit({ type: 'agent:contextUsage', sessionId, inputTokens: s.ctxTokens, limit: compactAt, window: s.window, compactAt })
   }
 
+  /**
+   * 设置里改了模型配置（上下文窗口 / 压缩阈值）后调用：把所有**空闲**会话重新套一遍配置并重推用量。
+   * 回合进行中的跳过 —— 配置在回合内本来就不生效（见 applyProfile 的调用点），硬换窗口会让压缩判断错乱。
+   */
+  async refreshUsageAll(): Promise<void> {
+    for (const [id, live] of this.sessions) {
+      if (live.turning) continue
+      try {
+        await this.applyProfile(live)
+        this.emitUsage(id, live)
+      } catch { /* 单会话失败不影响其它 */ }
+    }
+  }
+
   // ── turn ────────────────────────────────────────────
   // attachments：文件 / 目录只把路径追加到消息末尾（见 shared/ai/attachments.ts 的路径块）；
   // 图片存进附件存档，作为图片内容块随消息发送——会话所用配置没开「支持图片」时拒绝（不悄悄丢图）

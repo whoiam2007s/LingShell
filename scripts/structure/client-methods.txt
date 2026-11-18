@@ -7,6 +7,7 @@ agent.interruptTurn → agent:interruptTurn
 agent.listPersisted → agent:listPersisted
 agent.listSessions → agent:listSessions
 agent.reconnectSession → agent:reconnectSession
+agent.refreshUsage → agent:refreshUsage
 agent.renameSession → agent:renameSession
 agent.resetContext → agent:resetContext
 agent.search → agent:search

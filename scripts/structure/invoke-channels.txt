@@ -8,6 +8,7 @@ agent:interruptTurn
 agent:listPersisted
 agent:listSessions
 agent:reconnectSession
+agent:refreshUsage
 agent:renameSession
 agent:resetContext
 agent:search

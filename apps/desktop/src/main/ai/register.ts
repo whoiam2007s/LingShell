@@ -419,6 +419,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('agent:continueSession', (_e, srcId: string, opts?: { title?: string }) => controller.continueSession(srcId, opts))
   // 手动压缩上下文：聊天头部用量百分比点击 → dsh CompactionEngine.compactNow
   ipcMain.handle('agent:compact', (_e, sessionId: string) => controller.compactNow(sessionId))
+  // 设置里改过模型配置（上下文窗口 / 压缩阈值）：让所有空闲会话重算并重推用量，界面百分比立刻跟着变
+  ipcMain.handle('agent:refreshUsage', () => controller.refreshUsageAll())
   ipcMain.handle('agent:search', (_e, query: string) => controller.searchSessions(query))
   // 终端里自然语言写命令：一次性补全，30s 超时；只收描述 + 系统 / 目录 / 生产标记（不带终端内容）。报错原样抛，界面 nlErrorText 翻译
   ipcMain.handle('agent:suggestCommand', async (_e, req: NlCommandRequest) => {
