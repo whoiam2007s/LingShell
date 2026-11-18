@@ -62,12 +62,12 @@ export class TerminalManager {
 
   // shell：非默认 shell（见 shared/terminal/localShell.ts，仅 Windows）。PowerShell / cmd 标仅手动；
   // WSL 先按仅手动登记，后台等它出提示符后静默试一次哨兵，通过才放开给 AI（调用方 await ready(id) 拿最终信息）
-  createLocal(opts?: { cwd?: string; shell?: string }): TerminalInfo {
+  createLocal(opts?: { cwd?: string; shell?: string; envText?: string }): TerminalInfo {
     let shell = opts?.shell && opts.shell !== 'bash' ? opts.shell : undefined
     if (shell !== undefined && !isShellId(shell)) throw new Error(`invalid_shell: ${tr('不认识的 shell')}`)
     if (shell && process.platform !== 'win32') shell = undefined   // 其它系统只有默认 shell
     const id = this.newId()
-    const term = new LocalTerminal(id, { cwd: opts?.cwd, shell })
+    const term = new LocalTerminal(id, { cwd: opts?.cwd, shell, ...(opts?.envText ? { envText: opts.envText } : {}) })
     const kind = shellKind(shell)
     const prefix = kind === 'bash' ? tr('本地') : kind === 'wsl' ? wslDistro(shell)! : shellLabel(shell)
     const info: TerminalInfo = {

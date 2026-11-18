@@ -49,6 +49,7 @@ export const APP_SETTING_SPECS: readonly SettingSpec[] = [
   { key: 'system.contextLimitTokens', type: 'number', min: 10000, max: 2000000, label: '自动压缩阈值（tokens）', writable: true },
   { key: 'system.contextResetSteps', type: 'number', min: 10, max: 1000, label: '建议开新会话的步数', writable: true },
   { key: 'system.subagentTimeoutSec', type: 'number', min: 60, max: 1800, label: '子代理默认超时（秒，默认 600 = 10 分钟）', writable: true },
+  { key: 'system.terminalEnv', type: 'string', label: '本地终端环境变量（每行一个 KEY=VALUE）', writable: true },
   // ── 界面外观（与 shared/ui/appearance.ts 的 UI_THEMES / UI_ZOOMS / ICON_SIZES 对齐）──
   // 「界面主题」和「终端配色」是两件事：uiTheme 换整个界面，terminalTheme 只换终端区域
   {

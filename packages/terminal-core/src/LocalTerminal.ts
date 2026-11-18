@@ -25,12 +25,32 @@ export function localShellSpawn(shell: string | undefined, hasCwd: boolean): { f
 }
 
 // 主进程 env 里有引擎用的 API Key（LINGSHELL_*_KEY），不能漏进终端：一条 `env` 就会进 AI 对话记录
-export function terminalEnv(): NodeJS.ProcessEnv {
+/** 解析「设置 → 终端 → 环境变量」里填的 KEY=VALUE 行（跳过空行 / # 注释 / 非法键名，禁止往终端塞引擎密钥） */
+export function extraEnvOf(text?: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!text) return out
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const at = line.indexOf('=')
+    if (at <= 0) continue
+    const key = line.slice(0, at).trim()
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || /^LINGSHELL_.*KEY$/.test(key)) continue
+    out[key] = line.slice(at + 1)
+  }
+  return out
+}
+
+export function terminalEnv(extraText?: string): NodeJS.ProcessEnv {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^LINGSHELL_.*KEY$/.test(k)))
+  // 用户在设置里填的优先（可以覆盖 LC_ALL / LANG / PATH 等任何变量）
+  const extra = extraEnvOf(extraText)
+  Object.assign(env, extra)
   // Windows 上没有 UTF-8 locale 时（尤其是打包版：Electron 从资源管理器启动，环境里没有 LANG/LC_CTYPE），
   // Git Bash 的 ls 会把中文目录名转义成 $'\344\270\232'、提示符里的中文路径变成 M-eM--M-~。
-  // 这里兜一个 UTF-8 locale：MSYS2 认的名字是 C.utf8（不是 C.UTF-8）；用户自己在 .bashrc 里设了 LC_ALL 会覆盖回来。
-  if (process.platform === 'win32' && !/utf-?8/i.test(env.LC_ALL ?? '')) env.LC_ALL = 'C.utf8'
+  // 这里兜一个 UTF-8 locale：MSYS2 认的名字是 C.utf8（不是 C.UTF-8）。
+  // 用户自己设了 LC_ALL 就一律尊重（设置 LC_ALL=C 是想按字节比较，硬改成 C.utf8 会破坏排序）。
+  if (process.platform === 'win32' && !('LC_ALL' in extra) && !/utf-?8/i.test(env.LC_ALL ?? '')) env.LC_ALL = 'C.utf8'
   return env
 }
 
@@ -52,7 +72,7 @@ export class LocalTerminal extends BaseTerminal {
 
   private gitBash: boolean
   private execFile?: string   // 仅 Windows Git Bash：AI 函数读命令的临时文件
-  constructor(id: string, opts?: { cwd?: string; shell?: string }) {
+  constructor(id: string, opts?: { cwd?: string; shell?: string; envText?: string }) {
     super(id)
     this.gitBash = shellKind(opts?.shell) === 'bash'
     if (process.platform === 'win32' && this.gitBash) this.execFile = join(os.tmpdir(), `lingshell-exec-${id}-${randomBytes(6).toString('hex')}`).split('\\').join('/')
@@ -62,7 +82,7 @@ export class LocalTerminal extends BaseTerminal {
       cwd: opts?.cwd ?? os.homedir(),
       // PROMPT_COMMAND：提示符总另起一行（cat 无末尾换行的文件时不粘在输出后面），见 promptNewline.ts。只给 bash（WSL 收不到 Windows 环境变量，建好后另发设置）
       env: {
-        ...terminalEnv(),
+        ...terminalEnv(opts?.envText),
         ...(this.gitBash ? { HISTCONTROL: 'ignorespace', PROMPT_COMMAND: PROMPT_NEWLINE_ENV } : {}),
         ...(this.execFile ? { LINGSHELL_EXEC: this.execFile, 'BASH_FUNC_AI%%': EXEC_FN } : {}),
       } as Record<string, string>,
