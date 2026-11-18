@@ -12,7 +12,7 @@ export function createAppIpc(): AppApi {
       save: (patch: Partial<AppLayout>) => window.electronAPI.invoke('layout:save', patch) as Promise<void>,
     },
     system: {
-      pickDirectory: () => window.electronAPI.invoke('system:pickDirectory') as Promise<string | undefined>,
+      pickDirectory: (defaultPath?: string) => window.electronAPI.invoke('system:pickDirectory', defaultPath) as Promise<string | undefined>,
       saveTextFile: (name: string, content: string) => window.electronAPI.invoke('system:saveTextFile', name, content) as Promise<string | undefined>,
       exportDiagnostics: () => window.electronAPI.invoke('system:exportDiagnostics') as Promise<string | undefined>,
       getUpdateStatus: () => window.electronAPI.invoke('system:getUpdateStatus') as Promise<{ currentVersion: string; status: UpdateStatus }>,

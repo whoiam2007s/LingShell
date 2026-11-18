@@ -4,6 +4,8 @@ import type { AppClient, GitApi } from '@lingshell/shared'
 export function createGitIpc(): GitApi {
   return {
     git: {
+      branchOf: (dir) => window.electronAPI.invoke('git:branchOf', dir) as Promise<string | undefined>,
+      scanRepos: (dir) => window.electronAPI.invoke('git:scanRepos', dir) as ReturnType<AppClient['git']['scanRepos']>,
       status: (id, dir) => window.electronAPI.invoke('git:status', id, dir) as ReturnType<AppClient['git']['status']>,
       diff: (id, root, path, mode) => window.electronAPI.invoke('git:diff', id, root, path, mode) as Promise<string>,
       stage: (id, root, paths, stage) => window.electronAPI.invoke('git:stage', id, root, paths, stage) as Promise<void>,

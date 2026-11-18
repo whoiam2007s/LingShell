@@ -395,6 +395,7 @@ function AppShell() {
             sessionTitle={activeTitle}
             seedDigest={activeSeed}
             workDir={activeWorkDir}
+            onOpenGit={() => void openGit()}
             onPickWorkDir={pickWorkDir}
             onRename={(t) => renameSession(activeId, t)}
             onNew={() => { void newSession() }}

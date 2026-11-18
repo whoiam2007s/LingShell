@@ -53,7 +53,7 @@ export function GitStash({ ctx }: { ctx: GitCtx }) {
         {list && !list.length && <div className="px-3 py-3 text-[12px] text-[var(--color-text-muted)]">{tr('没有储藏')}</div>}
         {list?.map((s) => (
           <div key={s.ref} data-git-stash={s.ref} onClick={() => setSel(sel === s.ref ? undefined : s.ref)}
-            className={cn('group flex cursor-pointer items-center gap-2 px-3 py-1 text-[11.5px] hover:bg-[var(--color-bg-hover)]', sel === s.ref && 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)]')}>
+            className={cn('group flex h-7 cursor-pointer items-center gap-2 px-3 text-[11.5px] hover:bg-[var(--color-bg-hover)]', sel === s.ref && 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)]')}>
             <span className="shrink-0 font-mono text-[10.5px] text-[var(--color-text-muted)]">{s.ref}</span>
             <span className="min-w-0 flex-1 truncate text-[var(--color-text-primary)]" title={s.message}>{s.message}</span>
             <span className="shrink-0 text-[10.5px] text-[var(--color-text-muted)]">{shortDate(s.date)}</span>

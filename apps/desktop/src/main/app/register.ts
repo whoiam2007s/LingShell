@@ -25,8 +25,10 @@ export function registerAppIpc(ctx: MainContext, deps: Deps) {
     startLog, layoutStore, settings, appLock, sessionStore, unattended, hostOf, hiddenTerms, transfer, hostStore, sendTaps,
     electronEncryptor } = ctx
   const { watchdogs } = deps
-  ipcMain.handle('system:pickDirectory', async () => {
-    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+  ipcMain.handle('system:pickDirectory', async (_e, defaultPath?: unknown) => {
+    // 调用方给了默认路径就打开到那里（Git 面板：默认当前仓库目录，别每次都弹到用户主目录）
+    const d = typeof defaultPath === 'string' && defaultPath.trim() ? defaultPath : undefined
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], ...(d ? { defaultPath: d } : {}) })
     return r.canceled || !r.filePaths[0] ? undefined : r.filePaths[0]
   })
   // 存文本文件（会话导出 Markdown）：弹原生保存框，返回存到的路径，取消则 undefined

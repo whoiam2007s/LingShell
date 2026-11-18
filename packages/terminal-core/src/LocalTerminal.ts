@@ -26,7 +26,12 @@ export function localShellSpawn(shell: string | undefined, hasCwd: boolean): { f
 
 // 主进程 env 里有引擎用的 API Key（LINGSHELL_*_KEY），不能漏进终端：一条 `env` 就会进 AI 对话记录
 export function terminalEnv(): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^LINGSHELL_.*KEY$/.test(k)))
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^LINGSHELL_.*KEY$/.test(k)))
+  // Windows 上没有 UTF-8 locale 时（尤其是打包版：Electron 从资源管理器启动，环境里没有 LANG/LC_CTYPE），
+  // Git Bash 的 ls 会把中文目录名转义成 $'\344\270\232'、提示符里的中文路径变成 M-eM--M-~。
+  // 这里兜一个 UTF-8 locale：MSYS2 认的名字是 C.utf8（不是 C.UTF-8）；用户自己在 .bashrc 里设了 LC_ALL 会覆盖回来。
+  if (process.platform === 'win32' && !/utf-?8/i.test(env.LC_ALL ?? '')) env.LC_ALL = 'C.utf8'
+  return env
 }
 
 // Windows 本地 Git Bash 的 AI 执行函数（经环境变量 BASH_FUNC_AI%% 导入，不往终端里打任何设置命令）。终端里只敲 ` AI`，

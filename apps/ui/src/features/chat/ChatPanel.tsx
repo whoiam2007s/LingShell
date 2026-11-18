@@ -61,9 +61,10 @@ import { usePreview, PreviewBanner, PreviewPlanCard, previewPlanOfTurn } from '.
 const log = logger.scope('chat')
 
 // 受控对话面板：会话生命周期（创建/重连/选择/phase）由 App 管，这里只按 activeSessionId 渲染对话流。
-export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession }: {
+export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession, onOpenGit }: {
   onBack?: () => void          // 错误态「返回上一个会话」（没有可回的会话时不传）
   onOpenSession?: (id: string) => Promise<void>   // 切到某会话（分叉出的新会话：刷新列表并打开）
+  onOpenGit?: () => void       // 标题前的分支 tag 点开 Git 面板
   sessions?: SessionMeta[]     // 会话列表（标签栏「…」下拉里取最近 10 条）
   activeSessionId: string
   sessionPhase: SessionPhase
@@ -678,7 +679,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
 
       {/* 会话 header */}
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
-        postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} workDir={workDir} onRename={onRename} onNew={onNew} models={canChat ? models : undefined}
+        postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} workDir={workDir} onRename={onRename} onNew={onNew} onOpenGit={onOpenGit} models={canChat ? models : undefined}
         preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
         thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode}
         switcher={sessions?.length ? {
@@ -1267,7 +1268,7 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
   )
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, workDir, onRename, onNew, models, preview, thinking, onPickThinking, mode, onPickMode, switcher }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, workDir, onRename, onNew, onOpenGit, models, preview, thinking, onPickThinking, mode, onPickMode, switcher }: {
   /** 标题后的会话切换箭头（hover 出最近会话列表） */
   switcher?: Omit<SessionSwitcherProps, 'sessions'> & { sessions: SessionMeta[] }
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
@@ -1286,9 +1287,19 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   workDir?: string   // 当前会话绑定的工作目录（hover 标题时和名称一起显示）
   onRename?: (t: string) => void
   onNew?: () => void
+  onOpenGit?: () => void   // 点分支 tag：打开 Git 面板
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  // 目录 tag 直接用工作目录最后一段；分支 tag 异步读（主进程带 5 秒缓存），不是仓库/读失败就不显示
+  const [branch, setBranch] = useState<string>()
+  useEffect(() => {
+    if (!workDir) { setBranch(undefined); return }
+    let alive = true
+    void client.git.branchOf(workDir).then((b) => { if (alive) setBranch(b) }).catch(() => { if (alive) setBranch(undefined) })
+    return () => { alive = false }
+  }, [workDir])
+  const dirTag = workDir ? (workDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || workDir) : ''
   const commit = () => { onRename?.(draft.trim() || title); setEditing(false) }
   return (
     <div className="relative z-30 flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 pl-3">
@@ -1305,7 +1316,18 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
       ) : (
         <div className="group flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium text-[var(--color-text-primary)]">
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-          <span className="truncate" title={workDir ? `${titleOf(title)}\n${tr('工作目录：{path}', { path: workDir })}` : `${titleOf(title)}\n${tr('未绑定工作目录（用默认工作区）')}`}>{titleOf(title)}</span>
+          {/* 项目目录 tag（最多 100px，点开资源管理器）+ Git 分支 tag（最多 100px，点开 Git 面板） */}
+          {dirTag && (
+            <button data-dir-tag onClick={() => { if (workDir) void client.fs.openLocal(workDir).catch(() => {}) }}
+              title={tr('工作目录：{path}\n点击在资源管理器中打开', { path: workDir ?? '' })}
+              className="max-w-[100px] shrink-0 truncate rounded bg-[var(--color-bg-raised)] px-1.5 py-0.5 text-left font-mono text-[10.5px] font-normal text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-accent)]">{dirTag}</button>
+          )}
+          {branch && (
+            <button data-branch-tag onClick={onOpenGit} disabled={!onOpenGit}
+              title={tr('当前分支：{branch}\n点击打开 Git 面板', { branch })}
+              className="max-w-[100px] shrink-0 truncate rounded bg-[color:color-mix(in_srgb,var(--color-accent)_14%,transparent)] px-1.5 py-0.5 text-left font-mono text-[10.5px] font-normal text-[var(--color-accent)] transition-opacity hover:opacity-80">{branch}</button>
+          )}
+          <span className="max-w-[300px] truncate" title={workDir ? `${titleOf(title)}\n${tr('工作目录：{path}', { path: workDir })}` : `${titleOf(title)}\n${tr('未绑定工作目录（用默认工作区）')}`}>{titleOf(title)}</span>
           {/* 只有点铅笔图标才进入编辑，点标题文字不触发（避免误触） */}
           {switcher && <SessionSwitcher {...switcher} />}
           {onRename && (

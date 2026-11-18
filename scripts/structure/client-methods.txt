@@ -170,6 +170,7 @@ fs.sudoForget → fs:sudoForget
 fs.unpack → fs:unpack
 fs.writeText → fs:writeText
 git.blame → git:blame
+git.branchOf → git:branchOf
 git.changelog → git:changelog
 git.commit → git:commit
 git.commitDiff → git:commitDiff
@@ -184,6 +185,7 @@ git.rebasePlan → git:rebasePlan
 git.refs → git:refs
 git.remotes → git:remotes
 git.review → git:review
+git.scanRepos → git:scanRepos
 git.show → git:show
 git.stage → git:stage
 git.stashDiff → git:stashDiff
