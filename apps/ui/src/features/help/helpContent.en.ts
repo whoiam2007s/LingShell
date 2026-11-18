@@ -60,6 +60,17 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     id: 'chat', title: 'AI chat and permissions', icon: MessageSquare,
     blocks: [
       { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hovering shows the session name and its bound working directory, then "Rename" and "Export session" appear; unbound ones say "No working directory bound (using the default workspace)"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Knowledge base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
+      { h: 'Folder / branch tags before the title', p: 'Two small tags sit in front of the session title: on the left the **bound working folder name** (e.g. `source`), on the right the **current Git branch** (e.g. `feat/0.1.16`). Both are capped at 100px with an ellipsis; hover for the full value. The folder tag is hidden when no folder is bound, the branch tag when it is not a Git repository.', tips: [
+        'Click the folder tag: open that folder in the system file manager.',
+        'Click the branch tag: open the Git panel.',
+        'The session title itself is capped at 300px with an ellipsis; hover for the full name.',
+      ] },
+      { h: 'Git panel: nearby repositories / open current folder', steps: [
+        'The "Nearby Git repositories" button (folder-tree icon) on the right of the path bar lists Git repositories around the current folder in three groups — current folder, subfolders (e.g. `projects/other`) and parent folders (`↑1` / `↑2` shows how many levels up). Click one to switch to it.',
+        'Scan range: 2 levels down plus every level up to the drive root (never crosses drives); at most 1000 folders, and it says "the list may be incomplete" when the budget runs out. Folders starting with `.` or `_` and library / build folders such as `node_modules`, `target`, `vendor`, `dist` are skipped; detection is just "does `.git` exist", no git command is run.',
+        'The external-link icon opens the current repository folder in the system file manager.',
+        '"Choose folder…" now opens at the current repository folder instead of your home directory.',
+      ], tips: ['Local folders only; repositories on SSH hosts are out of scope for this version.', 'Opening the panel still locates the terminal\'s current directory (the old "Follow terminal directory" button is gone).'] },
       { h: 'Status dots in session history', p: 'Each session in "Session history" has a small dot before its title showing the result of **the last turn** of that session: running = blue (breathing), waiting for your approval / plan = orange, failed = red.', tips: [
         'Opening the drawer or the session does not clear it; the red dot goes away only after that session\'s **next turn succeeds**.',
         'It reflects the last turn only, not historical failures; no dot = the last turn finished normally.',
@@ -300,6 +311,11 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'These calls also count toward "Usage" (source: "Other").',
       ] },
       { h: 'Character encoding', p: 'If Chinese text is garbled on an older server, change "Character encoding" in the SSH host form to GBK / GB18030 / Big5 (default UTF-8); it applies to terminals opened afterward. Running terminals can\'t switch; local terminals don\'t have this option.' },
+      { h: 'Chinese text (Git Bash locale)', p: 'A local Git Bash terminal now gets a UTF-8 locale automatically (`LC_ALL=C.utf8` on Windows), so `ls` no longer escapes Chinese folder names into octal byte sequences and the prompt no longer shows them as `M-eM--M-~`.', tips: [
+        'Only applied on Windows, and only when your `LC_ALL` is not already a UTF-8 value; anything you export in `.bashrc` wins.',
+        'SSH terminals take their locale from the server and are unaffected.',
+        'For pinyin-style sorting run `export LC_ALL=zh_CN.utf8` (that locale must be installed). Names that are not valid UTF-8 (created by old GBK software) still cannot be shown — that is a filename-encoding issue.',
+      ] },
       { h: 'Command history', p: '"Command history" in the terminal\'s right activity bar lists commands recorded by this app for that host (local terminals share one list). Double-click to fill one into the terminal without running it. Input typed while the cursor is at a password prompt from sudo / ssh / mysql etc. isn\'t recorded.', steps: [
         'By default only **commands you typed yourself** are shown; switch to "AI" to see the ones the AI ran (with execution mode and exit code).',
         'Hover a long command to see it in full (up to 10 lines) — no horizontal dragging.',

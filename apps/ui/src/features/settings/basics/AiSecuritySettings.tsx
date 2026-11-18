@@ -85,6 +85,10 @@ export function AiSecuritySettings() {
         <Row label={tr('建议开新会话步数')} hint={tr('0 = 不提示')} tip={tr('会话执行到这么多步、且已压缩过时，提示是否用压缩摘要开新会话（只是建议，可忽略）。')}>
           <NumberInput className="w-28" value={sys.contextResetSteps} min={0} max={10000} onChange={(n) => set({ contextResetSteps: n })} />
         </Row>
+        <Row label={tr('子代理默认超时')} hint={tr('秒，默认 600（10 分钟）')}
+          tip={tr('派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。')}>
+          <NumberInput className="w-28" value={sys.subagentTimeoutSec} min={60} max={1800} onChange={(n) => set({ subagentTimeoutSec: n })} />
+        </Row>
       </Section>
 
       <AppLockSettings>

@@ -51,7 +51,8 @@ export function buildTerminalsSection(terms: TermLine[]): string {
   return `## 当前终端（实时，以此为准；之前对话里出现过的终端 id 可能已失效）\n${lines.join('\n')}\n`
     + '命令要匹配各终端的系统：Windows · Git Bash 支持 bash 语法和常用 coreutils，但没有 free / ss 等 Linux 专有工具（需要时用 powershell.exe -NoProfile -Command 或 Windows 自带命令）；macOS 用 BSD 版工具。\n'
     + '「当前目录」是最近一次提示符上报 / 探测的缓存；用户只问目录时通常够用，不必为了回答单独跑 pwd（要精确再用）。多台终端执行同一条命令请用 exec_on_terminals，会合并成一张授权卡，不要逐台 exec_in_terminal。\n'
-    + '派子代理（spawn_subagent）时，把它要用的终端 id（上面 `term_xxx`）写进 task；子代理看不到你的对话，只写主机名它会去猜。'
+    + '派子代理（spawn_subagent）时，把它要用的终端 id（上面 `term_xxx`）写进 task；子代理看不到你的对话，只写主机名它会去猜。\n'
+    + '能独立完成、且要多步操作（改一批文件、跑测试/构建、翻多个目录找线索、多台机器重复检查）的子任务，优先派子代理去做，别自己一条条敲；单条命令或单个文件的小修改自己做更快。'
 }
 
 export function installTerminalsSection(ctx: any, list: () => TermLine[]): () => void {

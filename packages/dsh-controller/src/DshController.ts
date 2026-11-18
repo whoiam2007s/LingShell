@@ -123,6 +123,8 @@ export interface DshControllerConfig extends TerminalToolDeps {
   listTerminals?(): { id: string; title: string; type: string; os?: string }[]
   contextLimitTokens?(): number
   contextResetSteps?(): number
+  // 子代理默认超时（秒）：派子代理没显式给 timeout_sec 时用它（设置页「子代理默认超时」，默认 600）
+  subagentTimeoutSec?(): number
   // 全局自定义规则（系统设置），每次模型请求现读注入系统提示词
   customRules?(): string
   // 主机知识库：这些主机（hostKey）相关的知识卡注入文本（已截断），没有返回 ''。每次模型请求现求值
@@ -872,7 +874,8 @@ export class DshController {
       })
     })
 
-    const timeoutMs = clampTimeoutSec(req.timeoutSec) * 1000
+    // 没显式给超时就用设置里的「子代理默认超时」（默认 600 秒），派一个就跑很久会白占并发位
+    const timeoutMs = clampTimeoutSec(req.timeoutSec, this.cfg.subagentTimeoutSec?.()) * 1000
     let timedOut = false
     const timer = setTimeout(() => {
       timedOut = true

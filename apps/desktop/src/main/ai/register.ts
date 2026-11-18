@@ -202,6 +202,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     execTimeoutMs: () => sys().execTimeoutSec * 1000,
     contextLimitTokens: () => AUTO_COMPACT_CAP,   // 实际阈值 = min(600K, 模型上下文窗口 × 60%)，见 dsh-controller compaction.ts
     contextResetSteps: () => sys().contextResetSteps,
+    subagentTimeoutSec: () => sys().subagentTimeoutSec,
     createLocalTerminal: (sessionId) => openTerminal(sessionId, 'local'),
     createSshTerminal: (sessionId, hostId) => openTerminal(sessionId, hostId),
     // 分级 + 该主机的知识卡标题（全文在用到该主机后经系统提示「主机知识库」段注入）

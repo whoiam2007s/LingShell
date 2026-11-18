@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
 import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
 import type { DbConn } from '@lingshell/shared'
-import { checkSubagentTask, clampTimeoutSec, parseToolList, type SubagentResult } from './subagent.js'
+import { checkSubagentTask, parseToolList, type SubagentResult } from './subagent.js'
 import { unifiedDiff } from './diff.js'
 import { withRedaction, type SecretsFn } from './redaction.js'
 import { wireOf, type SecretVault } from './secretVault.js'
@@ -1393,7 +1393,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
     },
     {
       name: 'spawn_subagent',
-      description: '把一个**单一、明确**的子任务派给子代理：它用独立会话去做，只把结构化总结交回来。子代理不能跟你或用户交互、不能删除东西、不能再派子代理——它遇到需要拍板的事会返回 status=blocked 并带回问题，由你决定换做法还是去问用户。适合：多台机器上重复同一套检查、翻一批文件找线索、跑一段耗时命令。不适合：需要边做边判断的大任务（自己拆成几次调用）。写 task 时：① 目标终端要写清 id（如 term_28ae，从「当前终端」段取），只写主机名不算；② 当前没有合适的终端就让它先 create_terminal 新开一个（会自动 cd 到会话工作目录）；③ 只读子代理（permission=read，缺省）只能用查看类命令（cat / ls / grep / ps / df / systemctl status / nginx -v…），要改系统状态请派 permission=write 或自己做。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      description: '把一个**单一、明确**的子任务派给子代理：它用独立会话去做，只把结构化总结交回来。子代理不能跟你或用户交互、不能删除东西、不能再派子代理——它遇到需要拍板的事会返回 status=blocked 并带回问题，由你决定换做法还是去问用户。**必须是一个能独立完成的单一子任务：单一功能、短时间内做得完、尽量不跨模块**（跨模块的大改自己拆开、分几次派）。**适合派**：① 写代码类——改一个功能涉及的一批文件、跑测试/构建并修到通过、按某个思路重构一个模块、查清一个模块的实现（用 permission=write）；② 多台机器重复同一套检查、翻多个目录找线索、跑一段耗时命令（用缺省 permission=read）。**别派**：单条命令或单个文件的连续小修（自己做更快）；目标还没定、必须边看边决定的探索（先把范围定下来再派）；一次要改好几个模块的大重构（拆成几个子任务分别派）。写 task 时：① 目标终端要写清 id（如 term_28ae，从「当前终端」段取），只写主机名不算；② 当前没有合适的终端就让它先 create_terminal 新开一个（会自动 cd 到会话工作目录）；③ 只读子代理（permission=read，缺省）只能用查看类命令（cat / ls / grep / ps / df / systemctl status / nginx -v…），要改文件 / 跑测试 / 改系统状态用 permission=write——首次会弹一张授权卡，之后本会话内不再问。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
         task: str('要子代理做的事：一句话说清、范围明确（2000 字以内）；写明用哪个终端（term_xxx）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         title: optStr('给人看的一句话标题（≤40 字，如「查生产 nginx 版本」）：界面下拉里只显示它；不填就取 task 首句'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1411,7 +1411,8 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const r: SubagentResult = await deps.spawnSubagent({
           task: t.value,
           ...(typeof args?.title === 'string' && args.title.trim() ? { title: args.title.trim() } : {}),
-          timeoutSec: clampTimeoutSec(args?.timeout_sec),
+          // 原样交给控制器：默认值（设置页的「子代理默认超时」）在那边统一算，这里先夹会把默认值写死
+          timeoutSec: args?.timeout_sec as number | undefined,
           contextHint: typeof args?.context_hint === 'string' ? args.context_hint : undefined,
           ...(parseToolList(args?.tools) ? { tools: parseToolList(args?.tools) } : {}),
           permission,
