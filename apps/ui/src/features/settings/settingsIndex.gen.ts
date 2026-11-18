@@ -158,6 +158,20 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "terminal",
   "kind": "section",
+  "label": "环境变量",
+  "tip": "新建的本地终端才生效，已打开的终端要关掉重开。"
+ },
+ {
+  "tab": "terminal",
+  "kind": "row",
+  "label": "自定义变量",
+  "section": "环境变量",
+  "hint": "每行一条：变量名 + 等号 + 值",
+  "tip": "常用于改语言环境：把 LC_ALL 设成 zh_CN.utf8 用中文排序；想按字节比较文件名就设成 C。以 # 开头是注释；LINGSHELL_ 开头的变量会被忽略（应用内部用）。"
+ },
+ {
+  "tab": "terminal",
+  "kind": "section",
   "label": "提醒"
  },
  {
