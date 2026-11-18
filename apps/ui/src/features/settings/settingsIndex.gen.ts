@@ -382,6 +382,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "ai",
   "kind": "row",
+  "label": "子代理默认超时",
+  "section": "上下文",
+  "hint": "秒，默认 600（10 分钟）",
+  "tip": "派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。"
+ },
+ {
+  "tab": "ai",
+  "kind": "row",
   "label": "空闲自动锁定",
   "section": "上下文",
   "hint": "分钟，0 = 不按空闲锁定",

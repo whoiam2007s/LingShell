@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ShieldAlert, ShieldCheck, Shield, ShieldX, Clock, Check, X, Pencil } from 'lucide-react'
+import { ShieldAlert, ShieldCheck, Shield, ShieldX, Clock, Check, X, Pencil, ChevronDown } from 'lucide-react'
 import type { ConvItem } from '../useConversation.js'
 import { cn } from '../../../lib/cn.js'
 import { client } from '../../../client/index.js'
@@ -115,22 +115,34 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
   })
 
   const HeadIcon = resolved === 'allow' ? ShieldCheck : danger ? ShieldAlert : Shield
+  // 交互后（已允许 / 已拒绝 / 超时 / 本轮结束）默认收起，只留标题行 + 结果；点标题行能再展开看详情。
+  // 跟工具执行记录一样：处理过的卡片不该继续占着屏幕。用户手动展开过就不再自动收。
+  const [open, setOpen] = useState(true)
+  const [manual, setManual] = useState(false)
+  useEffect(() => { if (resolved && !manual) setOpen(false) }, [resolved, manual])
+  const toggle = () => { setManual(true); setOpen((o) => !o) }
 
   return (
     <div ref={rootRef} data-auth-pending={resolved ? undefined : ''} className="animate-fade-in px-3 py-1">
       <div className={cn('overflow-hidden rounded-md border bg-[var(--color-bg-raised)]', armed ? 'border-[var(--color-danger)]' : 'border-[var(--color-border-default)]')}>
-        {/* 头部：危险时用淡红底色区分，不用刺眼红框 */}
-        <div className={cn('flex items-center gap-2 px-2.5 py-1.5', danger && 'bg-[color:color-mix(in_srgb,var(--color-danger)_10%,transparent)]')}>
+        {/* 头部：危险时用淡红底色区分，不用刺眼红框；处理完的卡片点这里可展开/收起详情 */}
+        <div className={cn('flex items-center gap-2 px-2.5 py-1.5', danger && 'bg-[color:color-mix(in_srgb,var(--color-danger)_10%,transparent)]', resolved && 'cursor-pointer select-none')}
+          onClick={resolved ? toggle : undefined}
+          title={resolved ? tr('展开 / 收起详情') : undefined}>
           <HeadIcon className={cn('h-3.5 w-3.5 shrink-0', danger ? 'text-[var(--color-danger)]' : 'text-[var(--color-warn)]')} />
           <span className={cn('text-[12px] font-semibold', danger ? 'text-[var(--color-danger)]' : 'text-[var(--color-text-primary)]')}>
             {a.mcp ? tr('会话请求调用外部工具') : tr('会话请求权限')}
           </span>
+          {/* 收起后靠这里看结果（原来只看得到"已允许/已拒绝"藏在详情里） */}
+          {resolved && <span data-auth-result className="shrink-0"><ResultBadge result={resolved} /></span>}
           <span className="ml-auto rounded bg-[var(--color-bg-base)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)]">
             {a.mcp ? 'MCP' : permText}
           </span>
+          {resolved && <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)] transition-transform', !open && '-rotate-90')} />}
         </div>
 
-        {/* 详情 */}
+        {/* 详情：交互后默认收起 */}
+        {open && (
         <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3 py-2">
           {a.mcp ? (
             <div className="text-[12px] text-[var(--color-text-secondary)]">
@@ -304,13 +316,16 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
               )}
             </>
           ) : (
-            <div className="mt-2">
-              <ResultBadge result={resolved} />
-              {resolved === 'allow' && sent?.sudo && <div className="mt-1 text-[11px] text-[var(--color-warn)]">{tr('本主机 {n} 分钟内允许提权（可在会话授权里立即收回）', { n: sent.sudo })}</div>}
-              {resolved === 'deny' && sent?.note && <div className="mt-1 text-[11px] text-[var(--color-text-muted)]">{tr('原因：{reason}', { reason: sent.note })}</div>}
-            </div>
+            // 结果徽章已经挪到标题行（收起后也看得见），这里只补附加说明
+            (sent?.sudo || sent?.note) ? (
+              <div className="mt-2">
+                {resolved === 'allow' && sent?.sudo && <div className="mt-1 text-[11px] text-[var(--color-warn)]">{tr('本主机 {n} 分钟内允许提权（可在会话授权里立即收回）', { n: sent.sudo })}</div>}
+                {resolved === 'deny' && sent?.note && <div className="mt-1 text-[11px] text-[var(--color-text-muted)]">{tr('原因：{reason}', { reason: sent.note })}</div>}
+              </div>
+            ) : null
           )}
         </div>
+        )}
       </div>
     </div>
   )
