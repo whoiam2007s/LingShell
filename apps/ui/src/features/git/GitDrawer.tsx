@@ -3,6 +3,7 @@ import { ArrowDown, ArrowDownToDot, ArrowUp, Bot, CloudDownload, ExternalLink, F
 import { GIT_OP_LABEL, gitConflictPrompt, gitOpNetwork, groupGitFiles, tk, tr, type GitInProgress, type GitOp, type GitRepoHit, type GitStatusResult, type TerminalInfo } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { Input } from '../../components/ui/Input.js'
+import { Select } from '../../components/ui/Select.js'
 import { sendToChat } from '../../lib/sendToChat.js'
 import { getTermCwd } from '../../lib/termCwd.js'
 import { cn } from '../../lib/cn.js'
@@ -46,6 +47,9 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
   const [reposTrunc, setReposTrunc] = useState(false)
   const [repoOpen, setRepoOpen] = useState(false)
   const [repoBusy, setRepoBusy] = useState(false)
+  // 扫描结果缓存 30 秒（大目录别反复扫）+ 点刷新时 version+1 绕开缓存
+  const repoCache = useRef<{ key: string; at: number; repos: GitRepoHit[]; trunc: boolean } | undefined>(undefined)
+  const [repoVersion, setRepoVersion] = useState(0)
   const [res, setRes] = useState<GitStatusResult>()
   const [progress, setProgress] = useState<GitInProgress>()
   const [loading, setLoading] = useState(false)
@@ -75,7 +79,11 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
     inflight.current = true; setLoading(true)
     client.git.status(termId, d).then((r) => {
       setRes(r); setErr('')
-      if (r.ok) client.git.progress(termId, r.status.root).then(setProgress).catch(() => setProgress(undefined))
+      if (r.ok) {
+        client.git.progress(termId, r.status.root).then(setProgress).catch(() => setProgress(undefined))
+        // 记住这台终端上次看的仓库（存仓库根，下次打开直接回这里）；存不进去不影响使用
+        try { localStorage.setItem(`lingshell.git.lastRepo.${termId}`, r.status.root) } catch { /* 忽略 */ }
+      }
     }).catch((e) => setErr(errText(e)))
       .finally(() => {
         inflight.current = false; setLoading(false)
@@ -84,22 +92,33 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
   }, [ok, tid, dir])
   // 起始目录：左边活动栏进来时用「对话工作目录」（同一个项目，省得再选一次）；否则用终端当前目录
   const followTerm = useCallback(async () => {
-    const d = initialDir || getTermCwd(tid) || await client.terminal.pwd(tid).catch(() => '') || ''
+    // 优先用这台终端上次看的仓库（用户上次选过的），其次 initialDir / 终端当前目录
+    const last = tid ? localStorage.getItem(`lingshell.git.lastRepo.${tid}`) : null
+    const d = last || initialDir || getTermCwd(tid) || await client.terminal.pwd(tid).catch(() => '') || ''
     if (!d) { setErr(tr('取不到终端当前目录：在下面输入仓库目录后回车')); return }
     setDir(d); setDirDraft(d); refresh(d)
   }, [tid, refresh, initialDir])
   useEffect(() => { if (ok) void followTerm() }, [ok])
-  // 目录变了就重扫周边项目：本地走 fs 扫描，SSH 走该终端通道跑 find
+  // 目录变了就重扫周边项目：本地走 fs 扫描，SSH 走该终端通道跑 find；同一目录 30 秒内用缓存
   useEffect(() => {
     if (!dir || !source) { setRepos([]); setReposTrunc(false); return }
+    const key = `${source.id}|${dir}|${repoVersion}`
+    const hit = repoCache.current
+    if (hit && hit.key === key && Date.now() - hit.at < 30_000) {
+      setRepos(hit.repos); setReposTrunc(hit.trunc); return
+    }
     let alive = true
     setRepoBusy(true)
     const p = source.type === 'ssh' ? client.git.scanReposRemote(source.id, dir) : client.git.scanRepos(dir)
-    p.then((r) => { if (alive) { setRepos(r.repos); setReposTrunc(r.truncated) } })
+    p.then((r) => {
+      if (!alive) return
+      repoCache.current = { key, at: Date.now(), repos: r.repos, trunc: r.truncated }
+      setRepos(r.repos); setReposTrunc(r.truncated)
+    })
       .catch(() => { if (alive) { setRepos([]); setReposTrunc(false) } })
       .finally(() => { if (alive) setRepoBusy(false) })
     return () => { alive = false }
-  }, [dir, source?.id, source?.type])
+  }, [dir, source?.id, source?.type, repoVersion])
   // 切换来源终端：重置到那台终端当前的目录（先读提示符上报的缓存，没有再主动探一次）
   const pickSource = (id: string) => {
     const t = terms.find((x) => x.id === id)
@@ -220,12 +239,9 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
       {header}
       <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] px-3 py-1.5">
         {/* 来源：当前已打开的终端（本地 / SSH）；切换后路径变成那台终端当前的目录 */}
-        <select data-git-source value={source?.id ?? ''} onChange={(e) => pickSource(e.target.value)}
-          title={tr('选择终端（本地 / 远程）')}
-          className="max-w-[128px] shrink-0 truncate rounded border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-1 py-[3px] text-[11px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]">
-          {!terms.length && <option value="">{tr('没有可用终端')}</option>}
-          {terms.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-        </select>
+        <Select size="sm" value={source?.id ?? ''} onValueChange={pickSource} className="max-w-[128px] shrink-0"
+          options={terms.length ? terms.map((t) => ({ value: t.id, label: t.title })) : [{ value: '', label: tr('没有可用终端') }]}
+          aria-label={tr('选择终端（本地 / 远程）')} title={tr('选择终端（本地 / 远程）')} />
         <Input size="sm" value={dirDraft} onChange={(e) => setDirDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setDir(dirDraft); refresh(dirDraft) } }}
           placeholder={tr('仓库目录（回车读取）')} title={tr('仓库里的任意目录；默认取终端当前目录')} className="font-mono text-[11px]" data-git-dir />
         {/* 周边 Git 项目：本地走 fs 扫描，SSH 走该终端通道跑 find；三组=当前 / 子目录 / 上级 */}
@@ -238,6 +254,13 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setRepoOpen(false)} />
                 <div data-git-repos-menu className="absolute right-0 top-full z-50 mt-1 max-h-[320px] w-[300px] overflow-y-auto rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1 shadow-2xl">
+                  <div className="flex items-center justify-between px-2 pb-0.5 pt-1">
+                    <span className="text-[10.5px] text-[var(--color-text-muted)]">{tr('周边 Git 项目')}</span>
+                    <button data-git-repos-refresh onClick={() => setRepoVersion((v) => v + 1)} title={tr('重新扫描')}
+                      className="flex h-4 w-4 items-center justify-center rounded text-[var(--color-text-muted)] hover:text-[var(--color-accent)]">
+                      <RefreshCw className={cn('h-3 w-3', repoBusy && 'animate-spin')} />
+                    </button>
+                  </div>
                   {!repos.length && <div className="px-2 py-2 text-[11.5px] text-[var(--color-text-muted)]">{repoBusy ? tr('扫描中…') : tr('没找到周边 Git 项目')}</div>}
                   {repos.some((r) => !r.up && !r.rel) && <div className="px-2 pb-0.5 pt-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('当前目录')}</div>}
                   {repos.filter((r) => !r.up && !r.rel).map((r) => repoRow(r, r.name, tr('当前')))}

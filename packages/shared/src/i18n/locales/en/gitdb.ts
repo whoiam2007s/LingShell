@@ -369,6 +369,8 @@ export const gitdb: Record<string, string> = {
   '没找到周边 Git 项目': 'No nearby Git repositories found',
   '选择终端（本地 / 远程）': 'Choose terminal (local / remote)',
   '没有可用终端': 'No terminal available',
+  '周边 Git 项目': 'Nearby Git repositories',
+  '重新扫描': 'Rescan',
   '当前目录': 'Current folder',
   '子目录': 'Subfolders',
   '上级目录': 'Parent folders',

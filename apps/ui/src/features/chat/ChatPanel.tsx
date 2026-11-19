@@ -1293,6 +1293,19 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   const [draft, setDraft] = useState('')
   // 目录 tag 直接用工作目录最后一段；分支 tag 异步读（主进程带 5 秒缓存），不是仓库/读失败就不显示
   const [branch, setBranch] = useState<string>()
+  // 标题栏变窄时依次让位：先藏目录 tag、再藏分支 tag（完整信息仍在标题的 tooltip 里，不会丢）
+  const barRef = useRef<HTMLDivElement>(null)
+  const [barW, setBarW] = useState(999)
+  useEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    setBarW(el.clientWidth)
+    const ro = new ResizeObserver(() => setBarW(el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const showDirTag = barW >= 760
+  const showBranchTag = barW >= 480
   useEffect(() => {
     if (!workDir) { setBranch(undefined); return }
     let alive = true
@@ -1302,7 +1315,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   const dirTag = workDir ? (workDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || workDir) : ''
   const commit = () => { onRename?.(draft.trim() || title); setEditing(false) }
   return (
-    <div className="relative z-30 flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 pl-3">
+    <div ref={barRef} className="relative z-30 flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 pl-3">
       {/* 无会话：标题区显示占位，仅保留 新建/历史 入口（其余按钮依赖会话，隐藏） */}
       {!hasSession ? (
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium text-[var(--color-text-muted)]">
@@ -1317,12 +1330,12 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
         <div className="group flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium text-[var(--color-text-primary)]">
           <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
           {/* 项目目录 tag（最多 100px，点开资源管理器）+ Git 分支 tag（最多 100px，点开 Git 面板） */}
-          {dirTag && (
+          {dirTag && showDirTag && (
             <button data-dir-tag onClick={() => { if (workDir) void client.fs.openLocal(workDir).catch(() => {}) }}
               title={tr('工作目录：{path}\n点击在资源管理器中打开', { path: workDir ?? '' })}
               className="max-w-[100px] shrink-0 truncate rounded bg-[var(--color-bg-raised)] px-1.5 py-0.5 text-left font-mono text-[10.5px] font-normal text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-accent)]">{dirTag}</button>
           )}
-          {branch && (
+          {branch && showBranchTag && (
             <button data-branch-tag onClick={onOpenGit} disabled={!onOpenGit}
               title={tr('当前分支：{branch}\n点击打开 Git 面板', { branch })}
               className="max-w-[100px] shrink-0 truncate rounded bg-[color:color-mix(in_srgb,var(--color-accent)_14%,transparent)] px-1.5 py-0.5 text-left font-mono text-[10.5px] font-normal text-[var(--color-accent)] transition-opacity hover:opacity-80">{branch}</button>
