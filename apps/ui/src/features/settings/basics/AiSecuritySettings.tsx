@@ -89,6 +89,10 @@ export function AiSecuritySettings() {
           tip={tr('派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。')}>
           <NumberInput className="w-28" value={sys.subagentTimeoutSec} min={60} max={1800} onChange={(n) => set({ subagentTimeoutSec: n })} />
         </Row>
+        <Row label={tr('子代理最大并发')} hint={tr('1–6，默认 3')}
+          tip={tr('同时最多几个子代理在跑。调大能并行更多子任务，但会同时占更多模型配额和终端；超了会提示等一个结束再派。')}>
+          <NumberInput className="w-28" value={sys.subagentMaxConcurrent} min={1} max={6} onChange={(n) => set({ subagentMaxConcurrent: n })} />
+        </Row>
       </Section>
 
       <AppLockSettings>

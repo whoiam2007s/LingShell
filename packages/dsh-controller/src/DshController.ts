@@ -126,6 +126,8 @@ export interface DshControllerConfig extends TerminalToolDeps {
   contextResetSteps?(): number
   // 子代理默认超时（秒）：派子代理没显式给 timeout_sec 时用它（设置页「子代理默认超时」，默认 600）
   subagentTimeoutSec?(): number
+  // 子代理最大并发：同时最多几个在跑（设置页「子代理最大并发」，默认 3）
+  subagentMaxConcurrent?(): number
   // 全局自定义规则（系统设置），每次模型请求现读注入系统提示词
   customRules?(): string
   // 主机知识库：这些主机（hostKey）相关的知识卡注入文本（已截断），没有返回 ''。每次模型请求现求值
@@ -853,8 +855,9 @@ export class DshController {
   }): Promise<SubagentResult> {
     const t = checkSubagentTask(req.task)
     if (!t.ok) throw new Error(t.error)
-    if (this.subagents.size >= SUBAGENT_MAX_CONCURRENT) {
-      throw new Error(tr('同时最多 {n} 个子代理在跑，等一个结束再派', { n: SUBAGENT_MAX_CONCURRENT }))
+    const maxConcurrent = this.cfg.subagentMaxConcurrent?.() ?? SUBAGENT_MAX_CONCURRENT
+    if (this.subagents.size >= maxConcurrent) {
+      throw new Error(tr('同时最多 {n} 个子代理在跑，等一个结束再派', { n: maxConcurrent }))
     }
     const t0 = Date.now()
     const info = await this.createSession({ title: tr('子任务：{t}', { t: t.value.slice(0, 20) }), hidden: true })
@@ -886,7 +889,10 @@ export class DshController {
       const now = Date.now()
       if (now - stepAt < 400) return
       stepAt = now
-      settle({ step: { kind, label: label.replace(/\s+/g, ' ').trim().slice(0, 120), at: new Date(now).toISOString() } })
+      const one = { kind, label: label.replace(/\s+/g, ' ').trim().slice(0, 120), at: new Date(now).toISOString() }
+      // 最近一步给下拉用；同时记进轨迹（最多 50 条），展开子代理时能看到它都做了什么
+      const cur = (this.subagentLog.get(req.parentSessionId) ?? []).find((r) => r.subagentId === sid)
+      settle({ step: one, steps: [...(cur?.steps ?? []), one].slice(-50) })
     }
     const finished = new Promise<void>((resolve) => {
       const off = this.onEvent((ev) => {

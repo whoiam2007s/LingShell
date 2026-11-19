@@ -50,6 +50,8 @@ export interface SubagentRecord {
   blocked?: { question: string; context: string }
   /** 最近一步（工具名 / 正在写的话），节流后更新 */
   step?: { kind: 'tool' | 'text'; label: string; at: string }
+  /** 执行轨迹（最多 50 条）：展开子代理时按时间看它都做了什么 */
+  steps?: { kind: 'tool' | 'text'; label: string; at: string }[]
 }
 
 export interface SubagentResult {
