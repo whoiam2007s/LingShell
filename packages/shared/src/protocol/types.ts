@@ -850,6 +850,7 @@ export interface SessionMeta {
 }
 export interface TerminalLayoutItem {
   kind: 'local' | 'ssh'
+  id?: string             // 上次的终端 id（term_xxxx）：重启重建时复用，让历史对话里引用的 id 继续有效
   hostId?: string         // ssh 时：保存的主机 id（重连用）
   color?: string          // 用户选的标签色（TabColor 键名）
   title?: string          // 用户重命名的标签名

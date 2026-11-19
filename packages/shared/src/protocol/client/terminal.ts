@@ -4,12 +4,12 @@ import type { TmuxSessionInfo, QuickCommandsData, AutoReplySummary, AutoReplyInp
 
 // 新建 SSH 连接的入参：saveAs 有值时存为主机，notes/env/group 一并存
 // tmuxSession：接回指定的保留会话（布局恢复 / 右键菜单接回）；仅对开了「保持会话」的主机生效
-export type SshCreateOpts = { hostId: string; tmuxSession?: string } | { connect: SshConnectInput; saveAs?: string; notes?: string; env?: HostEnv; group?: string; persistSession?: boolean }
+export type SshCreateOpts = ({ hostId: string; tmuxSession?: string; id?: string } | { connect: SshConnectInput; saveAs?: string; notes?: string; env?: HostEnv; group?: string; persistSession?: boolean; id?: string })
 
 export interface TerminalApi {
   terminal: {
     list(): Promise<TerminalInfo[]>
-    createLocal(opts?: { cwd?: string; shell?: string }): Promise<TerminalInfo>   // shell：见 localShell.ts，缺省 Git Bash
+    createLocal(opts?: { cwd?: string; shell?: string; id?: string }): Promise<TerminalInfo>   // shell：见 localShell.ts，缺省 Git Bash；id：重启恢复时复用旧 id
     // noHistory：不进命令历史（UI 判断光标停在密码 / 口令提示上时传）
     write(terminalId: string, data: string, opts?: { noHistory?: boolean }): Promise<void>
     // tmux 终端：kill = 结束远端会话 / keep = 留在服务器 / 缺省 = 空闲才结束（有任务在跑就留着）
