@@ -187,6 +187,7 @@ git.refs → git:refs
 git.remotes → git:remotes
 git.review → git:review
 git.scanRepos → git:scanRepos
+git.scanReposRemote → git:scanReposRemote
 git.show → git:show
 git.stage → git:stage
 git.stashDiff → git:stashDiff

@@ -431,7 +431,7 @@ function AppShell() {
               />
             )}
             {drawer === 'auth' && <AuthDrawer onClose={() => setDrawer(null)} />}
-            {drawer === 'git' && <GitDrawer key={leftGit.term?.id ?? 'none'} term={leftGit.term} initialDir={leftGit.dir} onClose={() => setDrawer(null)} />}
+            {drawer === 'git' && <GitDrawer term={leftGit.term} initialDir={leftGit.dir} onClose={() => setDrawer(null)} />}
             {drawer === 'database' && <DatabaseDrawer hostKey={dbHostKey} onClose={() => setDrawer(null)} />}
             {drawer === 'explorer' && (
               <ExplorerDrawer scope="local" rootPath={explorerRoot} memKey={`session:${activeId}`} onWide={setExplorerWide} onUpload={setUploadPaths} onClose={() => setDrawer(null)} />

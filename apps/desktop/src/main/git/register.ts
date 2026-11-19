@@ -2,7 +2,7 @@
 import { ipcMain } from 'electron'
 import type { MainContext } from '../core/index.js'
 import { registerGit } from './gitIpc.js'
-import { scanGitRepos } from './scanRepos.js'
+import { scanGitRepos, scanRemoteRepos } from './scanRepos.js'
 import { runSh } from '../terminal/index.js'
 import type { registerAiIpc } from '../ai/index.js'
 
@@ -42,5 +42,13 @@ export function registerGitIpc(ctx: MainContext, deps: Deps) {
     const d = typeof dir === 'string' ? dir : ''
     if (!d.trim()) return { repos: [], truncated: false }
     return scanGitRepos(d)
+  })
+  // scanReposRemote：走目标终端的通道跑 find（只 SSH 终端；本地路径直接交给上面的本地版）
+  ipcMain.handle('git:scanReposRemote', async (_e, terminalId: unknown, dir: unknown) => {
+    const id = typeof terminalId === 'string' ? terminalId : ''
+    const d = typeof dir === 'string' ? dir : ''
+    const t = id ? terminals.list().find((x) => x.id === id) : undefined
+    if (!t || t.type !== 'ssh' || !d.trim()) return { repos: [], truncated: false }
+    return scanRemoteRepos(d, (cmd, o) => sideRun(id)(cmd, o))
   })
 }

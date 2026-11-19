@@ -28,8 +28,17 @@ const PROGRESS_NOUN: Record<GitInProgress, string> = { merge: tk('op|合并'), r
 // 读走独立通道（不在终端里刷屏）；写操作都是手动点的，危险的先确认，都记执行记录。切终端时由外层 key 重挂载。
 // 抽屉宽度固定用最宽档（历史 / diff 页要的宽度），切 tab 不再变宽窄
 export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; onClose: () => void; initialDir?: string }) {
-  const tid = term?.id ?? ''
-  const ok = !!term && !(term.type === 'ssh' && term.os === 'windows')
+  // 来源终端：默认用打开面板时的当前终端，之后可以在路径框左边的下拉里切（本地 ↔ 远程）
+  const [source, setSource] = useState<TerminalInfo | undefined>(term)
+  const [terms, setTerms] = useState<TerminalInfo[]>([])
+  useEffect(() => {
+    client.terminal.list().then((list) => {
+      // 只列能在 Git 面板里用的：本地 + 非 Windows 的 SSH
+      setTerms(list.filter((t) => t.type === 'local' || (t.type === 'ssh' && t.os !== 'windows')))
+    }).catch(() => {})
+  }, [])
+  const tid = source?.id ?? ''
+  const ok = !!source && !(source.type === 'ssh' && source.os === 'windows')
   const [dir, setDir] = useState('')
   const [dirDraft, setDirDraft] = useState('')   // 输入框草稿：回车 / 选择目录才成为当前仓库，操作后的自动刷新不会被没提交的路径带跑
   // 周边 Git 项目（需求 2）：扫当前仓库所在目录的周围（向下 2 层 + 向上到盘符根）；SSH 远端暂不扫
@@ -59,14 +68,14 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
   const st = res?.ok ? res.status : undefined
   const inflight = useRef(false), refetch = useRef(false)
   const dirRef = useRef(dir); dirRef.current = dir
-  const refresh = useCallback((d = dir) => {
-    if (!ok || !d) return
+  const refresh = useCallback((d = dir, termId = tid) => {
+    if (!ok || !d || !termId) return
     // 读取中又有刷新请求：记下来，等这次结束再读一次（不能直接丢，否则慢主机上会把操作前的旧状态留在界面）
     if (inflight.current) { refetch.current = true; return }
     inflight.current = true; setLoading(true)
-    client.git.status(tid, d).then((r) => {
+    client.git.status(termId, d).then((r) => {
       setRes(r); setErr('')
-      if (r.ok) client.git.progress(tid, r.status.root).then(setProgress).catch(() => setProgress(undefined))
+      if (r.ok) client.git.progress(termId, r.status.root).then(setProgress).catch(() => setProgress(undefined))
     }).catch((e) => setErr(errText(e)))
       .finally(() => {
         inflight.current = false; setLoading(false)
@@ -80,17 +89,31 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
     setDir(d); setDirDraft(d); refresh(d)
   }, [tid, refresh, initialDir])
   useEffect(() => { if (ok) void followTerm() }, [ok])
-  // 目录变了就重扫周边项目；只本地终端（SSH 的目录在远端，扫描成本高，先不做）
+  // 目录变了就重扫周边项目：本地走 fs 扫描，SSH 走该终端通道跑 find
   useEffect(() => {
-    if (!dir || term?.type !== 'local') { setRepos([]); setReposTrunc(false); return }
+    if (!dir || !source) { setRepos([]); setReposTrunc(false); return }
     let alive = true
     setRepoBusy(true)
-    client.git.scanRepos(dir)
-      .then((r) => { if (alive) { setRepos(r.repos); setReposTrunc(r.truncated) } })
+    const p = source.type === 'ssh' ? client.git.scanReposRemote(source.id, dir) : client.git.scanRepos(dir)
+    p.then((r) => { if (alive) { setRepos(r.repos); setReposTrunc(r.truncated) } })
       .catch(() => { if (alive) { setRepos([]); setReposTrunc(false) } })
       .finally(() => { if (alive) setRepoBusy(false) })
     return () => { alive = false }
-  }, [dir, term?.type])
+  }, [dir, source?.id, source?.type])
+  // 切换来源终端：重置到那台终端当前的目录（先读提示符上报的缓存，没有再主动探一次）
+  const pickSource = (id: string) => {
+    const t = terms.find((x) => x.id === id)
+    if (!t || t.id === source?.id) return
+    setSource(t)
+    setRepos([]); setReposTrunc(false); setRepoOpen(false)
+    const cached = getTermCwd(t.id)
+    if (cached) { setDir(cached); setDirDraft(cached); refresh(cached, t.id); return }
+    void client.terminal.pwd(t.id).then((d) => {
+      const p = d || (t.type === 'ssh' ? '/' : '')
+      setDir(p); setDirDraft(p)
+      if (p) refresh(p, t.id)
+    }).catch(() => { setDir(''); setDirDraft('') })
+  }
   const pickRepo = (p: string) => { setRepoOpen(false); setDir(p); setDirDraft(p); refresh(p) }
   const repoRow = (r: GitRepoHit, text: string, badge?: string) => (
     <button key={r.path} onClick={() => pickRepo(r.path)} title={r.path}
@@ -150,7 +173,7 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
   const pull = (mode?: 'merge' | 'rebase' | 'ff') => void run({ op: 'pull', ...(mode ? { mode } : {}) }, { done: mode === 'rebase' ? tr('已拉取（变基）') : tr('已拉取') })
   const askAi = () => {
     if (!st) return
-    sendToChat(gitConflictPrompt({ terminalTitle: term?.title ?? '', root: st.root, branch: st.branch, files: groupGitFiles(st.files).conflict.map((f) => f.path) }))
+    sendToChat(gitConflictPrompt({ terminalTitle: source?.title ?? '', root: st.root, branch: st.branch, files: groupGitFiles(st.files).conflict.map((f) => f.path) }))
     onClose()
   }
 
@@ -196,10 +219,17 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
     <div className="flex h-full flex-col" data-git-drawer>
       {header}
       <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border-subtle)] px-3 py-1.5">
+        {/* 来源：当前已打开的终端（本地 / SSH）；切换后路径变成那台终端当前的目录 */}
+        <select data-git-source value={source?.id ?? ''} onChange={(e) => pickSource(e.target.value)}
+          title={tr('选择终端（本地 / 远程）')}
+          className="max-w-[128px] shrink-0 truncate rounded border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-1 py-[3px] text-[11px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]">
+          {!terms.length && <option value="">{tr('没有可用终端')}</option>}
+          {terms.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
         <Input size="sm" value={dirDraft} onChange={(e) => setDirDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setDir(dirDraft); refresh(dirDraft) } }}
           placeholder={tr('仓库目录（回车读取）')} title={tr('仓库里的任意目录；默认取终端当前目录')} className="font-mono text-[11px]" data-git-dir />
-        {/* 周边 Git 项目（需求 2）：本地终端才有；三组=当前 / 子目录 / 上级，点一项直接切过去 */}
-        {term?.type === 'local' && (
+        {/* 周边 Git 项目：本地走 fs 扫描，SSH 走该终端通道跑 find；三组=当前 / 子目录 / 上级 */}
+        {source && (
           <div className="relative shrink-0">
             <button data-git-repos onClick={() => setRepoOpen((o) => !o)} title={tr('周边 Git 项目（点击切换）')} className={IB}>
               {repoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderTree className="h-3.5 w-3.5" />}
@@ -224,7 +254,7 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
         {/* 用系统资源管理器打开当前仓库目录（需求 3）；路径还没读出来时用输入框里的草稿 */}
         <button data-git-open-dir title={tr('在资源管理器中打开当前目录')} className={IB}
           onClick={() => { const p = dir || dirDraft; if (p) void client.fs.openLocal(p).catch(() => {}) }}><ExternalLink className="h-3.5 w-3.5" /></button>
-        {term?.type === 'local' && <button title={tr('选择目录…')} className={IB}
+        {source?.type === 'local' && <button title={tr('选择目录…')} className={IB}
           onClick={() => client.system.pickDirectory(dir || dirDraft || undefined).then((d) => { if (d) { setDir(d); setDirDraft(d); refresh(d) } }).catch(() => {})}><FolderOpen className="h-3.5 w-3.5" /></button>}
       </div>
       {st && (
@@ -268,7 +298,7 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
       {changelog && ctx && <GitChangelog ctx={ctx} from={changelog.from} onClose={() => setChangelog(null)} />}
       {rebase && ctx && <GitRebase ctx={ctx} from={rebase} onClose={() => setRebase(null)} />}
       {review && ctx && <GitReview ctx={ctx} paths={review.paths} onClose={() => setReview(null)} />}
-      {dialog && <GitDialog spec={dialog} prod={term?.env === 'prod'} onClose={() => setDialog(null)} onCancel={() => { dialog.onCancel?.(); setDialog(null) }} />}
+      {dialog && <GitDialog spec={dialog} prod={source?.env === 'prod'} onClose={() => setDialog(null)} onCancel={() => { dialog.onCancel?.(); setDialog(null) }} />}
     </div>
   )
 }

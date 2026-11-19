@@ -100,3 +100,34 @@ export function scanGitRepos(startDir: string, opts: { maxDirs?: number; depth?:
 
   return { repos, truncated }
 }
+
+/** 远程「周边 Git 项目」：走终端通道跑 find，只向下 2 层（远端不向上到根：根目录 find 太贵），最多 100 条 */
+export const REMOTE_SCAN_MAX = 100
+const REMOTE_SCAN_TIMEOUT_MS = 8000
+
+type Run = (cmd: string, o: { timeoutMs: number; maxBytes?: number }) => Promise<{ code: number | null; output: string }>
+
+/** 远端扫描：命令在目标终端上跑；超时 / 失败一律当空结果，不能让面板崩 */
+export async function scanRemoteRepos(startDir: string, run: Run, opts: { max?: number } = {}): Promise<{ repos: GitRepoHit[]; truncated: boolean }> {
+  const dir = startDir.trim().replace(/\/+$/, '') || '/'
+  const max = opts.max ?? REMOTE_SCAN_MAX
+  // 单引号包裹（路径里可能有空格 / 中文）；内部单引号按 shell 规则转义成 '\''
+  const q = "'" + dir.split("'").join("'\\''") + "'"
+  const cmd = `find ${q} -maxdepth 2 -name .git -print 2>/dev/null | head -${max + 1}`
+  const r = await run(cmd, { timeoutMs: REMOTE_SCAN_TIMEOUT_MS, maxBytes: 256 * 1024 }).catch(() => undefined)
+  if (!r || !r.output.trim()) return { repos: [], truncated: false }
+  const repos: GitRepoHit[] = []
+  const seen = new Set<string>()
+  let truncated = false
+  for (const raw of r.output.split('\n')) {
+    const line = raw.trim()
+    if (!line.endsWith('/.git')) continue
+    const full = line.slice(0, -'/.git'.length) || '/'
+    if (seen.has(full)) continue
+    if (repos.length >= max) { truncated = true; break }
+    seen.add(full)
+    const rel = full === dir ? '' : full.startsWith(`${dir}/`) ? full.slice(dir.length + 1) : ''
+    repos.push({ path: full, name: full.split('/').pop() || full, rel, up: 0 })
+  }
+  return { repos, truncated }
+}
