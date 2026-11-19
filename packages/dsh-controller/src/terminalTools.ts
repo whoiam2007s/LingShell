@@ -169,8 +169,9 @@ const NEEDS: Record<string, 'read' | 'write'> = {
  */
 const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
 /** 授权粒度：应用配置 / 派子代理各占一个键，都不会和真实主机的授权混在一起 */
-// 给模型看：命令停在等输入时的引导（固定文案，不进字典）
-const needsInputNote = (prompt: string) => `这条命令停在这里等你输入（提示：${prompt}），已中止并退回提示符。可以：① 换成非交互写法重试（如 -y / --non-interactive / yes | / printf 'y\n' |）；② 用 ask_user 问用户要不要这样做；③ 直接让用户在这个终端里手动执行。注意：删除 / 卸载 / 覆盖类的确认不要自己加 -y 绕过，必须交回用户。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+// 给模型看：命令停在等输入时的处理指引（固定文案，不进字典）
+// 要点：先给结论；普通确认自己想办法继续（找开关 → 喂输入 → 先读脚本）；危险确认交回用户；要拍板用 ask_user
+const needsInputNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已中止并退回提示符。\n先给结论：识别成功、在等什么，不用让用户再手动跑一遍。然后按下面对照自己处理：\n① 普通确认（安装、初始化、覆盖、yes/no、连续输入）——自己把任务做完，别动不动推回用户：\n   a. 先找非交互开关：-y / --yes / --non-interactive / --batch / --force；npm init -y、ssh-keygen -N ""、openssl req -subj、docker login --password-stdin、DEBIAN_FRONTEND=noninteractive、CI=1 这类。\n   b. 没有开关就按提示顺序喂输入：printf 'y\\nn\\n' | cmd（几个问题喂几行，别多喂）；只有"一路全 y"才用 yes | cmd。\n   c. 不确定它会问什么，先去读再决定：grep -n "read " 脚本.sh、查看脚本内容、跑 --help。\n   d. 需要密码 / token 时用密钥保险箱里的密钥名称当占位（写法见系统提示的密钥段），绝不写明文。\n   改命令是为了把任务做完，不算违背用户要求；改写后的命令照常走授权和危险命令检查。\n② 危险确认（删除 / 卸载 / 覆盖已有数据 / 生产环境变更）：绝不自己加 -y、也不要用 yes | 一路放行，交回用户决定或让用户手动执行。\n③ 需要用户拍板（选哪条路径、装哪个版本、要输入具体值）：用 ask_user 弹选项卡问，不要让用户打字回复。\n④ 喂不进去的（全屏 TUI、必须人工判断）或用户只是想验证这个能力：说明情况即可，请用户在该终端里自己跑，不必硬凑。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 export const authKeyOf = (toolName: string): string => (toolName === 'spawn_subagent' ? 'subagent' : 'app')
 /** 伪主机键（不是真实主机 id，UI 上按语义显示，不当终端处理） */

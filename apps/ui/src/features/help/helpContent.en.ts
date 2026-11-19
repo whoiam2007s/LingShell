@@ -337,8 +337,8 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     blocks: [
       { p: 'Results of commands the AI runs in a terminal are cleaned up before it reads them: colour codes and cursor-control escape sequences are stripped, progress-bar lines that rewrite themselves in place keep only the final content, identical consecutive lines collapse into one (marked ×N), and Windows CRLF becomes a plain newline. What the model sees matches the final state you see in your terminal, without the dozens of intermediate refresh frames.' },
       { h: 'When a command asks for input', p: 'Some commands stop and wait for an answer (`(y/n)`, `[Y/n]`, a password, `continue?`, `press any key`). Those do not wait for the timeout: once the command has run for 10 seconds and produced no output for 8 seconds in a row, the text is checked against Chinese and English prompt patterns, and if nothing matches the model looks at the tail of the output once more. If it concludes the command is waiting, it sends Ctrl-C to get back to the prompt and hands "what it is waiting for" back to the AI.', steps: [
-        'The AI usually retries with a non-interactive form (adding `-y`, `--non-interactive`, or piping the answer in with `printf \'y\\n\' |`).',
-        'When it is unsure whether that is acceptable, it asks you with an option card.',
+        'For ordinary confirmations (install, overwrite, yes/no, repeated input) the AI rewrites the command into a non-interactive form and retries — adding `-y`, `--non-interactive`, or piping the answer in with `printf \'y\\n\' |` — so it does not interrupt you every time; the rewritten command still goes through approval and the dangerous-command check.',
+        'When it needs a decision from you (which path, which version, a specific value) it asks with an option card instead of making you type a reply.',
         'Or it can hand the command back to you: run it yourself in that terminal and type the answer.',
       ], tips: [
         'Confirmation for delete / uninstall / overwrite is never bypassed with `-y` on its own — it always goes through you, and dangerous commands still need approval.',
