@@ -527,6 +527,10 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   // ── `!命令` 直通终端（参考 Gemini CLI / Claude Code 的 ! 模式）──────────
   // 走撰写栏同一套确认（危险命令 / 隐藏字符 / 多行发到生产），这里对生产终端单行也确认；执行完结果变成「终端块」标签，接着写问题再发给 AI
   const bang = bangCommand(input)
+  // 上下文快到压缩阈值（80%）时提醒一次；点 × 只关掉当前会话的提示（换会话还会提醒）
+  const [compactHintOff, setCompactHintOff] = useState('')
+  const compactPct = usage?.compactAt ? Math.round((usage.inputTokens / usage.compactAt) * 100) : 0
+  const showCompactHint = !!activeSessionId && !busy && compactPct >= 80 && compactPct < 100 && compactHintOff !== activeSessionId
   const [shellBusy, setShellBusy] = useState('')
   const [shellAsk, setShellAsk] = useState<{ plan: ComposePlan; tid: string; cmd: string } | null>(null)
   const execBang = async (tid: string, title: string, cmd: string) => {
@@ -802,6 +806,16 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         {preview.on && <PreviewBanner onOff={() => preview.set(false)} />}
         <AttachmentChips items={att.items} onRemove={att.remove} onError={att.setHint} noImage={!models.current?.multimodal} className="mb-1.5 pt-1.5" />
         {att.hint && <div data-attach-hint className="mb-1.5 text-[11.5px] text-[var(--color-warn)]">{att.hint}</div>}
+        {/* 上下文快到压缩阈值：提醒一次，可立即压缩或关掉本会话的提示 */}
+        {showCompactHint && (
+          <div data-compact-hint className="mx-3 mb-1 flex items-center gap-2 rounded-md border border-[color:color-mix(in_srgb,var(--color-warn)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-[11.5px]">
+            <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">{tr('上下文已用 {pct}%，到 100% 会自动压缩。', { pct: compactPct })}</span>
+            <button onClick={() => { void client.agent.compact(activeSessionId).catch(() => {}) }} disabled={busy}
+              className="shrink-0 rounded bg-[var(--color-accent)] px-2 py-0.5 text-[11px] text-[var(--color-bg-base)] disabled:opacity-40">{tr('立即压缩')}</button>
+            <button onClick={() => setCompactHintOff(activeSessionId)} title={tr('本会话不再提示')}
+              className="shrink-0 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)]"><X className="h-3 w-3" /></button>
+          </div>
+        )}
         {shellBusy && <div data-shell-busy className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-text-muted)]"><Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />{tr('正在终端「{title}」执行…', { title: shellBusy })}</div>}
         {/* 输入框高度：往上拖变高（双击恢复默认一行）；拖过的高度记在 localStorage */}
         <div data-chat-resize

@@ -714,6 +714,7 @@ export const settings: Record<string, string> = {
   '秒，默认 600（10 分钟）': 'Seconds, default 600 (10 minutes)',
   '派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。': 'Applied when a subagent is spawned without an explicit timeout; at the limit it is interrupted and returns what it has so far. Range 60–1800 seconds.',
   '新建的本地终端才生效，已打开的终端要关掉重开。': 'Applies to local terminals created from now on; close and reopen existing ones to pick it up.',
+  '已保存。环境变量只对之后新开的终端生效——已打开的终端仍是旧值，关掉重开即可。': 'Saved. Environment variables apply only to terminals opened afterwards — existing ones keep the old values, so close and reopen them.',
   '自定义变量': 'Custom variables',
   '每行一条：变量名 + 等号 + 值': 'One per line: name, equals sign, value',
   '常用于改语言环境：把 LC_ALL 设成 zh_CN.utf8 用中文排序；想按字节比较文件名就设成 C。以 # 开头是注释；LINGSHELL_ 开头的变量会被忽略（应用内部用）。': 'Commonly used to change the locale: set LC_ALL to zh_CN.utf8 for Chinese sorting, or to C for byte-wise file name comparison. Lines starting with # are comments; variables starting with LINGSHELL_ are ignored (used internally).',
