@@ -23,6 +23,8 @@ const highlightError =(s: Sys) => (s.terminalHighlight && (s.highlightRules ?? [
 // 设置 → 终端：外观 / 输入 / 提醒 / 记录。改了自动保存，已打开的终端即时换上新外观
 export function TerminalSettings() {
   const { loaded, sys, set, onBlur } = useSystemSettings({ onSaved: (s) => setTermPrefs(termPrefsOf(s)), validate: highlightError })
+  // 改过环境变量后提示一次「只对新开终端生效」，免得以为没生效
+  const [envTouched, setEnvTouched] = useState(false)
   if (!loaded) return <Loading />
   return (
     <Page onBlur={onBlur}>
@@ -78,11 +80,16 @@ export function TerminalSettings() {
           <textarea
             value={sys.terminalEnv ?? ''}
             placeholder={ENV_PLACEHOLDER}
-            onChange={(e) => set({ terminalEnv: e.target.value })}
+            onChange={(e) => { set({ terminalEnv: e.target.value }); setEnvTouched(true) }}
             rows={4}
             spellCheck={false}
             className="w-full resize-y rounded border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
           />
+          {envTouched && (
+            <div data-env-hint className="mt-1 text-[11px] text-[var(--color-warn)]">
+              {tr('已保存。环境变量只对之后新开的终端生效——已打开的终端仍是旧值，关掉重开即可。')}
+            </div>
+          )}
         </Row>
       </Section>
 

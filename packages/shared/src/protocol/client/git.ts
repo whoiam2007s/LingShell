@@ -8,6 +8,8 @@ export interface GitApi {
     branchOf(dir: string): Promise<string | undefined>
     // Git 面板「周边 Git 项目」：向下 2 层 + 逐级向上到盘符根，只认 `.git` 存在（不跑 git 命令）；最多 1000 个目录
     scanRepos(dir: string): Promise<{ repos: GitRepoHit[]; truncated: boolean }>
+    // 同上的远程版：走该 SSH 终端的通道跑 find（只向下 2 层，不向上到根；最多 100 条；超时 8 秒）
+    scanReposRemote(terminalId: string, dir: string): Promise<{ repos: GitRepoHit[]; truncated: boolean }>
     status(terminalId: string, dir: string): Promise<import('../../git/index.js').GitStatusResult>
     diff(terminalId: string, root: string, path: string, mode: import('../../git/index.js').GitDiffMode): Promise<string>
     stage(terminalId: string, root: string, paths: string[], stage: boolean): Promise<void>

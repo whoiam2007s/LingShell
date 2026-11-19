@@ -404,6 +404,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "ai",
   "kind": "row",
+  "label": "子代理最大并发",
+  "section": "上下文",
+  "hint": "1–6，默认 3",
+  "tip": "同时最多几个子代理在跑。调大能并行更多子任务，但会同时占更多模型配额和终端；超了会提示等一个结束再派。"
+ },
+ {
+  "tab": "ai",
+  "kind": "row",
   "label": "空闲自动锁定",
   "section": "上下文",
   "hint": "分钟，0 = 不按空闲锁定",

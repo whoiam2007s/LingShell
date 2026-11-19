@@ -181,8 +181,8 @@ export function TerminalView() {
     if (!ready) return
     const h = setTimeout(() => {
       const persisted = tabs.filter((t) => t.type === 'local' || hostIds.current.has(t.id))   // 按显示顺序（固定的在前）
-      const items = persisted.map((t) => toLayoutItem(t.type, hostIds.current.get(t.id), tabMeta[t.id], t.tmux, t.shell,
-        t.type === 'local' ? getTermCwd(t.id) : undefined, t.title))   // 本地终端记住目录；默认标题用于重载后对齐标签
+      const items = persisted.map((t) => ({ ...toLayoutItem(t.type, hostIds.current.get(t.id), tabMeta[t.id], t.tmux, t.shell,
+        t.type === 'local' ? getTermCwd(t.id) : undefined, t.title), id: t.id }))   // 带上 id：重启重建时复用，历史对话里的 term_xxxx 继续有效
       const idx = (id: string) => persisted.findIndex((t) => t.id === id)
       const a = idx(activeId)
       client.layout.save({ terminals: items, activeTerminalIndex: a >= 0 ? a : 0, terminalSplit: toSplitLayout(view, idx) }).catch(() => {})
@@ -275,11 +275,12 @@ export function TerminalView() {
             restoredIds.push(''); continue   // 缺 Git Bash：跳过，其它（SSH / PowerShell 等）照常恢复
           }
           if (item.kind === 'local') {
-            // 按原 shell / 上次所在目录重开（WSL 的 cwd 可能是 pty 起不了的 \\wsl 路径，不传）
+            // 按原 shell / 上次所在目录重开（WSL 的 cwd 可能是 pty 起不了的 \\wsl 路径，不传）；有旧 id 就复用，历史对话里的 term_xxxx 继续有效
             const cwd = item.cwd && shellKind(item.shell) !== 'wsl' ? item.cwd : undefined
-            info = await client.terminal.createLocal({ ...(item.shell ? { shell: item.shell } : {}), ...(cwd ? { cwd } : {}) })
+            info = await client.terminal.createLocal({ ...(item.shell ? { shell: item.shell } : {}), ...(cwd ? { cwd } : {}), ...(item.id ? { id: item.id } : {}) })
           } else if (item.kind === 'ssh' && item.hostId) {
-            info = await client.terminal.createSsh({ hostId: item.hostId, ...(item.tmux ? { tmuxSession: item.tmux } : {}) })   // 保持会话：接回同一 tmux 会话
+            // 保持会话：接回同一 tmux 会话；同样尽量复用旧 id
+            info = await client.terminal.createSsh({ hostId: item.hostId, ...(item.tmux ? { tmuxSession: item.tmux } : {}), ...(item.id ? { id: item.id } : {}) })
             hostIds.current.set(info.id, item.hostId)
           }
           if (info) {

@@ -191,6 +191,7 @@ git:refs
 git:remotes
 git:review
 git:scanRepos
+git:scanReposRemote
 git:show
 git:stage
 git:stashDiff

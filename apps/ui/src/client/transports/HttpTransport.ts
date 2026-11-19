@@ -87,7 +87,7 @@ export class HttpTransport implements AppClient {
   background: AppClient['background'] = { status: ni, configure: ni }
   logMulti: AppClient['logMulti'] = { start: ni, poll: ni, stop: ni, search: ni }
   probe: AppClient['probe'] = { run: ni, cancel: ni }
-  git: AppClient['git'] = { branchOf: ni, scanRepos: ni, status: ni, diff: ni, stage: ni, commit: ni, suggest: ni, refs: ni, log: ni, show: ni, commitDiff: ni, stashes: ni, stashFiles: ni, stashDiff: ni, progress: ni, op: ni, blame: ni, readFile: ni, compare: ni, compareDiff: ni, changelog: ni, review: ni, remotes: ni, rebasePlan: ni }
+  git: AppClient['git'] = { branchOf: ni, scanRepos: ni, scanReposRemote: ni, status: ni, diff: ni, stage: ni, commit: ni, suggest: ni, refs: ni, log: ni, show: ni, commitDiff: ni, stashes: ni, stashFiles: ni, stashDiff: ni, progress: ni, op: ni, blame: ni, readFile: ni, compare: ni, compareDiff: ni, changelog: ni, review: ni, remotes: ni, rebasePlan: ni }
   api: AppClient['api'] = { load: ni, save: ni, send: ni, clearHistory: ni }
   db: AppClient['db'] = { list: ni, save: ni, delete: ni, ping: ni, view: ni, explain: ni, query: ni, databases: ni, schemaTables: ni, schemaTable: ni, redisScan: ni, redisKey: ni, redisDel: ni, redisSet: ni, redisDelMany: ni, kill: ni, script: ni, backupPlan: ni, backupStart: ni, backupStatus: ni, backupCancel: ni, backupList: ni, backupDelete: ni, restore: ni, countObjects: ni, backupScheduleGet: ni, backupScheduleSave: ni, backupScheduleRun: ni }
   k8s: AppClient['k8s'] = { probe: ni, namespaces: ni, list: ni, text: ni, logs: ni, restart: ni, health: ni, openTerminal: ni, forward: ni, forwards: ni, stopForward: ni }

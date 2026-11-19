@@ -39,6 +39,15 @@ export class TerminalManager {
     return id
   }
 
+  /**
+   * 优先用调用方指定的 id（重启恢复布局时复用上次的 id，让历史对话里引用的 term_xxxx 继续有效）；
+   * 格式不对或已被占用就退回新生成，绝不因此报错。
+   */
+  private idOrNew(want?: string): string {
+    if (want && /^term_[0-9a-z]{4,}$/.test(want) && !this.entries.has(want)) return want
+    return this.newId()
+  }
+
   // 本地终端编号：同前缀（本地 / PowerShell / cmd / 发行版名）存活终端中未占用的最小正整数（关掉的编号会回收，不像 seq 一直累加）。
   private nextLocalNo(prefix = tr('本地')): number {
     const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`)
@@ -62,11 +71,11 @@ export class TerminalManager {
 
   // shell：非默认 shell（见 shared/terminal/localShell.ts，仅 Windows）。PowerShell / cmd 标仅手动；
   // WSL 先按仅手动登记，后台等它出提示符后静默试一次哨兵，通过才放开给 AI（调用方 await ready(id) 拿最终信息）
-  createLocal(opts?: { cwd?: string; shell?: string; envText?: string }): TerminalInfo {
+  createLocal(opts?: { cwd?: string; shell?: string; envText?: string; id?: string }): TerminalInfo {
     let shell = opts?.shell && opts.shell !== 'bash' ? opts.shell : undefined
     if (shell !== undefined && !isShellId(shell)) throw new Error(`invalid_shell: ${tr('不认识的 shell')}`)
     if (shell && process.platform !== 'win32') shell = undefined   // 其它系统只有默认 shell
-    const id = this.newId()
+    const id = this.idOrNew(opts?.id)
     const term = new LocalTerminal(id, { cwd: opts?.cwd, shell, ...(opts?.envText ? { envText: opts.envText } : {}) })
     const kind = shellKind(shell)
     const prefix = kind === 'bash' ? tr('本地') : kind === 'wsl' ? wslDistro(shell)! : shellLabel(shell)
@@ -111,9 +120,9 @@ export class TerminalManager {
   }
 
   // tmux：保持会话的会话名（有则接回 / 没有则新建；服务器没 tmux 时退回普通 shell，info.notice 说明）
-  async createSsh(opts: SshConnectOpts & { title?: string; tmux?: string }): Promise<TerminalInfo> {
+  async createSsh(opts: SshConnectOpts & { title?: string; tmux?: string; id?: string }): Promise<TerminalInfo> {
     const { tmux, ...conn } = opts
-    const id = this.newId()
+    const id = this.idOrNew(opts.id)
     const term = await SshTerminal.connect(id, conn, tmux)   // 连接失败抛错，不注册
     const detail = `${conn.username}@${conn.host}:${conn.port}`
     const info: TerminalInfo = {

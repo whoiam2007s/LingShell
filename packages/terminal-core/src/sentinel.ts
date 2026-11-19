@@ -27,7 +27,15 @@ export function makeSentinel(command: string): Sentinel {
   return { id, startMarker, endMarker, wrapped }
 }
 
-export interface SentinelResult { output: string; exitCode: number; truncated?: boolean }
+export interface SentinelResult {
+  output: string
+  exitCode: number
+  truncated?: boolean
+  /** 命令停在等用户输入：这里是那句提示（如 "(y/n)"），调用方据此提示模型换非交互写法 */
+  needsInput?: string
+  /** 因为长时间无输出被判为卡住（stalled 只在 needsInput 时出现，也是超时兜底的前置标记） */
+  stalled?: boolean
+}
 
 export class SentinelParser {
   private buf = ''

@@ -99,6 +99,20 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
                       <div className="mt-0.5 whitespace-pre-wrap break-words text-[var(--color-text-secondary)]">{x.task}</div>
                     </div>
                   )}
+                  {!!x.steps?.length && (
+                    <div className="rounded border border-[var(--color-border-subtle)] px-2 py-1 text-[11px]">
+                      <div className="text-[var(--color-text-muted)]">{tr('执行轨迹（{n} 步）：', { n: x.steps.length })}</div>
+                      <div className="mt-0.5 max-h-40 space-y-0.5 overflow-auto">
+                        {x.steps.map((s, i) => (
+                          <div key={i} className="flex items-start gap-1">
+                            <span className="shrink-0 text-[var(--color-text-muted)]">{s.kind === 'tool' ? '⚙' : '✎'}</span>
+                            <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]" title={s.label}>{s.label}</span>
+                            <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{s.at.slice(11, 19)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {x.blocked && (
                     <div className="rounded border border-[var(--color-border-default)] bg-[color:color-mix(in_srgb,var(--color-warn)_8%,transparent)] px-2 py-1 text-[11px]">
                       <div>{tr('问题：')}{x.blocked.question}</div>
