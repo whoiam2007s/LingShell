@@ -215,28 +215,28 @@ export abstract class BaseTerminal implements Terminal {
       const startedAt = Date.now()
       let stallTimer: NodeJS.Timeout | undefined
       let probed = false
-      function abortForInput(prompt: string): void {
-        if (!self.capturing) return
+      const abortForInput = (prompt: string): void => {
+        if (!this.capturing) return
         clearTimeout(timer)
         if (stallTimer) clearTimeout(stallTimer)
-        const cur = self.capturing
-        self.capturing = undefined
+        const cur = this.capturing
+        this.capturing = undefined
         if (signal) signal.removeEventListener('abort', onAbort)
-        self.writeRaw('\x03')   // 收尾：Ctrl-C 退回提示符，别把终端留在交互态（如 mysql>）
+        this.writeRaw('\x03')   // 收尾：Ctrl-C 退回提示符，别把终端留在交互态（如 mysql>）
         cleanup()
         const r: SentinelResult = { output: groomOutput(cur.parser.partial()), exitCode: -1, truncated: true, needsInput: prompt, stalled: true }
         finish(r)
         resolve(r)
       }
-      function armStall(): void {
+      const armStall = (): void => {
         if (stallTimer) clearTimeout(stallTimer)
-        stallTimer = setTimeout(checkStall, STALL_MS)
+        stallTimer = setTimeout(checkStall, STALL_MS)   // 定时器触发时 checkStall 已定义
         stallTimer.unref?.()
       }
-      function checkStall(): void {
-        if (!self.capturing) return
+      const checkStall = (): void => {
+        if (!this.capturing) return
         if (Date.now() - startedAt < STALL_MIN_RUN_MS) { armStall(); return }
-        const tail = self.capturing.parser.partial()
+        const tail = this.capturing.parser.partial()
         const byRule = detectNeedsInput(tail)
         if (byRule) { abortForInput(byRule); return }
         const ask = opts?.onStall
@@ -251,7 +251,6 @@ export abstract class BaseTerminal implements Terminal {
           })
           .catch(() => armStall())   // 判定失败：宁可多等，也不误杀
       }
-      const self = this
       this.capturing = {
         parser: cap.parser, raw,
         bumpStall: armStall,

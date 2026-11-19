@@ -5,6 +5,7 @@
 // "Test Files 0 passed" 其实只是刷新中间帧）。
 
 /** ANSI CSI / OSC / 单字符 ESC 序列 */
+// eslint-disable-next-line no-control-regex -- 这里就是要匹配 ESC(0x1b) / BEL(0x07) 这些控制字符
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g
 
 /** 把 `a\rb\rc` 这种原地覆盖折成最终帧 `c`（模拟终端里同一行被反复改写） */
@@ -58,6 +59,7 @@ export function groomOutput(text: string): string {
   if (s.includes('\r')) s = s.split('\n').map(foldCarriageReturn).join('\n')
   s = applyBackspaces(s)
   // 控制字符：保留 \n(0a) \t(09)，其余（含 NUL、响铃、垂直制表）一律去掉
+  // eslint-disable-next-line no-control-regex -- 这里就是要清掉 NUL / 响铃等控制字符
   s = s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
   return foldRepeatedLines(s)
 }
