@@ -777,8 +777,9 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
     const onStall = probe
       ? async (tail: string) => ((await probe(tail).catch(() => false)) ? 'waiting' as const : 'continue' as const)
       : undefined
-    const opts = { ...wire, ...(onStall ? { onStall } : {}) }
-    return deps.terminals.execCapture(id, command, signal, ms, opts)
+    // 两者都没有时保持原来的四参数调用（调用方/测试都按这个形状断言）
+    if (!wire && !onStall) return deps.terminals.execCapture(id, command, signal, ms)
+    return deps.terminals.execCapture(id, command, signal, ms, { ...wire, ...(onStall ? { onStall } : {}) })
   }
   // 后台任务的包装命令（mkdir / nohup / 轮询循环）不进用户终端：优先走旁路通道，没有再在终端里静默跑
   const bgRun = async (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }, cwd = false) => {
