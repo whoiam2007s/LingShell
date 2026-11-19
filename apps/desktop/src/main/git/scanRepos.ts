@@ -45,6 +45,9 @@ function dirName(p: string): string {
   return b || (p.replace(/[\\/]+$/, '') || p)
 }
 
+/** 向上最多看几级（本地和远端一致） */
+export const UP_MAX = 2
+
 export function scanGitRepos(startDir: string, opts: { maxDirs?: number; depth?: number } = {}): { repos: GitRepoHit[]; truncated: boolean } {
   const start = resolve(startDir)
   const maxDirs = opts.maxDirs ?? SCAN_MAX_DIRS
@@ -85,15 +88,11 @@ export function scanGitRepos(startDir: string, opts: { maxDirs?: number; depth?:
     level = next
   }
 
-  // 3) 逐级向上到根（parent === 自己是根）
+  // 3) 向上最多 UP_MAX 级（到根 / 目录不足 2 级时按实际层数停，不切目录）
   let cur = start
-  let up = 0
-  while (!truncated) {
+  for (let up = 1; up <= UP_MAX && !truncated; up++) {
     const parent = dirname(cur)
     if (parent === cur) break
-    up++
-    visited++
-    if (visited > maxDirs) { truncated = true; break }
     if (isRepoDir(parent)) push(parent, up, '')
     cur = parent
   }
@@ -113,7 +112,16 @@ export async function scanRemoteRepos(startDir: string, run: Run, opts: { max?: 
   const max = opts.max ?? REMOTE_SCAN_MAX
   // 单引号包裹（路径里可能有空格 / 中文）；内部单引号按 shell 规则转义成 '\''
   const q = "'" + dir.split("'").join("'\\''") + "'"
-  const cmd = `find ${q} -maxdepth 2 -name .git -print 2>/dev/null | head -${max + 1}`
+  // 关键两条：
+  // 1) 库包目录必须 -prune（否则 node_modules 下几千个子包全要列一遍，远端能卡十几秒）
+  // 2) 命中 .git 后也要 -prune —— 不然 find 会进入 .git/objects 扫几万个对象文件
+  const SKIP = '-name node_modules -o -name target -o -name vendor -o -name dist -o -name build -o -name .venv -o -name __pycache__ -o -name .pnpm-store'
+  // -maxdepth 3：仓库在 dir 的孙目录时，.git 本身在第 3 层
+  // 向下：find（带 prune）。向上：最多 UP_MAX 级，直接 ls -a 上级目录看有没有 .git——
+  // 不切目录、一条命令跑完两级；目录不足两级时（到了 /）ls 失败自动跳过
+  const downCmd = `find ${q} -maxdepth 3 \\( ${SKIP} \\) -prune -o -name .git -print -prune 2>/dev/null | head -${max + 1}`
+  const upCmd = (n: number) => 'd=' + q + '/..'.repeat(n) + '; ls -a "$d" 2>/dev/null | grep -qx "[.]git" && { p=$(cd "$d" 2>/dev/null && pwd); [ -n "$p" ] && echo "' + n + ':$p"; }'
+  const cmd = [downCmd, upCmd(1), upCmd(2)].join('; ') + '; true'
   const r = await run(cmd, { timeoutMs: REMOTE_SCAN_TIMEOUT_MS, maxBytes: 256 * 1024 }).catch(() => undefined)
   if (!r || !r.output.trim()) return { repos: [], truncated: false }
   const repos: GitRepoHit[] = []
@@ -121,6 +129,16 @@ export async function scanRemoteRepos(startDir: string, run: Run, opts: { max?: 
   let truncated = false
   for (const raw of r.output.split('\n')) {
     const line = raw.trim()
+    if (!line) continue
+    const upHit = /^([12]):(.+)$/.exec(line)
+    if (upHit) {
+      const depth = Number(upHit[1])
+      const full = upHit[2].replace(/\/+$/, '') || '/'
+      if (seen.has(full)) continue
+      seen.add(full)
+      repos.push({ path: full, name: full.split('/').pop() || full, rel: '', up: depth })
+      continue
+    }
     if (!line.endsWith('/.git')) continue
     const full = line.slice(0, -'/.git'.length) || '/'
     if (seen.has(full)) continue
