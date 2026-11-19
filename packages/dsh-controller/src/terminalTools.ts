@@ -20,7 +20,7 @@ export interface TerminalLike {
   readSnapshot(terminalId: string, lines: number): string
   // opts.wire：实际发进 shell 的命令（密钥保险箱占位符已换成明文）；command 是占位符原文（回显 / 命令历史）
   // opts.silent：不回显命令 / 输出、不记命令历史（后台任务没有旁路通道时用，见 sideExec）
-  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean }): Promise<{ output: string; exitCode: number; truncated?: boolean }>
+  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; onStall?: (tail: string) => Promise<'waiting' | 'continue'> }): Promise<{ output: string; exitCode: number; truncated?: boolean; needsInput?: string; stalled?: boolean }>
 }
 
 export interface AuditRecord {
@@ -85,6 +85,8 @@ export interface TerminalToolDeps {
   writeFile?(terminalId: string, path: string, content: string): Promise<{ path: string; backupPath?: string; hash?: string }>
   downloadFile?(terminalId: string, remotePath: string): Promise<{ localPath: string }>
   execTimeoutMs?(): number
+  // 规则识别不出「命令是不是在等输入」时的兜底判定（用一次小模型调用）；缺省则不判，只等超时
+  probeWaitingInput?(tail: string): Promise<boolean>
   // dsh agent id → 我方会话 id（上下文重置后两者不同；缺省视为相同）
   sessionIdOf?(agentId: string): string
   // 取走用户在授权卡上对这次调用的改动：deny=拒绝并附原因，command=改过的命令
@@ -167,6 +169,9 @@ const NEEDS: Record<string, 'read' | 'write'> = {
  */
 const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
 /** 授权粒度：应用配置 / 派子代理各占一个键，都不会和真实主机的授权混在一起 */
+// 给模型看：命令停在等输入时的引导（固定文案，不进字典）
+const needsInputNote = (prompt: string) => `这条命令停在这里等你输入（提示：${prompt}），已中止并退回提示符。可以：① 换成非交互写法重试（如 -y / --non-interactive / yes | / printf 'y\n' |）；② 用 ask_user 问用户要不要这样做；③ 直接让用户在这个终端里手动执行。注意：删除 / 卸载 / 覆盖类的确认不要自己加 -y 绕过，必须交回用户。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+
 export const authKeyOf = (toolName: string): string => (toolName === 'spawn_subagent' ? 'subagent' : 'app')
 /** 伪主机键（不是真实主机 id，UI 上按语义显示，不当终端处理） */
 export const isPseudoHostKey = (k: string | undefined): boolean => k === 'app' || k === 'subagent'
@@ -766,8 +771,15 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
   }
   const withMeta = <T extends object>(terminalId: string, o: T) => ({ ...o, ...deps.hostMeta?.(terminalId) })
   // 有密钥要展开才带 wire（没有就按原样四个参数调，与密钥保险箱之前一致）
-  const capture = (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }) =>
-    wire ? deps.terminals.execCapture(id, command, signal, ms, wire) : deps.terminals.execCapture(id, command, signal, ms)
+  // 每条命令挂一个「疑似卡在等输入」的兜底判定：规则识别不出时问一次模型（onStall 在 terminal-core 里保证最多一次）
+  const probe = deps.probeWaitingInput
+  const capture = (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }) => {
+    const onStall = probe
+      ? async (tail: string) => ((await probe(tail).catch(() => false)) ? 'waiting' as const : 'continue' as const)
+      : undefined
+    const opts = { ...wire, ...(onStall ? { onStall } : {}) }
+    return deps.terminals.execCapture(id, command, signal, ms, opts)
+  }
   // 后台任务的包装命令（mkdir / nohup / 轮询循环）不进用户终端：优先走旁路通道，没有再在终端里静默跑
   const bgRun = async (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }, cwd = false) => {
     if (deps.sideExec) {
@@ -838,9 +850,17 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const callId = exec?.callId === undefined ? undefined : String(exec.callId)
         deps.audit({
           sessionId: sidOf(exec), terminalId: args.terminal_id, command,
-          decision: edited ? 'exec_allowed:edited' : 'exec_allowed', exitCode: r.exitCode, truncated: r.truncated, ...ruleOf(o?.rule),
+          decision: r.needsInput ? 'abort:needs_input' : edited ? 'exec_allowed:edited' : 'exec_allowed', exitCode: r.exitCode, truncated: r.truncated, ...ruleOf(o?.rule),
           ...rollbackOf(args), ...(callId ? { callId } : {}), ...(o?.review ? { review: o.review } : {}),
         })
+        // 停在等输入：已经发过 Ctrl-C 中止。把「它在等什么」原样交给模型，由它决定换写法 / 问用户 / 交回用户手动跑
+        if (r.needsInput) {
+          return JSON.stringify({
+            output: r.output, exit_code: r.exitCode, truncated: true,
+            needs_input: r.needsInput,
+            note: needsInputNote(r.needsInput),   // i18n-ignore 模型提示词（含固定文案，见常量）
+          })
+        }
         return JSON.stringify({
           ...(edited ? { note: '用户在授权时修改了命令，实际执行的是 executed_command', executed_command: edited } : {}),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
           output: r.output, exit_code: r.exitCode, truncated: !!r.truncated,

@@ -1,12 +1,14 @@
 import { tr } from '@lingshell/shared'
 import { makeSentinel, SentinelParser, stripAnsi, type CaptureParser, type SentinelResult } from './sentinel.js'
+import { detectNeedsInput, groomOutput, stripQuotedText } from './terminalGroom.js'
 
 export type DataHandler = (chunk: string) => void
 export type ExitHandler = (info: { code?: number; reason?: string }) => void
 export type CommandHandler = (command: string, source: 'user' | 'ai') => void
 // silent：不回显命令/输出到 UI、不记命令历史（内部探测用，如资源管理器取 pwd）
 // wire：实际发进 shell 的命令（密钥保险箱占位符已换成明文）；command 只用于回显 / 命令历史 / 拦截判定，始终是占位符原文
-export interface ExecCaptureOpts { silent?: boolean; wire?: string }
+// onStall：命令长时间无输出时的兜底判定（规则没识别出来时由调用方问模型「是不是在等输入」），返回 'waiting' 则中止
+export interface ExecCaptureOpts { silent?: boolean; wire?: string; onStall?: (tail: string) => Promise<'waiting' | 'continue'> }
 // noHistory：不进用户输入行缓冲、不记命令历史（自动应答发的密码/yes 不是命令）
 export interface WriteOpts { noHistory?: boolean }
 
@@ -26,10 +28,13 @@ export interface Terminal {
 
 const FORBIDDEN_EXEC = [/^(exit|logout)\b/, /^kill\s+-9\s+\$\$/]
 const FULLSCREEN = [/^(vim?|nano|emacs|top|htop|less|more|man|tmux|screen)\b/]
+// 「卡在等输入」判据：命令至少跑够这么久，再连续这么久没输出才算（避免 apt 之类先打一堆日志被误杀）
+const STALL_MIN_RUN_MS = 10_000
+const STALL_MS = 8_000
 // 按 ; && || | & 换行 切段逐段检查（`cd /tmp && exit`、`sudo vim x` 也要拦），去掉段首 sudo。
-// ponytail: 不解析引号，`echo "a; exit"` 会误拦，宁严勿松
+// 先剥掉引号里的内容：`grep "exit" 文件` 里的 exit 只是参数，不该当成会关终端的命令。
 function anySegment(command: string, res: RegExp[]): boolean {
-  return command.split(/&&|\|\||[;|&\n]/)
+  return stripQuotedText(command).split(/&&|\|\||[;|&\n]/)
     .map((seg) => seg.trim().replace(/^sudo\s+/, ''))
     .some((seg) => res.some((re) => re.test(seg)))
 }
@@ -46,6 +51,8 @@ export abstract class BaseTerminal implements Terminal {
   private partial = ''
   private capturing?: {
     parser: CaptureParser; raw: boolean; resolve: (r: SentinelResult, tail: string) => void; reject: (e: Error) => void; timer: NodeJS.Timeout
+    /** 收到新输出就重排静默计时（判断「是不是卡在等输入」用） */
+    bumpStall?: () => void
   }
   private static MAX_LINES = 2000
 
@@ -78,6 +85,7 @@ export abstract class BaseTerminal implements Terminal {
     if (!this.capturing || this.capturing.raw) this.handlers.forEach((h) => h(d))
     this.pushScrollback(d)
     if (this.capturing) {
+      this.capturing.bumpStall?.()   // 有新输出：静默计时重排（说明它还在干活，不是卡在等输入）
       this.capturing.parser.feed(d)
       const r = this.capturing.parser.result()
       if (r) this.finishCapture(r, this.capturing.parser.tail(d))
@@ -201,18 +209,64 @@ export abstract class BaseTerminal implements Terminal {
         reject(new Error('aborted'))
       }
       if (signal) signal.addEventListener('abort', onAbort, { once: true })
+      // ── 是不是卡在等输入？──
+      // 判据：命令已跑够 STALL_MIN_RUN_MS，且连续 STALL_MS 没有任何新输出（有输出就重排，说明还在干活）。
+      // 先看规则（中英文提示词）；规则没命中且有 onStall，就让调用方用模型判一次（每条命令最多一次）。
+      const startedAt = Date.now()
+      let stallTimer: NodeJS.Timeout | undefined
+      let probed = false
+      function abortForInput(prompt: string): void {
+        if (!self.capturing) return
+        clearTimeout(timer)
+        if (stallTimer) clearTimeout(stallTimer)
+        const cur = self.capturing
+        self.capturing = undefined
+        if (signal) signal.removeEventListener('abort', onAbort)
+        self.writeRaw('\x03')   // 收尾：Ctrl-C 退回提示符，别把终端留在交互态（如 mysql>）
+        cleanup()
+        const r: SentinelResult = { output: groomOutput(cur.parser.partial()), exitCode: -1, truncated: true, needsInput: prompt, stalled: true }
+        finish(r)
+        resolve(r)
+      }
+      function armStall(): void {
+        if (stallTimer) clearTimeout(stallTimer)
+        stallTimer = setTimeout(checkStall, STALL_MS)
+        stallTimer.unref?.()
+      }
+      function checkStall(): void {
+        if (!self.capturing) return
+        if (Date.now() - startedAt < STALL_MIN_RUN_MS) { armStall(); return }
+        const tail = self.capturing.parser.partial()
+        const byRule = detectNeedsInput(tail)
+        if (byRule) { abortForInput(byRule); return }
+        const ask = opts?.onStall
+        if (!ask || probed) { armStall(); return }
+        probed = true
+        void ask(tail)
+          .then((verdict) => {
+            if (verdict === 'waiting') {
+              const last = tail.trimEnd().split('\n').pop()?.trim().slice(0, 200)
+              abortForInput(last || '（检测到命令在等待输入）')   // i18n-ignore 模型提示词 / 给模型的结果
+            } else armStall()
+          })
+          .catch(() => armStall())   // 判定失败：宁可多等，也不误杀
+      }
+      const self = this
       this.capturing = {
         parser: cap.parser, raw,
+        bumpStall: armStall,
         resolve: (r, tail) => {
           if (signal) signal.removeEventListener('abort', onAbort)
+          if (stallTimer) clearTimeout(stallTimer)
           cleanup()
           finish(r)
           if (!silent && tail) this.emitToUi(tail)   // 结束标记后的提示符；silent 探测不补，免得多一行提示符
-          resolve(r)
+          resolve({ ...r, output: groomOutput(r.output) })
         },
         reject: (e) => { if (signal) signal.removeEventListener('abort', onAbort); cleanup(); reject(e) },
         timer,
       }
+      armStall()
       this.writeRaw(cap.wrapped + '\r')
     })
   }

@@ -1440,6 +1440,31 @@ export class DshController {
     return text
   }
 
+  /**
+   * 规则没识别出来时，用一次一次性小调用判断「命令是不是停在等输入」。
+   * 只回 true/false：失败、超时、看不懂一律 false —— 宁可多等到超时，也不误杀正在跑的命令。
+   * 每个命令由调用方保证最多问一次。
+   */
+  async probeWaitingInput(tail: string): Promise<boolean> {
+    const text = tail.trim().slice(-600)
+    if (!text) return false
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(), 5000)
+    try {
+      const r = await this.complete(
+        '你是终端输出判别器。只输出一个 JSON 对象，不要解释。',   // i18n-ignore 模型提示词（判别器）
+        '下面是一条命令最后一段输出。判断它是否停在这里等待用户输入（如 y/n、密码、选项、路径、按任意键）。只是普通日志、进度或已经跑完都算 false。\n只回答：{"waiting":true} 或 {"waiting":false}\n\n输出：\n' + '\n' + text,   // i18n-ignore 模型提示词（判别器）
+        ac.signal,
+        'probe-input',
+      )
+      return /"waiting"\s*:\s*true/i.test(r)
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   // ── 图片识别子请求（read_image 工具用）──────────────────
   // 与 complete() 同一套 hand-built 调用，但用**会话当前的路由与模型**（会话里切过模型也算），
   // 并且消息里带图片块。图片先进附件库，适配器发请求时按引用读字节（与用户消息里的图片块同一套）。
