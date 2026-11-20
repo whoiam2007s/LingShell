@@ -35,7 +35,7 @@ function TopoNodeBox({ data }: NodeProps) {
     <div
       title={`${n.label}\n${tr(ROLE_TEXT[n.role])}`}
       data-node={n.id}
-      className="flex h-full w-full cursor-pointer flex-col justify-center rounded-md border px-2 transition-opacity"
+      className="flex h-full w-full cursor-grab flex-col justify-center rounded-md border px-2 transition-opacity active:cursor-grabbing"
       style={{
         background: FILL[n.role],
         borderColor: STROKE[n.role],
@@ -70,6 +70,8 @@ export function TopologyDrawer({ term, onClose }: { term?: TerminalInfo; onClose
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
   const [sel, setSel] = useState<string>()
+  // 手动拖过的节点位置：拖动后要记住，否则下次渲染又被布局坐标覆盖（拖一下就弹回原位）
+  const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({})
 
   // 请求序号：迟到的旧响应不能覆盖新结果；节点变了就把已选中的清掉（详情不会停在旧节点上）
   const seq = useRef(0)
@@ -80,6 +82,7 @@ export function TopologyDrawer({ term, onClose }: { term?: TerminalInfo; onClose
     client.topology.get(tid).then((r) => {
       if (n !== seq.current) return
       setTopo(r); setSel((s) => (s && r.nodes.some((x) => x.id === s) ? s : undefined)); setErr('')
+      setMoved({})   // 重新采集 = 回到布局算出来的位置
     }).catch((e) => { if (n === seq.current) setErr(errText(e)) })
       .finally(() => { if (n === seq.current) setLoading(false) })
   }, [ok, tid])
@@ -109,12 +112,12 @@ export function TopologyDrawer({ term, onClose }: { term?: TerminalInfo; onClose
     }))
     const items: Node[] = lay.nodes.map((n) => ({
       id: n.id, type: 'topo',
-      position: { x: n.x, y: n.y },
+      position: moved[n.id] ?? { x: n.x, y: n.y },   // 手动拖过的用拖后位置，否则按布局
       style: { width: W, height: H },
       data: { node: n, dim: !!sel && !related?.has(n.id) } satisfies TopoData,
     }))
     return [...cols, ...items]
-  }, [lay, sel, related])
+  }, [lay, sel, related, moved])
 
   const edges: Edge[] = useMemo(() => {
     if (!topo) return []
@@ -162,6 +165,7 @@ export function TopologyDrawer({ term, onClose }: { term?: TerminalInfo; onClose
             proOptions={{ hideAttribution: true }}
             style={{ background: 'var(--color-bg-panel)' }}
             onNodeClick={(_e, n) => { if (!n.id.startsWith('col-')) setSel(n.id === sel ? undefined : n.id) }}
+            onNodeDragStop={(_e, n) => setMoved((m) => ({ ...m, [n.id]: n.position }))}
             onPaneClick={() => setSel(undefined)}
           >
             <Background gap={16} size={1} color="var(--color-border-subtle)" />
