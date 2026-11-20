@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Network } from 'lucide-react'
-import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
+import { Background, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { TOPO_COLS, layoutTopology, portsSupported, tk, tr, type TerminalInfo, type TopoLayout, type TopoNode, type Topology } from '@lingshell/shared'
 import { client } from '../../client/index.js'
@@ -24,6 +24,10 @@ const sub = (n: TopoNode) => (n.kind === 'external' ? tr('出站目标') : n.lis
 type LayNode = TopoLayout['nodes'][number]
 type TopoData = { node: LayNode; dim: boolean }
 
+// react-flow 的连边必须挂在 Handle 上：没有 Handle 时边会静默不画。
+// 这里左右各放一个不可见的 Handle（左进右出），视觉上仍然是一张卡片
+const hiddenHandle: CSSProperties = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 0, background: 'transparent' }
+
 // 节点卡片：保留原来的配色与两行文案（名称 + 端口/类型），外部节点用虚线框
 function TopoNodeBox({ data }: NodeProps) {
   const { node: n, dim } = data as unknown as TopoData
@@ -39,12 +43,14 @@ function TopoNodeBox({ data }: NodeProps) {
         opacity: dim ? 0.45 : 1,
       }}
     >
+      <Handle type="target" position={Position.Left} style={hiddenHandle} isConnectable={false} />
       <div className="truncate text-[11.5px] font-semibold leading-tight text-[var(--color-text-primary)]">
         {cut(`${n.kind === 'container' ? '▣ ' : ''}${n.label}`, 17)}
       </div>
       <div className="truncate text-[10px] leading-tight text-[var(--color-text-muted)]">
         {cut(sub(n), 20)}{n.inExternal ? tr(' · 外部 {n}', { n: n.inExternal }) : ''}
       </div>
+      <Handle type="source" position={Position.Right} style={hiddenHandle} isConnectable={false} />
     </div>
   )
 }
@@ -144,7 +150,7 @@ export function TopologyDrawer({ term, onClose }: { term?: TerminalInfo; onClose
       {header}
       {err && <div className="shrink-0 whitespace-pre-wrap break-all border-b border-[var(--color-border-subtle)] px-3 py-1.5 text-[11px] text-[var(--color-danger)]">{err}</div>}
       {topo && !topo.procVisible && topo.nodes.length > 0 && <div className="shrink-0 border-b border-[var(--color-border-subtle)] px-3 py-1 text-[11px] text-[var(--color-warn)]">{tr('看不到进程名（需要 root 或免密 sudo），节点按端口显示。')}</div>}
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1" style={{ background: 'var(--color-bg-panel)' }}>
         {!topo && <div className={`px-3 py-3 text-[12px] ${MUTED}`}>{loading ? tr('采集中…') : ''}</div>}
         {topo && !topo.nodes.length && <div className={`px-3 py-3 text-[12px] ${MUTED}`}>{tr('没有读到监听端口和连接。')}</div>}
         {topo && topo.nodes.length > 0 && (
@@ -154,10 +160,11 @@ export function TopologyDrawer({ term, onClose }: { term?: TerminalInfo; onClose
             minZoom={0.3} maxZoom={1.8}
             nodesConnectable={false} nodesDraggable
             proOptions={{ hideAttribution: true }}
+            style={{ background: 'var(--color-bg-panel)' }}
             onNodeClick={(_e, n) => { if (!n.id.startsWith('col-')) setSel(n.id === sel ? undefined : n.id) }}
             onPaneClick={() => setSel(undefined)}
           >
-            <Background gap={16} size={1} />
+            <Background gap={16} size={1} color="var(--color-border-subtle)" />
             <Controls showInteractive={false} />
           </ReactFlow>
         )}
