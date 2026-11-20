@@ -46,4 +46,12 @@ describe.skipIf(!REAL_SLOW)('execCapture（真实终端）', () => {
       expect(Date.now() - t0).toBeLessThan(45000)
     })
   }, 60000)
+
+  it('handoff 模式：判定等输入时不中止，命令留在终端里', async () => {
+    await withTerm(async (m, id) => {
+      const r = await m.execCapture(id, `read -p "continue? (y/n) " answer`, undefined, 60000, { handoff: true })
+      expect(r.needsInput).toBeTruthy()
+      expect(r.handedOff).toBe(true)   // 标记由「没发 Ctrl-C」那条分支设置
+    })
+  }, 60000)
 })

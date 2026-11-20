@@ -277,6 +277,11 @@ export interface SystemSettings {
   contextResetSteps: number
   /** 上下文用到压缩阈值的百分之多少时出提醒条（0 = 关闭提醒），默认 80 */
   contextWarnAt: number
+  /**
+   * 命令判定为「在等输入」后怎么处理：
+   * abort = 发 Ctrl-C 中止并交回 AI（缺省）；handoff = 不中止、保留现场让用户直接敲答案
+   */
+  interactivePolicy: 'abort' | 'handoff'
   // 子代理默认超时（秒，60–1800）：派子代理时没显式给 timeout_sec 就用它；默认 600 = 10 分钟
   subagentTimeoutSec: number
   // 同时最多几个子代理在跑（1–6，默认 3）：超了会提示等一个结束再派
@@ -378,7 +383,7 @@ export type TerminalThemeId = 'auto' | 'dark' | 'light' | 'solarized-dark' | 'dr
 export type TerminalCursorStyle = 'block' | 'underline' | 'bar'
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   historyLimit: 200, execTimeoutSec: 50, uploadEncrypt: true,
-  contextLimitTokens: 600000, contextResetSteps: 100, contextWarnAt: 80, subagentTimeoutSec: 600, subagentMaxConcurrent: 3, terminalEnv: '', confirmDangerous: true, aiRedact: true,
+  contextLimitTokens: 600000, contextResetSteps: 100, contextWarnAt: 80, interactivePolicy: 'abort', subagentTimeoutSec: 600, subagentMaxConcurrent: 3, terminalEnv: '', confirmDangerous: true, aiRedact: true,
   customRules: '', localNotes: '',
   terminalFontSize: 13, terminalTheme: 'auto',
   terminalRecording: false, recordingRetentionDays: 30,

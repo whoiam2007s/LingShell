@@ -20,7 +20,7 @@ export interface TerminalLike {
   readSnapshot(terminalId: string, lines: number): string
   // opts.wire：实际发进 shell 的命令（密钥保险箱占位符已换成明文）；command 是占位符原文（回显 / 命令历史）
   // opts.silent：不回显命令 / 输出、不记命令历史（后台任务没有旁路通道时用，见 sideExec）
-  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; onStall?: (tail: string) => Promise<'waiting' | 'continue'> }): Promise<{ output: string; exitCode: number; truncated?: boolean; needsInput?: string; stalled?: boolean }>
+  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; handoff?: boolean; onStall?: (tail: string) => Promise<'waiting' | 'continue'> }): Promise<{ output: string; exitCode: number; truncated?: boolean; needsInput?: string; stalled?: boolean; handedOff?: boolean }>
 }
 
 export interface AuditRecord {
@@ -87,6 +87,8 @@ export interface TerminalToolDeps {
   execTimeoutMs?(): number
   // 规则识别不出「命令是不是在等输入」时的兜底判定（用一次小模型调用）；缺省则不判，只等超时
   probeWaitingInput?(tail: string): Promise<boolean>
+  // 判定为等输入后怎么处理：abort（缺省，发 Ctrl-C 退回提示符）/ handoff（保留现场，命令留给用户敲答案）
+  interactivePolicy?(): 'abort' | 'handoff'
   // dsh agent id → 我方会话 id（上下文重置后两者不同；缺省视为相同）
   sessionIdOf?(agentId: string): string
   // 取走用户在授权卡上对这次调用的改动：deny=拒绝并附原因，command=改过的命令
@@ -174,6 +176,9 @@ const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 
 const needsInputNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已中止并退回提示符。\n先给结论：识别成功、在等什么，不用让用户再手动跑一遍。然后按下面对照自己处理：\n① 普通确认（安装、初始化、覆盖、yes/no、连续输入）——自己把任务做完，别动不动推回用户：\n   a. 先找非交互开关：-y / --yes / --non-interactive / --batch / --force；npm init -y、ssh-keygen -N ""、openssl req -subj、docker login --password-stdin、DEBIAN_FRONTEND=noninteractive、CI=1 这类。\n   b. 没有开关就按提示顺序喂输入：printf 'y\\nn\\n' | cmd（几个问题喂几行，别多喂）；只有"一路全 y"才用 yes | cmd。\n   c. 不确定它会问什么，先去读再决定：grep -n "read " 脚本.sh、查看脚本内容、跑 --help。\n   d. 需要密码 / token 时用密钥保险箱里的密钥名称当占位（写法见系统提示的密钥段），绝不写明文。\n   改命令是为了把任务做完，不算违背用户要求；改写后的命令照常走授权和危险命令检查。\n② 危险确认（删除 / 卸载 / 覆盖已有数据 / 生产环境变更）：绝不自己加 -y、也不要用 yes | 一路放行，交回用户决定或让用户手动执行。\n③ 需要用户拍板（选哪条路径、装哪个版本、要输入具体值）：用 ask_user 弹选项卡问，不要让用户打字回复。\n④ 喂不进去的（全屏 TUI、必须人工判断）或用户只是想验证这个能力：说明情况即可，请用户在该终端里自己跑，不必硬凑。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 export const authKeyOf = (toolName: string): string => (toolName === 'spawn_subagent' ? 'subagent' : 'app')
+
+// 给模型看：handoff 模式下的处理指引（命令没被中止，留在终端里等用户敲）
+const handoffNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已按设置「保留现场」处理：**没有中止**，命令就停在终端里，控制权已经交给用户。\n现在：① 不要往这个终端发任何命令（你的命令会被当成它的答案）；② 不要重跑这条命令；③ 也不用让用户另跑一遍。\n告诉用户：命令停在终端里等你回答（附上提示原文），在终端里敲一下就行。等用户说好了，再用 read_terminal 或只读命令看结果。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 /**
  * 失效终端 id 的自动对应：应用重启 / 跨版本升级后终端 id 会变，模型手里的旧 id 对不上。
@@ -795,13 +800,16 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
   // 有密钥要展开才带 wire（没有就按原样四个参数调，与密钥保险箱之前一致）
   // 每条命令挂一个「疑似卡在等输入」的兜底判定：规则识别不出时问一次模型（onStall 在 terminal-core 里保证最多一次）
   const probe = deps.probeWaitingInput
+  const policy = deps.interactivePolicy
   const capture = (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }) => {
     const onStall = probe
       ? async (tail: string) => ((await probe(tail).catch(() => false)) ? 'waiting' as const : 'continue' as const)
       : undefined
-    // 两者都没有时保持原来的四参数调用（调用方/测试都按这个形状断言）
-    if (!wire && !onStall) return deps.terminals.execCapture(id, command, signal, ms)
-    return deps.terminals.execCapture(id, command, signal, ms, { ...wire, ...(onStall ? { onStall } : {}) })
+    // handoff：判定为等输入时不中止，把终端和命令留给用户（设置 → AI 里选）
+    const handoff = policy?.() === 'handoff'
+    // 三样都没有时保持原来的四参数调用（调用方/测试都按这个形状断言）
+    if (!wire && !onStall && !handoff) return deps.terminals.execCapture(id, command, signal, ms)
+    return deps.terminals.execCapture(id, command, signal, ms, { ...wire, ...(onStall ? { onStall } : {}), ...(handoff ? { handoff: true } : {}) })
   }
   // 后台任务的包装命令（mkdir / nohup / 轮询循环）不进用户终端：优先走旁路通道，没有再在终端里静默跑
   const bgRun = async (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }, cwd = false) => {
@@ -889,7 +897,8 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           return JSON.stringify({
             output: r.output, exit_code: r.exitCode, truncated: true,
             needs_input: r.needsInput,
-            note: [staleNote, needsInputNote(r.needsInput)].filter(Boolean).join('\n'),
+            ...(r.handedOff ? { handed_off: true } : {}),
+            note: [staleNote, r.handedOff ? handoffNote(r.needsInput) : needsInputNote(r.needsInput)].filter(Boolean).join('\n'),
           })
         }
         const notes = [

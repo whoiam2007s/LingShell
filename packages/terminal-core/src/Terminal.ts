@@ -8,7 +8,8 @@ export type CommandHandler = (command: string, source: 'user' | 'ai') => void
 // silent：不回显命令/输出到 UI、不记命令历史（内部探测用，如资源管理器取 pwd）
 // wire：实际发进 shell 的命令（密钥保险箱占位符已换成明文）；command 只用于回显 / 命令历史 / 拦截判定，始终是占位符原文
 // onStall：命令长时间无输出时的兜底判定（规则没识别出来时由调用方问模型「是不是在等输入」），返回 'waiting' 则中止
-export interface ExecCaptureOpts { silent?: boolean; wire?: string; onStall?: (tail: string) => Promise<'waiting' | 'continue'> }
+// handoff：判定为等输入时不发 Ctrl-C，命令留在终端里交给用户敲答案（终端保持原样，调用方不应再往里发命令）
+export interface ExecCaptureOpts { silent?: boolean; wire?: string; onStall?: (tail: string) => Promise<'waiting' | 'continue'>; handoff?: boolean }
 // noHistory：不进用户输入行缓冲、不记命令历史（自动应答发的密码/yes 不是命令）
 export interface WriteOpts { noHistory?: boolean }
 
@@ -222,9 +223,14 @@ export abstract class BaseTerminal implements Terminal {
         const cur = this.capturing
         this.capturing = undefined
         if (signal) signal.removeEventListener('abort', onAbort)
-        this.writeRaw('\x03')   // 收尾：Ctrl-C 退回提示符，别把终端留在交互态（如 mysql>）
+        // handoff：不中止，命令留在终端里等用户敲答案（终端保持原样）；否则 Ctrl-C 退回提示符
+        const handoff = opts?.handoff === true
+        if (!handoff) this.writeRaw('\x03')
         cleanup()
-        const r: SentinelResult = { output: groomOutput(cur.parser.partial()), exitCode: -1, truncated: true, needsInput: prompt, stalled: true }
+        const r: SentinelResult = {
+          output: groomOutput(cur.parser.partial()), exitCode: -1, truncated: true, needsInput: prompt, stalled: true,
+          ...(handoff ? { handedOff: true } : {}),
+        }
         finish(r)
         resolve(r)
       }

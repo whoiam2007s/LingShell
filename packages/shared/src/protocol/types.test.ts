@@ -71,7 +71,7 @@ describe('阶段三：SystemSettings', () => {
   it('SystemSettings 默认值', () => {
     expect(DEFAULT_SYSTEM_SETTINGS).toEqual({
       historyLimit: 200, execTimeoutSec: 50, uploadEncrypt: true,
-      contextLimitTokens: 600000, contextResetSteps: 100, contextWarnAt: 80, subagentTimeoutSec: 600, subagentMaxConcurrent: 3, terminalEnv: '', confirmDangerous: true, aiRedact: true,
+      contextLimitTokens: 600000, contextResetSteps: 100, contextWarnAt: 80, interactivePolicy: 'abort', subagentTimeoutSec: 600, subagentMaxConcurrent: 3, terminalEnv: '', confirmDangerous: true, aiRedact: true,
       customRules: '', localNotes: '',
       terminalFontSize: 13, terminalTheme: 'auto',
       terminalRecording: false, recordingRetentionDays: 30,

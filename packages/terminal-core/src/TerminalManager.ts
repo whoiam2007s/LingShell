@@ -300,7 +300,7 @@ export class TerminalManager {
   }
 
   // opts.wire：实际发进 shell 的命令（含密钥明文），command 是占位符原文（回显 / 历史用）；opts.silent：不回显、不记历史（AI 后台任务的退路）
-  async execCapture(id: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean }): Promise<SentinelResult> {
+  async execCapture(id: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; handoff?: boolean }): Promise<SentinelResult> {
     const e = this.get(id)
     if (e.info.manualOnly) throw new Error(`shell_not_supported: ${tr('{shell} 终端是仅手动终端，AI 不能在里面执行命令（命令捕获依赖 bash）', { shell: shellLabel(e.info.shell) })}`)
     if (e.info.status === 'disconnected') throw new Error('terminal_disconnected')
@@ -308,7 +308,7 @@ export class TerminalManager {
     e.info.locked = true
     this.opts?.emit?.(id, true)
     try {
-      const o = { ...(opts?.wire !== undefined ? { wire: opts.wire } : {}), ...(opts?.silent ? { silent: true } : {}) }
+      const o = { ...(opts?.wire !== undefined ? { wire: opts.wire } : {}), ...(opts?.silent ? { silent: true } : {}), ...(opts?.handoff ? { handoff: true } : {}) }
       return await e.term.execCapture(command, timeoutMs, signal, Object.keys(o).length ? o : undefined)
     } finally {
       e.info.locked = false

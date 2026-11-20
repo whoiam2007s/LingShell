@@ -35,6 +35,11 @@ export interface SentinelResult {
   needsInput?: string
   /** 因为长时间无输出被判为卡住（stalled 只在 needsInput 时出现，也是超时兜底的前置标记） */
   stalled?: boolean
+  /**
+   * handoff 模式：判定为等输入后**没有中止**，命令和终端都留在原地交给用户敲答案。
+   * 这时终端里那条命令还在跑，调用方不应再往这个终端发命令。
+   */
+  handedOff?: boolean
 }
 
 export class SentinelParser {

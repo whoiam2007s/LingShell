@@ -404,6 +404,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "ai",
   "kind": "row",
+  "label": "命令卡在等输入时",
+  "section": "上下文",
+  "hint": "AI 执行的命令停下来问你时怎么处理",
+  "tip": "中止并交回 AI：发 Ctrl-C 结束命令，由 AI 换成非交互写法重跑（适合 apt install 这类能重跑的）。保留现场交给你：不打断命令，它就停在终端里等你在那个终端里敲答案（适合多步交互、要输密码、自研脚本）。保留现场时 AI 不会再往那个终端发命令。"
+ },
+ {
+  "tab": "ai",
+  "kind": "row",
   "label": "子代理默认超时",
   "section": "上下文",
   "hint": "秒，默认 600（10 分钟）",

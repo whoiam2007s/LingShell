@@ -1,5 +1,6 @@
 import { Switch } from '../../../components/ui/Switch.js'
 import { NumberInput } from '../../../components/ui/NumberInput.js'
+import { Select } from '../../../components/ui/Select.js'
 import { AppLockSettings } from './AppLockSettings.js'
 import { CommandRules } from './CommandRules.js'
 import { AiReviewSection } from './AiReviewSettings.js'
@@ -88,6 +89,14 @@ export function AiSecuritySettings() {
         <Row label={tr('上下文提醒阈值')} hint={tr('百分比，0 = 关闭提醒')}
           tip={tr('上下文用到压缩阈值的这个百分比时，对话输入框上方出一条提示（显示当前百分比、可点「立即压缩」）。到 100% 仍会自动压缩，这个提示只是提前告诉你。')}>
           <NumberInput className="w-28" value={sys.contextWarnAt} min={0} max={99} onChange={(n) => set({ contextWarnAt: n })} />
+        </Row>
+        <Row label={tr('命令卡在等输入时')} hint={tr('AI 执行的命令停下来问你时怎么处理')}
+          tip={tr('中止并交回 AI：发 Ctrl-C 结束命令，由 AI 换成非交互写法重跑（适合 apt install 这类能重跑的）。保留现场交给你：不打断命令，它就停在终端里等你在那个终端里敲答案（适合多步交互、要输密码、自研脚本）。保留现场时 AI 不会再往那个终端发命令。')}>
+          <Select size="sm" className="w-52" value={sys.interactivePolicy} onValueChange={(v) => set({ interactivePolicy: v as 'abort' | 'handoff' })}
+            options={[
+              { value: 'abort', label: tr('中止并交回 AI') },
+              { value: 'handoff', label: tr('保留现场交给你') },
+            ]} />
         </Row>
         <Row label={tr('子代理默认超时')} hint={tr('秒，默认 600（10 分钟）')}
           tip={tr('派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。')}>
