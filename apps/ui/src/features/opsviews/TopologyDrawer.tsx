@@ -136,7 +136,7 @@ export function TopologyDrawer({ term, onClose }: { term?: TerminalInfo; onClose
           strokeWidth: Math.min(4, 1 + Math.log2(e.count)),
           opacity: sel && !on ? 0.25 : 1,
         },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: stroke },
+        markerEnd: { type: MarkerType.Arrow, width: 10, height: 10, color: stroke },
       } satisfies Edge
     })
   }, [topo, pos, sel])
