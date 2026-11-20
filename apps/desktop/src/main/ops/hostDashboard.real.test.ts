@@ -62,6 +62,9 @@ afterAll(() => { a?.close(); b?.close(); rmSync(dir, { recursive: true, force: t
 const settle = () => new Promise((r) => setTimeout(r, 300))
 
 it('已连接主机复用终端连接、未连接主机开采样后临时连接（期间复用一条）；磁盘变满出异常；关仪表盘断开临时连接；不碰交互 shell', async () => {
+  // 假 sshd 是模块级共享的（beforeAll 只建一次），而 vitest 配了 --retry：重跑时上一轮记下的 exec 还在，
+  // 断言就会看到残留（首轮期望 [0,0] 的断言变成 [1,2]）。每次都从干净记录开始。
+  a.execs.length = 0; b.execs.length = 0; a.shellIn.length = 0; b.shellIn.length = 0
   const term = await SshTerminal.connect('t1', { host: '127.0.0.1', port: a.port, username: 'u', password: 'p' })
   try {
     const ports: Record<string, number> = { h1: a.port, h2: b.port }
@@ -102,6 +105,8 @@ it('已连接主机复用终端连接、未连接主机开采样后临时连接�
     await s.tick()
     expect(b.execs.length).toBe(2)
     expect(b.st.opened).toBe(bOpened)
+    // 采样结果是异步落库的：等一拍再取快照（全量并发跑时慢一拍就会数少一个点）
+    await settle()
     const snap = await s.snapshot()
     expect(snap.intervalSec).toBe(30)
     expect(snap.hosts.h1).toMatchObject({ connected: true, sampling: false })

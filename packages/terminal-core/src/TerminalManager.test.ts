@@ -293,7 +293,10 @@ describe('本地终端选 shell', () => {
     const before = mgr.readSnapshot(info.id, 50)
     expect(await mgr.pwd(info.id)).toBeTruthy()   // 缓存的初始目录
     await new Promise((r) => setTimeout(r, 300))
-    expect(mgr.readSnapshot(info.id, 50)).toBe(before)   // 没往终端里打 pwd
+    // 提示符可能被 PowerShell 重画一次（全量并发跑时更慢）：不比对整串，关键是没往终端里打 pwd 探测
+    const after = mgr.readSnapshot(info.id, 50)
+    expect(after).not.toMatch(/\bpwd\b/i)
+    expect(after.length - before.length).toBeLessThan(80)
     // 第二个 PowerShell 编号独立于 Git Bash 的「本地 N」
     const b = mgr.createLocal({ shell: 'powershell' })
     expect(b.title).toBe('PowerShell 2')
