@@ -95,3 +95,52 @@ describe('buildSessionFlow', () => {
     expect(f.nodes.find((n) => n.kind === 'tool')!.label).toBe('create_issue'.slice(0, 12))
   })
 })
+
+describe('buildSessionFlow 窗口化', () => {
+  // 造 10 轮，每轮一问一答
+  const many = (n: number): FlowInput[] =>
+    Array.from({ length: n }, (_, i) => [user(`u${i}`, `第 ${i} 问`), msg(`m${i}`, `第 ${i} 答`)]).flat()
+
+  it('默认画全部轮次；totalTurns 与 from 正确', () => {
+    const f = buildSessionFlow(many(10))
+    expect(f.totalTurns).toBe(10)
+    expect(f.turns).toBe(10)
+    expect(f.from).toBe(0)
+    expect(f.nodes.some((n) => n.kind === 'more')).toBe(false)
+  })
+
+  it('指定 size 时默认贴到末尾（最新几轮），前面放「更早的 N 轮」', () => {
+    const f = buildSessionFlow(many(10), { size: 3 })
+    expect(f.turns).toBe(3)
+    expect(f.from).toBe(7)
+    expect(f.totalTurns).toBe(10)
+    const more = f.nodes.find((n) => n.kind === 'more')!
+    expect(more.label).toContain('7')
+    expect(more.turn).toBe(-1)          // 排在最左一列
+  })
+
+  it('显式 from 取窗口中间一段', () => {
+    const f = buildSessionFlow(many(10), { from: 2, size: 3 })
+    expect(f.from).toBe(2)
+    expect(f.turns).toBe(3)
+    // 窗口内的提问是第 3/4/5 轮（0 起 2/3/4）
+    const asks = f.nodes.filter((n) => n.kind === 'ask').map((n) => n.detail)
+    expect(asks).toEqual(['第 2 问', '第 3 问', '第 4 问'])
+  })
+
+  it('from 越界会被夹到最大值；from=0 时没有「更早」节点', () => {
+    const f = buildSessionFlow(many(10), { from: 99, size: 4 })
+    expect(f.from).toBe(6)
+    expect(f.turns).toBe(4)
+    const g = buildSessionFlow(many(10), { from: 0, size: 4 })
+    expect(g.from).toBe(0)
+    expect(g.nodes.some((n) => n.kind === 'more')).toBe(false)
+  })
+
+  it('轮数少于一屏时全部显示，不加「更早」节点', () => {
+    const f = buildSessionFlow(many(2), { size: 8 })
+    expect(f.turns).toBe(2)
+    expect(f.from).toBe(0)
+    expect(f.nodes.filter((n) => n.kind === 'ask')).toHaveLength(2)
+  })
+})

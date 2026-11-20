@@ -1,4 +1,4 @@
-import { tk } from '../i18n/i18n.js'
+import { tk, tr } from '../i18n/i18n.js'
 import type { ItemKind, ItemStatus } from '../protocol/events.js'
 
 /**
@@ -39,7 +39,7 @@ export interface FlowInput {
 }
 
 export type FlowStage = 0 | 1 | 2
-export type FlowNodeKind = 'ask' | 'chip' | 'tool' | 'text' | 'file' | 'auth'
+export type FlowNodeKind = 'ask' | 'chip' | 'tool' | 'text' | 'file' | 'auth' | 'more'
 
 export interface FlowNode {
   id: string
@@ -72,7 +72,14 @@ export interface FlowEdge {
 export interface SessionFlow {
   nodes: FlowNode[]
   edges: FlowEdge[]
+  /** 窗口内的轮数 */
   turns: number
+  /** 整个会话的轮数（用于导航） */
+  totalTurns: number
+  /** 窗口起始轮（0 起） */
+  from: number
+  /** 窗口大小 */
+  size: number
   /** 被折叠掉的节点总数 */
   folded: number
 }
@@ -153,14 +160,30 @@ export function splitTurns(items: FlowInput[]): FlowInput[][] {
   return turns
 }
 
-export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number } = {}): SessionFlow {
+export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number; from?: number; size?: number } = {}): SessionFlow {
   const colMax = Math.max(3, opts.colMax ?? FLOW_COL_MAX)
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
-  const turns = splitTurns(items)
+  const all = splitTurns(items)
+  // 窗口化：一次只画 size 轮，避免几十轮横向拉成一条线、节点太多卡住
+  const size = Math.max(1, opts.size ?? Math.max(1, all.length))
+  const maxFrom = Math.max(0, all.length - size)
+  const from = Math.max(0, Math.min(opts.from ?? maxFrom, maxFrom))
+  const turns = all.slice(from, from + size)
   let folded = 0
   // 文件路径 → 最近一次产出它的节点（跨轮复用时连一条「上一轮结果」）
   const lastFile = new Map<string, string>()
+
+  // 窗口前面还有更早的轮次：放一个入口节点（turn = -1，排在最左）
+  if (from > 0) {
+    nodes.push({
+      id: 'more-earlier', turn: -1, stage: 0, kind: 'more',
+      label: tr('更早的 {n} 轮', { n: from }),
+      title: tr('窗口前面还有 {n} 轮', { n: from }),
+      detail: tr('当前显示第 {a}–{b} 轮，共 {t} 轮', { a: from + 1, b: Math.min(all.length, from + size), t: all.length }),
+      folded: from,
+    })
+  }
 
   turns.forEach((list, turn) => {
     const ask = list.find((x) => x.kind === 'user_message')
@@ -275,7 +298,7 @@ export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number } =
     nodes.push(...fold(fileNodes, 2))
   })
 
-  return { nodes, edges, turns: turns.length, folded }
+  return { nodes, edges, turns: turns.length, totalTurns: all.length, from, size, folded }
 }
 
 export { shortOf, pathOf, summarize }

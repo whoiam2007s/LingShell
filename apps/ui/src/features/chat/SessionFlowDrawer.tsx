@@ -6,10 +6,12 @@ import { buildSessionFlow, tr, type FlowEdgeKind, type FlowInput, type FlowNode,
 
 // 会话流程图：每轮三段（提问+chips → 工具/文字 → 产物），横向按轮推进，阶段内竖向多节点。
 // 节点只放「图标 + 短名」，完整信息在悬停与点击详情里；连线不放文字，只用颜色。
+// 长对话：一次只画 WINDOW 轮，顶部用刻度条 + 上/下一组翻页（几十轮也不会缩成一条线、节点数稳定）。
+const WINDOW = 8
 const STAGE_X = [0, 176, 392]
 const TURN_GAP = 540
-const W: Record<FlowNodeKind, number> = { ask: 148, chip: 96, tool: 118, text: 104, file: 124, auth: 96 }
-const H: Record<FlowNodeKind, number> = { ask: 30, chip: 22, tool: 26, text: 26, file: 24, auth: 24 }
+const W: Record<FlowNodeKind, number> = { ask: 148, chip: 96, tool: 118, text: 104, file: 124, auth: 96, more: 132 }
+const H: Record<FlowNodeKind, number> = { ask: 30, chip: 22, tool: 26, text: 26, file: 24, auth: 24, more: 30 }
 const VGAP = 14
 
 const EDGE_COLOR: Record<FlowEdgeKind, string> = {
@@ -19,27 +21,28 @@ const EDGE_COLOR: Record<FlowEdgeKind, string> = {
   chip: '#a371f7',
   carry: '#6e7681',
 }
-const ICON: Record<FlowNodeKind, string> = { ask: '🧑', chip: '🔖', tool: '⚡', text: '💬', file: '📄', auth: '🛡' }
+const ICON: Record<FlowNodeKind, string> = { ask: '🧑', chip: '🔖', tool: '⚡', text: '💬', file: '📄', auth: '🛡', more: '⏮' }
 
 type D = FlowNode & { dim?: boolean; sel?: boolean }
 
 function NodeBox({ data }: NodeProps) {
   const d = data as unknown as D
-  const accent = d.kind === 'ask' ? '#58a6ff' : d.kind === 'chip' ? '#a371f7' : d.kind === 'text' ? '#8b949e' : d.kind === 'file' ? '#6e7681' : d.kind === 'auth' ? '#f0883e' : d.ok === false ? '#f85149' : '#3fb950'
+  const accent = d.kind === 'ask' ? '#58a6ff' : d.kind === 'chip' ? '#a371f7' : d.kind === 'text' ? '#8b949e' : d.kind === 'file' ? '#6e7681' : d.kind === 'auth' ? '#f0883e' : d.kind === 'more' ? '#6e7681' : d.ok === false ? '#f85149' : '#3fb950'
   const isChip = d.kind === 'chip'
+  const isMore = d.kind === 'more'
   return (
     <div
       data-flow-node={d.id}
       title={d.title}
       style={{
         width: W[d.kind], height: H[d.kind], borderRadius: isChip ? 10 : 5,
-        background: d.kind === 'ask' ? 'color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-panel))' : d.kind === 'chip' ? 'color-mix(in srgb, #a371f7 10%, var(--color-bg-base))' : 'var(--color-bg-raised)',
-        border: `1px solid ${d.sel ? accent : 'var(--color-border-default)'}`,
+        background: d.kind === 'ask' ? 'color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-panel))' : isChip ? 'color-mix(in srgb, #a371f7 10%, var(--color-bg-base))' : 'var(--color-bg-raised)',
+        border: `1px ${isMore ? 'dashed' : 'solid'} ${d.sel ? accent : 'var(--color-border-default)'}`,
         borderLeft: isChip ? undefined : `2px solid ${accent}`,
         padding: isChip ? '0 8px' : '0 6px',
         display: 'flex', alignItems: 'center', gap: 4,
         opacity: d.dim ? 0.22 : 1,
-        cursor: 'pointer',
+        cursor: isMore ? 'zoom-in' : 'pointer',
         boxShadow: d.sel ? `0 0 0 2px ${accent}55` : 'none',
         overflow: 'hidden',
       }}
@@ -57,11 +60,17 @@ const nodeTypes = { box: NodeBox }
 
 export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[]; title?: string; onClose: () => void }) {
   const [sel, setSel] = useState<string>()
-  const flow = useMemo(() => buildSessionFlow(items), [items])
+  const [from, setFrom] = useState<number | undefined>(undefined)   // undefined = 贴到最后几轮
+  const flow = useMemo(() => buildSessionFlow(items, { size: WINDOW, from }), [items, from])
   const selNode = flow.nodes.find((n) => n.id === sel)
 
+  const maxFrom = Math.max(0, flow.totalTurns - WINDOW)
+  const step = (d: number) => setFrom(Math.max(0, Math.min(maxFrom, flow.from + d * WINDOW)))
+  const hasEarlier = flow.from > 0
+  const hasLater = flow.from + flow.turns < flow.totalTurns
+
   const graph = useMemo(() => {
-    // 按 (轮, 阶段) 分列，列内纵向居中
+    // 按 (轮, 阶段) 分列，列内纵向居中；turn = -1 的「更早的 N 轮」排在最左
     const cols = new Map<string, FlowNode[]>()
     for (const n of flow.nodes) {
       const k = `${n.turn}-${n.stage}`
@@ -110,19 +119,47 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-3">
           <span className="text-[12.5px] font-medium text-[var(--color-text-primary)]">{tr('会话流程图')}</span>
           <span className="truncate text-[10.5px] text-[var(--color-text-muted)]">
-            {title ?? ''} · {tr('{n} 轮 · {m} 个节点', { n: flow.turns, m: flow.nodes.length })}{flow.folded ? tr(' · 折叠 {n} 个', { n: flow.folded }) : ''}
+            {title ?? ''} · {tr('共 {n} 轮 · 每屏 {m} 轮', { n: flow.totalTurns, m: WINDOW })}{flow.folded ? tr(' · 折叠 {n} 个', { n: flow.folded }) : ''}
           </span>
           <button onClick={onClose} title={tr('关闭')} className="ml-auto flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]">
             <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {/* 轮次导航：刻度条 + 上/下一组（长对话靠它翻页，不用把几十轮塞进一张图） */}
+        <div className="flex h-7 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-3 text-[10.5px] text-[var(--color-text-muted)]">
+          <button disabled={!hasEarlier} onClick={() => step(-1)}
+            className="rounded px-1.5 py-0.5 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--color-text-muted)]">
+            ← {tr('更早')}
+          </button>
+          <span className="tabular-nums">
+            {tr('第 {a}–{b} 轮', { a: flow.from + 1, b: flow.from + flow.turns })}
+          </span>
+          <div className="flex h-3 flex-1 items-center gap-[2px] overflow-hidden" data-flow-scale>
+            {Array.from({ length: flow.totalTurns }, (_, i) => {
+              const inWin = i >= flow.from && i < flow.from + flow.turns
+              return (
+                <button key={i} onClick={() => setFrom(Math.min(i, maxFrom))} title={tr('第 {n} 轮', { n: i + 1 })}
+                  className={`h-2 min-w-[2px] flex-1 rounded-sm transition-colors ${inWin ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border-default)] hover:bg-[var(--color-text-muted)]'}`} />
+              )
+            })}
+          </div>
+          <button disabled={!hasLater} onClick={() => step(1)}
+            className="rounded px-1.5 py-0.5 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[var(--color-text-muted)]">
+            {tr('更晚')} →
           </button>
         </div>
         <div className="min-h-0 flex-1" onClick={() => setSel(undefined)}>
           <ReactFlow
             nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes}
             fitView fitViewOptions={{ padding: 0.08, maxZoom: 1 }}
-            minZoom={0.06} maxZoom={1.8} nodesConnectable={false}
+            minZoom={0.2} maxZoom={1.8} nodesConnectable={false}
+            onlyRenderVisibleElements
             proOptions={{ hideAttribution: true }}
-            onNodeClick={(e, n) => { e.stopPropagation(); setSel(n.id === sel ? undefined : n.id) }}
+            onNodeClick={(e, n) => {
+              e.stopPropagation()
+              if (n.id === 'more-earlier') { step(-1); return }
+              setSel(n.id === sel ? undefined : n.id)
+            }}
           >
             <Background gap={24} size={0.8} color="var(--color-border-subtle)" />
             <Controls showInteractive={false} />
@@ -135,7 +172,7 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
               <div className="flex items-center gap-2">
                 <span>{ICON[selNode.kind]}</span>
                 <span className="text-[11.5px] font-semibold text-[var(--color-text-primary)]">{selNode.title.split('\n')[0]}</span>
-                <span className="text-[var(--color-text-muted)]">{tr('第 {n} 轮', { n: selNode.turn + 1 })}</span>
+                <span className="text-[var(--color-text-muted)]">{tr('第 {n} 轮', { n: flow.from + selNode.turn + 1 })}</span>
                 {selNode.ok === false && <span className="text-[var(--color-danger)]">{tr('失败')}</span>}
               </div>
               <div className="truncate font-mono text-[var(--color-text-secondary)]" title={selNode.detail}>{selNode.detail ?? selNode.title}</div>
