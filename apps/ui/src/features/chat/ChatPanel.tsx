@@ -354,12 +354,14 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const exportSession = async (mode: ExportMode, redact: boolean) => {
     const title = titleOf(sessionTitle)
     const name = title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)
-    if (mode === 'chat') { void client.system.saveTextFile(`${name}.md`, conversationToMarkdown(title, items, { redact })); return }
+    // 子代理的执行轨迹一起导出：否则文件里只剩一行 spawn_subagent，中间十几步全丢
+    const subagents = activeSessionId ? await client.subagent.list(activeSessionId).catch(() => []) : []
+    if (mode === 'chat') { void client.system.saveTextFile(`${name}.md`, conversationToMarkdown(title, items, { redact, subagents })); return }
     const [audit, hosts] = await Promise.all([
       client.audit.listForSession(activeSessionId).catch(() => []),
       client.hosts.list().catch(() => []),
     ])
-    const md = buildSessionReport({ title, items, audit, hosts, redact })
+    const md = buildSessionReport({ title, items, audit, hosts, redact, subagents })
     if (mode === 'report') { void client.system.saveTextFile(`${name}-${tr('报告')}.md`, md); return }
     const { markdownToHtml } = await import('./reportHtml.js')
     void client.system.saveTextFile(`${name}-${tr('报告')}.html`, markdownToHtml(tr('会话报告：{title}', { title }), md))

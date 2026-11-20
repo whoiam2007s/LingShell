@@ -149,6 +149,33 @@ describe('脱敏', () => {
     '-----BEGIN PUBLIC KEY-----',
   ])('不误伤：%s', (src) => expect(redactSecrets(src)).toBe(src))
 
+  // 子代理轨迹：导出物要能当证据链看，不能只剩一行 spawn_subagent
+  describe('子代理执行轨迹', () => {
+    const spawn = (task: string, title = '查 502'): ReportItem => ({ kind: 'tool_call', status: 'completed', text: '', tool: { toolId: 's1', name: 'spawn_subagent', input: { task, title }, output: '后端服务挂了' } })
+    const trace = {
+      task: '查 nginx 502', title: '查 502', permission: 'read' as const, status: 'done' as const, elapsedMs: 18400, summary: '后端 app 挂了',
+      steps: [{ kind: 'tool' as const, label: 'exec_in_terminal — tail -100 error.log', at: '2026-11-20T14:23:01Z' }],
+    }
+
+    it('导出对话时嵌进 spawn_subagent 那条下面', () => {
+      const md = conversationToMarkdown('t', [spawn('查 nginx 502')], { subagents: [trace] })
+      expect(md).toContain('子代理执行轨迹')
+      expect(md).toContain('tail -100 error.log')
+      expect(md).toContain('18.4s')
+      expect(md).toContain('后端 app 挂了')
+    })
+
+    it('会话报告里也带上', () => {
+      const md = buildSessionReport({ title: 't', items: [spawn('查 nginx 502')], audit: [], hosts: [], subagents: [trace] })
+      expect(md).toContain('tail -100 error.log')
+    })
+
+    it('任务对不上 / 没传子代理时不出小节', () => {
+      expect(conversationToMarkdown('t', [spawn('别的任务', '别的标题')], { subagents: [trace] })).not.toContain('子代理执行轨迹')
+      expect(conversationToMarkdown('t', [spawn('查 nginx 502')])).not.toContain('子代理执行轨迹')
+    })
+  })
+
   it('幂等', () => {
     const once = redactSecrets('password=a token: Bearer abcdefghijk')
     expect(redactSecrets(once)).toBe(once)
