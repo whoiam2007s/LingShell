@@ -527,10 +527,17 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   // ── `!命令` 直通终端（参考 Gemini CLI / Claude Code 的 ! 模式）──────────
   // 走撰写栏同一套确认（危险命令 / 隐藏字符 / 多行发到生产），这里对生产终端单行也确认；执行完结果变成「终端块」标签，接着写问题再发给 AI
   const bang = bangCommand(input)
-  // 上下文快到压缩阈值（80%）时提醒一次；点 × 只关掉当前会话的提示（换会话还会提醒）
+  // 上下文快到压缩阈值时提醒一次（阈值在「设置 → AI」，0 = 关闭）；点 × 只关掉当前会话的提示
   const [compactHintOff, setCompactHintOff] = useState('')
+  const [warnAt, setWarnAt] = useState(80)
+  useEffect(() => {
+    const load = () => { client.settings.get().then((s) => setWarnAt(s.system?.contextWarnAt ?? 80), () => {}) }
+    load()
+    window.addEventListener('focus', load)   // 改完设置切回窗口就生效，不用重启
+    return () => window.removeEventListener('focus', load)
+  }, [])
   const compactPct = usage?.compactAt ? Math.round((usage.inputTokens / usage.compactAt) * 100) : 0
-  const showCompactHint = !!activeSessionId && !busy && compactPct >= 80 && compactPct < 100 && compactHintOff !== activeSessionId
+  const showCompactHint = !!activeSessionId && !busy && warnAt > 0 && compactPct >= warnAt && compactPct < 100 && compactHintOff !== activeSessionId
   const [shellBusy, setShellBusy] = useState('')
   const [shellAsk, setShellAsk] = useState<{ plan: ComposePlan; tid: string; cmd: string } | null>(null)
   const execBang = async (tid: string, title: string, cmd: string) => {

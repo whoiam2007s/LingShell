@@ -174,6 +174,17 @@ const APP_TOOLS = new Set(['get_app_setting', 'set_app_setting', 'list_config', 
 const needsInputNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已中止并退回提示符。\n先给结论：识别成功、在等什么，不用让用户再手动跑一遍。然后按下面对照自己处理：\n① 普通确认（安装、初始化、覆盖、yes/no、连续输入）——自己把任务做完，别动不动推回用户：\n   a. 先找非交互开关：-y / --yes / --non-interactive / --batch / --force；npm init -y、ssh-keygen -N ""、openssl req -subj、docker login --password-stdin、DEBIAN_FRONTEND=noninteractive、CI=1 这类。\n   b. 没有开关就按提示顺序喂输入：printf 'y\\nn\\n' | cmd（几个问题喂几行，别多喂）；只有"一路全 y"才用 yes | cmd。\n   c. 不确定它会问什么，先去读再决定：grep -n "read " 脚本.sh、查看脚本内容、跑 --help。\n   d. 需要密码 / token 时用密钥保险箱里的密钥名称当占位（写法见系统提示的密钥段），绝不写明文。\n   改命令是为了把任务做完，不算违背用户要求；改写后的命令照常走授权和危险命令检查。\n② 危险确认（删除 / 卸载 / 覆盖已有数据 / 生产环境变更）：绝不自己加 -y、也不要用 yes | 一路放行，交回用户决定或让用户手动执行。\n③ 需要用户拍板（选哪条路径、装哪个版本、要输入具体值）：用 ask_user 弹选项卡问，不要让用户打字回复。\n④ 喂不进去的（全屏 TUI、必须人工判断）或用户只是想验证这个能力：说明情况即可，请用户在该终端里自己跑，不必硬凑。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 export const authKeyOf = (toolName: string): string => (toolName === 'spawn_subagent' ? 'subagent' : 'app')
+
+/**
+ * 失效终端 id 的自动对应：应用重启 / 跨版本升级后终端 id 会变，模型手里的旧 id 对不上。
+ * 只有一个终端时自动用它（省一轮往返）；有多个候选就不猜，返回 undefined 让调用方列出候选。
+ * 返回的 id 必须用于后续一切判定（hostKey、审计、执行），否则授权会落到错误的主机上。
+ */
+export function effectiveTerminalId(deps: Pick<TerminalToolDeps, 'terminals'>, want: string): { id: string; stale: boolean } | undefined {
+  const all = deps.terminals.list()
+  if (all.some((t) => t.id === want)) return { id: want, stale: false }
+  return all.length === 1 ? { id: all[0].id, stale: true } : undefined
+}
 /** 伪主机键（不是真实主机 id，UI 上按语义显示，不当终端处理） */
 export const isPseudoHostKey = (k: string | undefined): boolean => k === 'app' || k === 'subagent'
 // 已有授权也逐次确认（一次性，不升级）：上传/下载能把文件在本机与主机间搬运（外泄风险）。
@@ -644,23 +655,33 @@ export function decideFor(deps: TerminalToolDeps, sessionId: string, toolName: s
       }),
     }
   }
-  // 终端不存在（常见：应用重启后 id 变了，模型还拿着旧 id）→ 直接拒，别弹卡：
-  // resolveHostKey 对未知 id 回落 'local'，弹出来的会是「本地」的授权卡，用户点允许就把本地写权限给错了
-  if (!deps.terminals.list().some((t) => t.id === terminalId)) {
-    return { kind: 'deny', reason: tr('terminal_not_found: 终端 {id} 不存在（应用重启后终端 id 会变），请先用 list_terminals 查当前终端', { id: terminalId }) }
+  // 终端不存在（常见：应用重启 / 跨版本升级后 id 变了，模型还拿着旧 id）：
+  // 只有一个终端时自动对应到它（并告知模型）；多个候选不猜，把候选列出来让模型重选。
+  // 关键：后续授权判定必须用真实 id（hostKey 从它算）——用未知 id 会回落 'local'，把 SSH 主机的授权当成本地给出去。
+  const eff = effectiveTerminalId(deps, terminalId)
+  if (!eff) {
+    const opened = deps.terminals.list().slice(0, 8).map((t) => `${t.id} · ${t.title}`).join('、')   // i18n-ignore 列表分隔符（中文顿号）
+    return {
+      kind: 'deny',
+      reason: tr('terminal_not_found: 终端 {id} 不存在（应用重启或升级后 id 会变）。当前打开的终端：{list}。选一个重新调用', {
+        id: terminalId,
+        list: opened || tr('（当前没有打开的终端，先用 create_terminal 开一个）'),
+      }),
+    }
   }
-  const manual = manualOnlyDeny(deps, toolName, [terminalId])
+  const tid = eff.id
+  const manual = manualOnlyDeny(deps, toolName, [tid])
   if (manual) return manual
   const rb = rollbackDeny(deps, toolName, args)
   if (rb) return rb
-  const hostKey = deps.resolveHostKey(terminalId)
+  const hostKey = deps.resolveHostKey(tid)
   const command = typeof (args as any)?.command === 'string' ? (args as any).command : undefined
   const d = deps.decide(sessionId, hostKey, needed, command)
   // 上传/下载能把文件送出/拉回，写入授权不够，每次都让用户确认（一次性，不升级）
   if (d.kind === 'allow' && ALWAYS_ASK.has(toolName)) return { kind: 'ask', reason: 'dangerous_command' }
   if (d.kind === 'allow') return { kind: 'allow', ...ruleOf(d.rule) }
   if (d.kind === 'deny') {
-    deps.audit({ sessionId, terminalId, command: describeCall(toolName, args), decision: `deny:${d.reason}`, ...ruleOf(d.rule) })
+    deps.audit({ sessionId, terminalId: tid, command: describeCall(toolName, args), decision: `deny:${d.reason}`, ...ruleOf(d.rule) })
     return { kind: 'deny', reason: `permission_denied: ${d.reason}` }
   }
   return { kind: 'ask', reason: d.reason, ...ruleOf(d.rule) }
@@ -846,12 +867,20 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const o = userOverride(exec)
         const edited = o?.command
         const command = edited ?? args.command
-        const wire = wireOf(deps.secretVault, args.terminal_id, command)   // 范围不符抛错（用户在授权卡上改出来的引用也要查）
-        await beforeChange(exec, [args.terminal_id], command)
-        const r = await capture(args.terminal_id, command, exec?.signal, deps.execTimeoutMs?.(), wire)
+        // 失效 id 在这里换成真实终端（授权判定那一步已经拦过并做过同样的对应）
+        const eff = effectiveTerminalId(deps, args.terminal_id)
+        const tid = eff?.id ?? args.terminal_id
+        const staleNote = eff?.stale
+          ? tr('你给的终端 id {old} 已失效（应用重启或升级后 id 会变），已自动对应到当前唯一终端 {id}（{title}）', {
+            old: args.terminal_id, id: tid, title: deps.terminals.list().find((t) => t.id === tid)?.title ?? '',
+          })
+          : ''
+        const wire = wireOf(deps.secretVault, tid, command)   // 范围不符抛错（用户在授权卡上改出来的引用也要查）
+        await beforeChange(exec, [tid], command)
+        const r = await capture(tid, command, exec?.signal, deps.execTimeoutMs?.(), wire)
         const callId = exec?.callId === undefined ? undefined : String(exec.callId)
         deps.audit({
-          sessionId: sidOf(exec), terminalId: args.terminal_id, command,
+          sessionId: sidOf(exec), terminalId: tid, command,
           decision: r.needsInput ? 'abort:needs_input' : edited ? 'exec_allowed:edited' : 'exec_allowed', exitCode: r.exitCode, truncated: r.truncated, ...ruleOf(o?.rule),
           ...rollbackOf(args), ...(callId ? { callId } : {}), ...(o?.review ? { review: o.review } : {}),
         })
@@ -860,11 +889,16 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           return JSON.stringify({
             output: r.output, exit_code: r.exitCode, truncated: true,
             needs_input: r.needsInput,
-            note: needsInputNote(r.needsInput),   // i18n-ignore 模型提示词（含固定文案，见常量）
+            note: [staleNote, needsInputNote(r.needsInput)].filter(Boolean).join('\n'),
           })
         }
+        const notes = [
+          ...(edited ? ['用户在授权时修改了命令，实际执行的是 executed_command'] : []),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          ...(staleNote ? [staleNote] : []),
+        ]
         return JSON.stringify({
-          ...(edited ? { note: '用户在授权时修改了命令，实际执行的是 executed_command', executed_command: edited } : {}),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          ...(notes.length ? { note: notes.join('；') } : {}),   // i18n-ignore 列表分隔符（中文分号）
+          ...(edited ? { executed_command: edited } : {}),
           output: r.output, exit_code: r.exitCode, truncated: !!r.truncated,
         })
       },

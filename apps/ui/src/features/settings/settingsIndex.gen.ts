@@ -396,6 +396,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
  {
   "tab": "ai",
   "kind": "row",
+  "label": "上下文提醒阈值",
+  "section": "上下文",
+  "hint": "百分比，0 = 关闭提醒",
+  "tip": "上下文用到压缩阈值的这个百分比时，对话输入框上方出一条提示（显示当前百分比、可点「立即压缩」）。到 100% 仍会自动压缩，这个提示只是提前告诉你。"
+ },
+ {
+  "tab": "ai",
+  "kind": "row",
   "label": "子代理默认超时",
   "section": "上下文",
   "hint": "秒，默认 600（10 分钟）",
