@@ -10,7 +10,7 @@ import { buildSessionFlow, tr, type FlowEdgeKind, type FlowInput, type FlowNode,
 const WINDOW = 8
 const STAGE_X = [0, 176, 392]
 const TURN_GAP = 540
-const W: Record<FlowNodeKind, number> = { ask: 148, chip: 96, tool: 118, text: 104, file: 124, auth: 96 }
+const W: Record<FlowNodeKind, number> = { ask: 148, chip: 148, tool: 118, text: 104, file: 124, auth: 96 }
 const H: Record<FlowNodeKind, number> = { ask: 30, chip: 22, tool: 26, text: 26, file: 24, auth: 24 }
 const VGAP = 14
 
