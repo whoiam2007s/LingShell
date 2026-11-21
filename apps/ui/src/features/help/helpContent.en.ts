@@ -786,6 +786,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Every call shows a permission card by default; only tools for which you turned on "No confirmation" in the expanded server card run directly.',
         'The read-only trust level and scheduled inspections can only use tools that don\'t need confirmation. All calls are recorded in the execution log.',
         'Environment variable and request header values are stored encrypted.',
+        'For code symbol / reference indexing, use the existing GitNexus (`npx gitnexus`, it ships with an MCP mode): add it as a local command with command `npx` and arguments `-y gitnexus`. Once saved, the AI can answer "where is this function defined, who calls it". The app itself does not index code.',
       ] },
     ],
   },
