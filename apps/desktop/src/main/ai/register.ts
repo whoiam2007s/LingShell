@@ -205,7 +205,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     subagentTimeoutSec: () => sys().subagentTimeoutSec,
     subagentMaxConcurrent: () => sys().subagentMaxConcurrent,
     probeWaitingInput: (tail: string): Promise<boolean> => controller.probeWaitingInput(tail),
-    interactivePolicy: (): 'abort' | 'handoff' => sys().interactivePolicy,
+    decideInput: (prompt: string, context?: string): Promise<string | undefined> => controller.decideInput(prompt, context),
+    interactivePolicy: (): 'abort' | 'auto' | 'handoff' => sys().interactivePolicy,
     createLocalTerminal: (sessionId) => openTerminal(sessionId, 'local'),
     createSshTerminal: (sessionId, hostId) => openTerminal(sessionId, hostId),
     // 分级 + 该主机的知识卡标题（全文在用到该主机后经系统提示「主机知识库」段注入）

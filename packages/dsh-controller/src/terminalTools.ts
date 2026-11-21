@@ -20,7 +20,9 @@ export interface TerminalLike {
   readSnapshot(terminalId: string, lines: number): string
   // opts.wire：实际发进 shell 的命令（密钥保险箱占位符已换成明文）；command 是占位符原文（回显 / 命令历史）
   // opts.silent：不回显命令 / 输出、不记命令历史（后台任务没有旁路通道时用，见 sideExec）
-  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; handoff?: boolean; onStall?: (tail: string) => Promise<'waiting' | 'continue'> }): Promise<{ output: string; exitCode: number; truncated?: boolean; needsInput?: string; stalled?: boolean; handedOff?: boolean }>
+  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; handoff?: boolean; onStall?: (tail: string) => Promise<'waiting' | 'continue'>; answerFor?: (tail: string) => Promise<string | undefined> }): Promise<{ output: string; exitCode: number; truncated?: boolean; needsInput?: string; stalled?: boolean; handedOff?: boolean }>
+  /** 往终端写一行（send_terminal_input 用）；noHistory = 不进命令输入行缓冲、不记历史 */
+  write?(terminalId: string, data: string, opts?: { noHistory?: boolean }): void
 }
 
 export interface AuditRecord {
@@ -88,7 +90,9 @@ export interface TerminalToolDeps {
   // 规则识别不出「命令是不是在等输入」时的兜底判定（用一次小模型调用）；缺省则不判，只等超时
   probeWaitingInput?(tail: string): Promise<boolean>
   // 判定为等输入后怎么处理：abort（缺省，发 Ctrl-C 退回提示符）/ handoff（保留现场，命令留给用户敲答案）
-  interactivePolicy?(): 'abort' | 'handoff'
+  interactivePolicy?(): 'abort' | 'auto' | 'handoff'
+  /** auto 模式：问模型「这条提示该怎么答」，返回要写入终端的一行；undefined = 交给用户 */
+  decideInput?(prompt: string, context?: string): Promise<string | undefined>
   // dsh agent id → 我方会话 id（上下文重置后两者不同；缺省视为相同）
   sessionIdOf?(agentId: string): string
   // 取走用户在授权卡上对这次调用的改动：deny=拒绝并附原因，command=改过的命令
@@ -155,6 +159,7 @@ const NEEDS: Record<string, 'read' | 'write'> = {
   save_mcp_server: 'write',
   spawn_subagent: 'write',   // 子代理能跑命令 / 改文件：按写入授权，spawn 时一次性判定
   read_terminal: 'read',
+  send_terminal_input: 'write',   // 往终端写一行：能改终端状态，按写入授权
   exec_in_terminal: 'write',
   exec_on_terminals: 'write',  // 多主机：每台目标主机都要过授权（见 decideMulti）
   upload_file: 'write',
@@ -178,7 +183,7 @@ const needsInputNote = (prompt: string) => `这条命令停在等你输入（提
 export const authKeyOf = (toolName: string): string => (toolName === 'spawn_subagent' ? 'subagent' : 'app')
 
 // 给模型看：handoff 模式下的处理指引（命令没被中止，留在终端里等用户敲）
-const handoffNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已按设置「保留现场」处理：**没有中止**，命令就停在终端里，控制权已经交给用户。\n现在：① 不要往这个终端发任何命令（你的命令会被当成它的答案）；② 不要重跑这条命令；③ 也不用让用户另跑一遍。\n告诉用户：命令停在终端里等你回答（附上提示原文），在终端里敲一下就行。等用户说好了，再用 read_terminal 或只读命令看结果。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+const handoffNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已按设置「保留现场」处理：**没有中止**，命令就停在终端里，控制权已经交给用户。\n现在：① 不要往这个终端发普通命令（会被当成它的答案）；② 不要重跑这条命令；③ 也不用让用户另跑一遍。\n接下来：先跟用户说明它在等什么；用户给了答案后，用 send_terminal_input 把答案发进这个终端（一次一行），再用 read_terminal 看结果 —— 也可以让用户自己在那里敲。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 /**
  * 失效终端 id 的自动对应：应用重启 / 跨版本升级后终端 id 会变，模型手里的旧 id 对不上。
@@ -801,15 +806,26 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
   // 每条命令挂一个「疑似卡在等输入」的兜底判定：规则识别不出时问一次模型（onStall 在 terminal-core 里保证最多一次）
   const probe = deps.probeWaitingInput
   const policy = deps.interactivePolicy
+  const decide = deps.decideInput
   const capture = (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }) => {
     const onStall = probe
       ? async (tail: string) => ((await probe(tail).catch(() => false)) ? 'waiting' as const : 'continue' as const)
       : undefined
+    const pol = policy?.() ?? 'abort'
     // handoff：判定为等输入时不中止，把终端和命令留给用户（设置 → AI 里选）
-    const handoff = policy?.() === 'handoff'
+    const handoff = pol === 'handoff'
+    // auto：判定为等输入后先问「该怎么答」，普通 y/n 自己答；答不了再保留现场交给用户
+    const answerFor = pol === 'auto' && decide
+      ? async (tail: string) => decide(tail, tail).catch(() => undefined)
+      : undefined
     // 三样都没有时保持原来的四参数调用（调用方/测试都按这个形状断言）
-    if (!wire && !onStall && !handoff) return deps.terminals.execCapture(id, command, signal, ms)
-    return deps.terminals.execCapture(id, command, signal, ms, { ...wire, ...(onStall ? { onStall } : {}), ...(handoff ? { handoff: true } : {}) })
+    if (!wire && !onStall && !handoff && !answerFor) return deps.terminals.execCapture(id, command, signal, ms)
+    return deps.terminals.execCapture(id, command, signal, ms, {
+      ...wire,
+      ...(onStall ? { onStall } : {}),
+      ...(handoff ? { handoff: true } : {}),
+      ...(answerFor ? { answerFor } : {}),
+    })
   }
   // 后台任务的包装命令（mkdir / nohup / 轮询循环）不进用户终端：优先走旁路通道，没有再在终端里静默跑
   const bgRun = async (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }, cwd = false) => {
@@ -854,6 +870,28 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const snap = deps.terminals.readSnapshot(args.terminal_id, 200)
         deps.audit({ sessionId: sidOf(exec), terminalId: args.terminal_id, decision: 'read_allowed' })
         return snap
+      },
+    },
+    {
+      // 命令停在等输入时（尤其「保留现场」模式下用户答了之后），把答案送进那个终端。
+      // 只接受简短答案：长文本、含管道 / 分号 / 重定向的一律拒绝 —— 否则等于绕过 exec_in_terminal 直接执行命令。
+      name: 'send_terminal_input',
+      description: '往终端发一行输入（回车结束），用来回答命令的提问，例如发 y 表示继续。不会执行新命令；只接受简短答案（≤60 字符、不含换行与 ; | & $ ` < > ( ) { }）。需该主机的写入授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        terminal_id: str(TID_DESC),
+        text: str('要输入的文本（一行；空字符串表示只按一下回车）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any, exec: any) {
+        userOverride(exec)
+        const text = String(args.text ?? '')
+        if (text.length > 60 || /[\r\n;|&$`<>(){}]/.test(text)) {
+          throw new Error('send_terminal_input 只接受简短答案（≤60 字符，不含换行、; | & $ ` < > ( ) { }）；要执行命令请用 exec_in_terminal')   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        }
+        if (!deps.terminals.write) throw new Error('当前终端不支持发送输入')   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        deps.terminals.write(args.terminal_id, `${text}\r`, { noHistory: true })
+        deps.audit({ sessionId: sidOf(exec), terminalId: args.terminal_id, decision: 'write_allowed' })
+        return `已向终端输入：${text === '' ? '（回车）' : text}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
     },
     {

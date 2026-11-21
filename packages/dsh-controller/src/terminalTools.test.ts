@@ -30,9 +30,9 @@ const exec = (extra: Record<string, unknown> = {}) => ({ agent: { id: 'sess_1' }
 const defOf = (d: TerminalToolDeps, name: string) => terminalToolDefs(d).find((t: { name: string }) => t.name === name)!
 
 describe('工具定义', () => {
-  it('二十四个工具齐全，顺序稳定', () => {
+  it('二十五个工具齐全，顺序稳定', () => {
     const names = terminalToolDefs(deps()).map((t) => t.name)
-    expect(names).toEqual(['list_terminals', 'read_terminal', 'exec_in_terminal', 'exec_on_terminals', 'start_background', 'check_background', 'wait', 'create_terminal', 'propose_host_knowledge', 'propose_quick_commands', 'propose_runbook', 'run_on_hosts', 'upload_file', 'read_file', 'write_file', 'download_file', 'get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
+    expect(names).toEqual(['list_terminals', 'read_terminal', 'send_terminal_input', 'exec_in_terminal', 'exec_on_terminals', 'start_background', 'check_background', 'wait', 'create_terminal', 'propose_host_knowledge', 'propose_quick_commands', 'propose_runbook', 'run_on_hosts', 'upload_file', 'read_file', 'write_file', 'download_file', 'get_app_setting', 'set_app_setting', 'list_config', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server', 'spawn_subagent'])
   })
 
   it('propose_quick_commands / propose_runbook：只校验不写、无需授权；不合法报错回给模型', async () => {

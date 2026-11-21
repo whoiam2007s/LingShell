@@ -91,9 +91,10 @@ export function AiSecuritySettings() {
           <NumberInput className="w-28" value={sys.contextWarnAt} min={0} max={99} onChange={(n) => set({ contextWarnAt: n })} />
         </Row>
         <Row label={tr('命令卡在等输入时')} hint={tr('AI 执行的命令停下来问你时怎么处理')}
-          tip={tr('中止并交回 AI：发 Ctrl-C 结束命令，由 AI 换成非交互写法重跑（适合 apt install 这类能重跑的）。保留现场交给你：不打断命令，它就停在终端里等你在那个终端里敲答案（适合多步交互、要输密码、自研脚本）。保留现场时 AI 不会再往那个终端发命令。')}>
-          <Select size="sm" className="w-52" value={sys.interactivePolicy} onValueChange={(v) => set({ interactivePolicy: v as 'abort' | 'handoff' })}
+          tip={tr('AI 自主处理（缺省）：先让 AI 判断这条提示怎么答——普通 y/n 自己答、能查到的值自己填；删除 / 卸载 / 格式化这类不可逆操作它会弹选项卡问你，你同意才继续；密码这类它拿不到的才交给你。中止并交回 AI：发 Ctrl-C 结束命令，由 AI 换成非交互写法重跑。保留现场交给你：不打断命令，停在终端里等你自己敲。')}>
+          <Select size="sm" className="w-52" value={sys.interactivePolicy} onValueChange={(v) => set({ interactivePolicy: v as 'abort' | 'auto' | 'handoff' })}
             options={[
+              { value: 'auto', label: tr('AI 自主处理') },
               { value: 'abort', label: tr('中止并交回 AI') },
               { value: 'handoff', label: tr('保留现场交给你') },
             ]} />

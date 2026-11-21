@@ -1,4 +1,4 @@
-import { tk, tr } from '../i18n/i18n.js'
+import { tk } from '../i18n/i18n.js'
 import type { ItemKind, ItemStatus } from '../protocol/events.js'
 
 /**
