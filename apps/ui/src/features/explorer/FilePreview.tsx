@@ -6,6 +6,7 @@ import { Download, ExternalLink, Eye, Loader2, Pencil, X } from 'lucide-react'
 import { PREVIEW_KIND_LABEL, formatSize, parseDelimited, previewMime, tr, type FsScope, type PreviewData } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { ImageViewer } from '../../components/ImageViewer.js'
+import { FileEditor } from './FileEditor.js'
 import { Input } from '../../components/ui/Input.js'
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
@@ -56,6 +57,9 @@ function MarkdownImage({ src, alt, title, scope, basePath }: { src?: string; alt
 
 // 资源管理器里的文件预览（双击 / 右键「预览」）：图片用 ImageViewer（缩放 / 拖拽）、Markdown 渲染、CSV / TSV 表格、PDF 用内置查看器（iframe），
 // 超过 20MB 或读不了的提示下载 / 用系统程序打开。弹窗只能按 × / Esc 关
+/** 看着是文本 / 代码文件（预览不支持时改用编辑器打开）：常见扩展名，或没有扩展名的（Dockerfile、Makefile 之类） */
+const TEXTISH = /\.(js|mjs|cjs|ts|tsx|jsx|json|jsonc|py|rb|go|rs|java|kt|c|h|cpp|hpp|cs|php|sh|bash|zsh|ps1|bat|cmd|yml|yaml|toml|ini|conf|cfg|env|txt|log|md|markdown|sql|html|htm|css|scss|less|xml|vue|svelte|gradle|lock|editorconfig|gitignore|dockerignore)$/i
+
 export function FilePreview({ scope, path, onDownload, onEdit, onClose }: { scope: FsScope; path: string; onDownload?: () => void; onEdit?: () => void; onClose: () => void }) {
   const [data, setData] = useState<PreviewData>()
   const [err, setErr] = useState('')
@@ -72,6 +76,8 @@ export function FilePreview({ scope, path, onDownload, onEdit, onClose }: { scop
   const openExternal = () => { setNote(tr('正在用系统程序打开…')); client.preview.openExternal(scope, path).then(() => setNote('')).catch((e) => setNote(errMsg(e))) }
 
   if (data?.kind === 'image') return <ImageViewer items={[{ kind: 'image', name: data.name, path, src: `data:${previewMime(data.name)};base64,${data.base64}` }]} index={0} onClose={onClose} />
+  // 预览不了、但看着是文本 / 代码文件 → 直接换成编辑器（可看可改；保存不备份，与资源管理器里编辑一致）
+  if (err && TEXTISH.test(path)) return <FileEditor scope={scope} path={path} onClose={onClose} />
   const name = path.split(/[\\/]/).pop() ?? path
   return createPortal((
     <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/55 backdrop-blur-sm animate-fade-in">
