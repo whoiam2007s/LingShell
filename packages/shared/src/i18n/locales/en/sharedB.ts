@@ -270,6 +270,8 @@ export const sharedB: Record<string, string> = {
   '在系统浏览器中打开': 'Open in your browser',
   '打开文件预览': 'Open file preview',
   '用系统默认软件打开': 'Open with the system default app',
+  '「{name}」是随应用内置的 skill，可以编辑但不能删除': '"{name}" ships with the app: you can edit it but not delete it',
+  '随应用内置：可以编辑，不能删除': 'Built in: editable, not deletable',
   'AI 自主处理': 'AI decides',
   'AI 自主处理（缺省）：先让 AI 判断这条提示怎么答——普通 y/n 自己答、能查到的值自己填；删除 / 卸载 / 格式化这类不可逆操作它会弹选项卡问你，你同意才继续；密码这类它拿不到的才交给你。中止并交回 AI：发 Ctrl-C 结束命令，由 AI 换成非交互写法重跑。保留现场交给你：不打断命令，停在终端里等你自己敲。': 'AI decides (default): the AI answers the prompt itself where it can — plain y/n, or a value it can look up; for irreversible actions (delete / uninstall / format) it asks you with an option card and only continues once you allow it; only things it cannot know (passwords) come back to you. Abort and hand back to the AI: send Ctrl-C and let the AI retry with a non-interactive form. Keep it in place for you: do not interrupt — the command stays in the terminal waiting for you.',
   '更早的 {n} 轮': '{n} earlier turns',

@@ -15,7 +15,7 @@ import { buildSkillMd, isSkillName, parseSkillMd, type SkillMeta } from './skill
 import { tr, type SkillInfo, type SkillImportPreview, type SkillOrigin, type SkillInput } from '@lingshell/shared'
 export type { SkillInfo, SkillImportPreview }
 
-interface State { [name: string]: { enabled?: boolean; modelInvocable?: boolean; origin?: SkillOrigin } }
+interface State { [name: string]: { enabled?: boolean; modelInvocable?: boolean; origin?: SkillOrigin; builtin?: boolean } }
 
 // 导入包的上限：防误导入整个大目录 / zip 炸弹
 const MAX_FILES = 500
@@ -135,6 +135,7 @@ export class LocalSkills {
           enabled: !dup && s.enabled !== false,
           modelInvocable: s.modelInvocable ?? !meta.disableModelInvocation,
           userInvocable: meta.userInvocable !== false,
+          ...(s.builtin ? { builtin: true } : {}),
           ...(dup ? { error: tr('与另一个目录里的 skill 重名（{name}），未启用', { name: meta.name }) } : {}),
         })
       } catch (e) {
@@ -189,12 +190,48 @@ export class LocalSkills {
 
   async remove(name: string): Promise<void> {
     const dir = await this.dirOf(name)
+    // 内置 skill 可以编辑，但不允许删除：删了下次启动会被补回来，不如直接拦住
+    const st0 = await this.state()
+    if (st0[name]?.builtin) throw new Error(tr('「{name}」是随应用内置的 skill，可以编辑但不能删除', { name }))
     if (!resolve(dir).startsWith(resolve(this.root) + sep)) throw new Error(tr('路径不对，已拒绝删除'))
     await rm(dir, { recursive: true, force: true })
     const st = await this.state()
     delete st[name]
     await this.saveState(st)
     this.changed()
+  }
+
+  /**
+   * 把随应用打包的内置 skill 同步到用户目录：缺哪个复制哪个，已存在的不覆盖（保住用户改过的版本）。
+   * srcDir 不存在（开发环境没打包）就什么都不做。返回本次新复制的个数。
+   */
+  async syncBuiltin(srcDir: string): Promise<number> {
+    let names: string[]
+    try {
+      names = (await readdir(srcDir, { withFileTypes: true })).filter((d) => d.isDirectory() && !isHidden(d.name)).map((d) => d.name)
+    } catch { return 0 }
+    if (!names.length) return 0
+    await mkdir(this.root, { recursive: true })
+    const st = await this.state()
+    let added = 0
+    for (const dir of names) {
+      const to = join(this.root, dir)
+      if (!existsSync(join(to, 'SKILL.md'))) {
+        await cp(join(srcDir, dir), to, { recursive: true })
+        added++
+        this.log?.('info', 'builtin skill installed', { dir })
+      }
+      // SKILL.md 的 name 可能与目录名不同，用解析出来的 name 记标记
+      let key = dir
+      try {
+        const p = parseSkillMd(await readFile(join(to, 'SKILL.md'), 'utf8'))
+        if (p.ok) key = p.meta.name
+      } catch { /* 读不了就按目录名记，list() 里会带 error */ }
+      st[key] = { ...st[key], builtin: true }
+    }
+    await this.saveState(st)
+    if (added) this.changed()
+    return added
   }
 
   async setFlags(name: string, flags: { enabled?: boolean; modelInvocable?: boolean }): Promise<void> {

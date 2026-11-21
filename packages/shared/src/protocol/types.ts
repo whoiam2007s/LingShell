@@ -1009,6 +1009,8 @@ export interface SkillInfo {
   modelInvocable: boolean // 「AI 可自动调用」
   userInvocable: boolean  // 出现在输入框「+ → Skills」
   files: string[]         // 包内其它文件（相对路径）
+  /** 随应用内置的 skill：可以编辑，但不能删除（下次启动只在缺失时补回来，已存在的不覆盖） */
+  builtin?: boolean
   error?: string          // SKILL.md 有问题：显示原因，不注册
 }
 export interface SkillImportPreview {

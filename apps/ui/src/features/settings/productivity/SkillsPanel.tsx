@@ -111,7 +111,12 @@ export function SkillsPanel() {
                     <button onClick={() => edit(s)} title={tr('编辑')} className={ICON_BTN}><Pencil className="h-3 w-3" /></button>
                   </>
                 )}
-                <button onClick={() => setDelTarget(s)} title={tr('删除')} className={ICON_DEL}><Trash2 className="h-3 w-3" /></button>
+                {/* 内置 skill 可以编辑，但不能删（删了下次启动也会被补回来） */}
+                <button onClick={() => setDelTarget(s)} disabled={s.builtin}
+                  title={s.builtin ? tr('随应用内置：可以编辑，不能删除') : tr('删除')}
+                  className={s.builtin ? `${ICON_DEL} cursor-not-allowed opacity-40 hover:bg-transparent` : ICON_DEL}>
+                  <Trash2 className="h-3 w-3" />
+                </button>
               </div>
             </div>
           ))}

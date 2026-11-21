@@ -40,6 +40,9 @@ extraResources:
   # 托盘图标（运行时 nativeImage 读它，有待授权时合成红点角标，见 src/main/background.ts）→ resources/icon.ico
   - from: build/icon.ico
     to: icon.ico
+  # 内置 Skill（启动时复制到用户 skills 目录；可编辑、不可删）→ resources/builtin-skills
+  - from: ../../resources/builtin-skills
+    to: builtin-skills
   # 许可证与第三方声明：Apache-2.0 要求在分发时随附 LICENSE 与 NOTICE（THIRD_PARTY_NOTICES 供用户查阅依赖许可）
   - from: ../../LICENSE
     to: LICENSE
