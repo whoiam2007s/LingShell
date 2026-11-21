@@ -48,6 +48,7 @@ export function TitleBar({ onOpenSettings, onOpenPalette, onOpenHelp, onOpenUsag
 
   return (
     <header
+      data-app-titlebar
       onMouseEnter={refreshLock}
       className="flex h-9 shrink-0 select-none items-center justify-between border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)]"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}

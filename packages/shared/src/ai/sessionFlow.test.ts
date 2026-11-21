@@ -51,7 +51,7 @@ describe('buildSessionFlow', () => {
     expect(f.edges.filter((e) => e.kind === 'write')).toHaveLength(2)
   })
 
-  it('跨轮再写同一个文件：旧产物连到本轮的工具（接着用）', () => {
+  it('轮与轮之间：上一轮末尾连到下一轮提问，不再跨轮直连文件', () => {
     const f = buildSessionFlow([
       user('u1', '第一版'),
       tool('t1', 'write_file', { path: 'a.ts' }),
@@ -59,9 +59,12 @@ describe('buildSessionFlow', () => {
       tool('t2', 'write_file', { path: 'a.ts' }),
     ])
     expect(f.turns).toBe(2)
-    const carry = f.edges.filter((e) => e.kind === 'carry')
-    expect(carry).toHaveLength(1)
-    expect(carry[0].from).toBe('0-file-a.ts')
+    const next = f.edges.filter((e) => e.kind === 'next')
+    expect(next).toHaveLength(1)
+    expect(next[0].from).toBe('0-file-a.ts')   // 第一轮的产物
+    expect(next[0].to).toBe('u2-ask')          // 指向第二轮的提问
+    // 同轮内重复写同一个文件仍然两条写入线
+    expect(f.edges.filter((e) => e.kind === 'write').length).toBeGreaterThanOrEqual(2)
   })
 
   it('一列超过上限折叠成「其余 +N」，原连线改指折叠节点', () => {
@@ -106,17 +109,17 @@ describe('buildSessionFlow 窗口化', () => {
     expect(f.totalTurns).toBe(10)
     expect(f.turns).toBe(10)
     expect(f.from).toBe(0)
-    expect(f.nodes.some((n) => n.kind === 'more')).toBe(false)
+    expect(f.nodes.some((n) => n.id === 'more-earlier')).toBe(false)
   })
 
-  it('指定 size 时默认贴到末尾（最新几轮），前面放「更早的 N 轮」', () => {
+  it('指定 size 时默认贴到末尾（最新几轮），不再生成「更早的 N 轮」节点', () => {
     const f = buildSessionFlow(many(10), { size: 3 })
     expect(f.turns).toBe(3)
     expect(f.from).toBe(7)
     expect(f.totalTurns).toBe(10)
-    const more = f.nodes.find((n) => n.kind === 'more')!
-    expect(more.label).toContain('7')
-    expect(more.turn).toBe(-1)          // 排在最左一列
+    // 翻页改由顶部导航负责，图上不再插「更早」节点
+    expect(f.nodes.some((n) => n.id === 'more-earlier')).toBe(false)
+    expect(f.nodes.filter((n) => n.kind === 'ask')).toHaveLength(3)
   })
 
   it('显式 from 取窗口中间一段', () => {
@@ -134,7 +137,7 @@ describe('buildSessionFlow 窗口化', () => {
     expect(f.turns).toBe(4)
     const g = buildSessionFlow(many(10), { from: 0, size: 4 })
     expect(g.from).toBe(0)
-    expect(g.nodes.some((n) => n.kind === 'more')).toBe(false)
+    expect(g.nodes.some((n) => n.id === 'more-earlier')).toBe(false)
   })
 
   it('轮数少于一屏时全部显示，不加「更早」节点', () => {

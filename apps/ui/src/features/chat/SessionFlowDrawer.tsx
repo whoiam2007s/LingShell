@@ -10,8 +10,8 @@ import { buildSessionFlow, tr, type FlowEdgeKind, type FlowInput, type FlowNode,
 const WINDOW = 8
 const STAGE_X = [0, 176, 392]
 const TURN_GAP = 540
-const W: Record<FlowNodeKind, number> = { ask: 148, chip: 96, tool: 118, text: 104, file: 124, auth: 96, more: 132 }
-const H: Record<FlowNodeKind, number> = { ask: 30, chip: 22, tool: 26, text: 26, file: 24, auth: 24, more: 30 }
+const W: Record<FlowNodeKind, number> = { ask: 148, chip: 96, tool: 118, text: 104, file: 124, auth: 96 }
+const H: Record<FlowNodeKind, number> = { ask: 30, chip: 22, tool: 26, text: 26, file: 24, auth: 24 }
 const VGAP = 14
 
 const EDGE_COLOR: Record<FlowEdgeKind, string> = {
@@ -19,17 +19,16 @@ const EDGE_COLOR: Record<FlowEdgeKind, string> = {
   write: '#d29922',
   weak: '#484f58',
   chip: '#a371f7',
-  carry: '#6e7681',
+  next: '#3fb950',
 }
-const ICON: Record<FlowNodeKind, string> = { ask: '🧑', chip: '🔖', tool: '⚡', text: '💬', file: '📄', auth: '🛡', more: '⏮' }
+const ICON: Record<FlowNodeKind, string> = { ask: '🧑', chip: '🔖', tool: '⚡', text: '💬', file: '📄', auth: '🛡' }
 
 type D = FlowNode & { dim?: boolean; sel?: boolean }
 
 function NodeBox({ data }: NodeProps) {
   const d = data as unknown as D
-  const accent = d.kind === 'ask' ? '#58a6ff' : d.kind === 'chip' ? '#a371f7' : d.kind === 'text' ? '#8b949e' : d.kind === 'file' ? '#6e7681' : d.kind === 'auth' ? '#f0883e' : d.kind === 'more' ? '#6e7681' : d.ok === false ? '#f85149' : '#3fb950'
+  const accent = d.kind === 'ask' ? '#58a6ff' : d.kind === 'chip' ? '#a371f7' : d.kind === 'text' ? '#8b949e' : d.kind === 'file' ? '#6e7681' : d.kind === 'auth' ? '#f0883e' : d.ok === false ? '#f85149' : '#3fb950'
   const isChip = d.kind === 'chip'
-  const isMore = d.kind === 'more'
   return (
     <div
       data-flow-node={d.id}
@@ -37,12 +36,12 @@ function NodeBox({ data }: NodeProps) {
       style={{
         width: W[d.kind], height: H[d.kind], borderRadius: isChip ? 10 : 5,
         background: d.kind === 'ask' ? 'color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-panel))' : isChip ? 'color-mix(in srgb, #a371f7 10%, var(--color-bg-base))' : 'var(--color-bg-raised)',
-        border: `1px ${isMore ? 'dashed' : 'solid'} ${d.sel ? accent : 'var(--color-border-default)'}`,
+        border: `1px solid ${d.sel ? accent : 'var(--color-border-default)'}`,
         borderLeft: isChip ? undefined : `2px solid ${accent}`,
         padding: isChip ? '0 8px' : '0 6px',
         display: 'flex', alignItems: 'center', gap: 4,
         opacity: d.dim ? 0.22 : 1,
-        cursor: isMore ? 'zoom-in' : 'pointer',
+        cursor: 'pointer',
         boxShadow: d.sel ? `0 0 0 2px ${accent}55` : 'none',
         overflow: 'hidden',
       }}
@@ -70,7 +69,7 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
   const hasLater = flow.from + flow.turns < flow.totalTurns
 
   const graph = useMemo(() => {
-    // 按 (轮, 阶段) 分列，列内纵向居中；turn = -1 的「更早的 N 轮」排在最左
+    // 按 (轮, 阶段) 分列，列内纵向居中
     const cols = new Map<string, FlowNode[]>()
     for (const n of flow.nodes) {
       const k = `${n.turn}-${n.stage}`
@@ -102,9 +101,9 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
         animated: e.kind === 'write' || e.kind === 'chip',
         style: {
           stroke: color,
-          strokeWidth: on ? 1.6 : e.kind === 'weak' || e.kind === 'carry' ? 0.9 : 1.2,
-          strokeDasharray: e.kind === 'weak' || e.kind === 'carry' ? '4 3' : e.kind === 'chip' ? '2 2' : undefined,
-          opacity: sel ? (on ? 1 : 0.08) : e.kind === 'weak' || e.kind === 'carry' ? 0.35 : 0.75,
+          strokeWidth: on ? 1.6 : e.kind === 'weak' ? 0.9 : 1.2,
+          strokeDasharray: e.kind === 'weak' ? '4 3' : e.kind === 'chip' ? '2 2' : undefined,
+          opacity: sel ? (on ? 1 : 0.08) : e.kind === 'weak' ? 0.35 : 0.75,
         },
         markerEnd: { type: MarkerType.Arrow, width: 8, height: 8, color },
       } satisfies Edge
@@ -157,7 +156,6 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
             proOptions={{ hideAttribution: true }}
             onNodeClick={(e, n) => {
               e.stopPropagation()
-              if (n.id === 'more-earlier') { step(-1); return }
               setSel(n.id === sel ? undefined : n.id)
             }}
           >

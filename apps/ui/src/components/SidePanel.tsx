@@ -10,7 +10,9 @@ import { uiLayerBusy } from './ui/layer.js'
  * 抽屉原本挂在「会话区」「终端区」各自的容器里，absolute inset-0 只覆盖父容器，
  * 拖宽超出就被父容器裁掉；挪到顶层后整块视口都能用。
  *
- * 宽度可拖：贴内侧边缘拖，最小 280px，最大窗口宽度的一半；
+ * 但顶层不能盖住应用标题栏：实测量 [data-app-titlebar] 的高度，抽屉从它下面开始。
+ *
+ * 宽度可拖：贴内侧边缘拖，最小 280px，最大内容区宽度的一半；
  * 双击把手恢复默认；宽度按 key 记在 localStorage（不同抽屉各自记）。
  */
 const MIN_W = 280
@@ -37,6 +39,34 @@ export function SidePanel({ open, onClose, side, widthClass, widthKey, children 
     return Number.isFinite(v) && v >= MIN_W ? clamp(v) : undefined
   })
   const boxRef = useRef<HTMLDivElement | null>(null)
+  // 顶部避让：应用标题栏（h-9 + 边框）不能被抽屉盖住
+  const [top, setTop] = useState(36)
+  // 左右避让：活动栏（最左/最右的图标列）要给抽屉让出位置，否则抽屉会盖住它们
+  const [inset, setInset] = useState({ left: 0, right: 0 })
+
+  useEffect(() => {
+    const bar = document.querySelector('[data-app-titlebar]')
+    if (!(bar instanceof HTMLElement)) return
+    const measure = () => setTop(bar.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(bar)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const l = document.querySelector('[data-activity-bar="left"]')
+    const r = document.querySelector('[data-activity-bar="right"]')
+    const measure = () => setInset({
+      left: l instanceof HTMLElement ? Math.round(l.getBoundingClientRect().width) : 0,
+      right: r instanceof HTMLElement ? Math.round(r.getBoundingClientRect().width) : 0,
+    })
+    measure()
+    const ro = new ResizeObserver(measure)   // 图标缩放会改活动栏宽度，跟着重算
+    if (l instanceof HTMLElement) ro.observe(l)
+    if (r instanceof HTMLElement) ro.observe(r)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -85,7 +115,7 @@ export function SidePanel({ open, onClose, side, widthClass, widthKey, children 
   const fallback = widthClass ?? (side === 'left' ? 'w-[270px]' : 'w-[340px]')
   const isLeft = side === 'left'
   const el = (
-    <div className="pointer-events-none fixed inset-0 z-40 overflow-hidden">
+    <div className="pointer-events-none fixed bottom-0 z-40 overflow-hidden" style={{ top, left: inset.left, right: inset.right }}>
       {/* 抽屉里下拉面板开着时点遮罩只关面板，不关抽屉 */}
       {open && <div onClick={() => { if (!uiLayerBusy()) onClose() }} className="pointer-events-auto absolute inset-0 bg-black/20 transition-opacity" />}
       <div

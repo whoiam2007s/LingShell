@@ -39,7 +39,7 @@ export interface FlowInput {
 }
 
 export type FlowStage = 0 | 1 | 2
-export type FlowNodeKind = 'ask' | 'chip' | 'tool' | 'text' | 'file' | 'auth' | 'more'
+export type FlowNodeKind = 'ask' | 'chip' | 'tool' | 'text' | 'file' | 'auth'
 
 export interface FlowNode {
   id: string
@@ -61,7 +61,7 @@ export interface FlowNode {
   match?: string
 }
 
-export type FlowEdgeKind = 'ask' | 'write' | 'weak' | 'chip' | 'carry'
+export type FlowEdgeKind = 'ask' | 'write' | 'weak' | 'chip' | 'next'
 
 export interface FlowEdge {
   from: string
@@ -171,19 +171,8 @@ export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number; fr
   const from = Math.max(0, Math.min(opts.from ?? maxFrom, maxFrom))
   const turns = all.slice(from, from + size)
   let folded = 0
-  // 文件路径 → 最近一次产出它的节点（跨轮复用时连一条「上一轮结果」）
-  const lastFile = new Map<string, string>()
-
-  // 窗口前面还有更早的轮次：放一个入口节点（turn = -1，排在最左）
-  if (from > 0) {
-    nodes.push({
-      id: 'more-earlier', turn: -1, stage: 0, kind: 'more',
-      label: tr('更早的 {n} 轮', { n: from }),
-      title: tr('窗口前面还有 {n} 轮', { n: from }),
-      detail: tr('当前显示第 {a}–{b} 轮，共 {t} 轮', { a: from + 1, b: Math.min(all.length, from + size), t: all.length }),
-      folded: from,
-    })
-  }
+  // 上一轮的末尾节点：本轮提问从它接上（轮次之间的流转）
+  let prevLast: string | undefined
 
   turns.forEach((list, turn) => {
     const ask = list.find((x) => x.kind === 'user_message')
@@ -194,6 +183,8 @@ export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number; fr
       title: ask?.text?.trim() ? ask.text.trim().slice(0, 400) : tk('你的提问'),
       detail: ask?.text?.trim() || undefined,
     })
+    // 上一轮的末尾 → 本轮提问：轮与轮之间按时间顺序串起来
+    if (prevLast) edges.push({ from: prevLast, to: askId, kind: 'next' })
 
     // chip：提问携带的引用
     const chips = ask?.chips ?? []
@@ -264,13 +255,6 @@ export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number; fr
       }
     }
 
-    // 跨轮：本轮的产物如果在更早的轮次出现过，连一条「接着用」
-    for (const f of fileNodes) {
-      const prev = lastFile.get(f.title ?? '')
-      if (prev) edges.push({ from: prev, to: fileOwner.get(f.title ?? '') ?? f.id, kind: 'carry' })
-    }
-    for (const f of fileNodes) lastFile.set(f.title ?? '', f.id)
-
     // 折叠：阶段 1 / 2 超过 colMax 时收成「其余 +N」
     const fold = (arr: FlowNode[], stage: FlowStage): FlowNode[] => {
       if (arr.length <= colMax) return arr
@@ -294,8 +278,12 @@ export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number; fr
       return [...keep, more]
     }
 
-    nodes.push(...fold(mid, 1))
-    nodes.push(...fold(fileNodes, 2))
+    const midFolded = fold(mid, 1)
+    const fileFolded = fold(fileNodes, 2)
+    nodes.push(...midFolded)
+    nodes.push(...fileFolded)
+    // 本轮的末尾节点（产物优先，其次工具/文字）——下一轮提问从它接上
+    prevLast = (fileFolded.at(-1) ?? midFolded.at(-1))?.id ?? askId
   })
 
   return { nodes, edges, turns: turns.length, totalTurns: all.length, from, size, folded }
