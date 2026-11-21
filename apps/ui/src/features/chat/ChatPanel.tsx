@@ -716,6 +716,16 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
             id: it.itemId, turnId: it.turnId, kind: it.kind, status: it.status, text: it.text,
             tool: it.tool ? { name: it.tool.name, input: it.tool.input, output: it.tool.output } : undefined,
             at: it.at, callAt: it.callAt,
+            // 用户消息带的附件 / 引用 → 流程图里的 chip 节点（文件、图片、终端、其它上下文）
+            chips: it.attachments?.map((a) => ({
+              kind: a.kind === 'file' || a.kind === 'dir' ? 'file' as const
+                : a.kind === 'image' ? 'image' as const
+                  : a.ctx === 'terminal' ? 'terminal' as const
+                    : a.ctx === 'host' ? 'terminal' as const
+                      : 'other' as const,
+              label: a.name,
+              ref: a.path ?? a.imageId ?? undefined,
+            })),
           }))}
           title={sessionTitle} onClose={() => setFlowOpen(false)} />
       )}
