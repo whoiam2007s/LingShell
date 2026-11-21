@@ -88,15 +88,50 @@ function toolBlock(it: ReportItem): string {
 const verdict = (r: Verdict | undefined, allow: string) =>
   r === 'allow' ? `✅ ${allow}` : r === 'deny' ? tr('⛔ 已拒绝') : r === 'timeout' ? tr('⏱ 超时拒绝') : r === 'cancelled' ? tr('⏹ 未处理（本轮结束）') : tr('待决定')
 
+/** 子代理的执行轨迹：导出会话时嵌到对应 spawn_subagent 那条下面（按 task / title 对上） */
+export interface SubagentTrace {
+  task: string
+  title: string
+  permission: 'read' | 'write'
+  status: 'running' | 'done' | 'blocked' | 'failed'
+  elapsedMs?: number
+  summary?: string
+  steps?: { kind: 'tool' | 'text'; label: string; at: string }[]
+}
+
+/** 子代理状态的中文说明（走 tr 才能被文案检查认出来） */
+const subStatusText = (s: SubagentTrace['status']): string =>
+  s === 'running' ? tr('进行中') : s === 'done' ? tr('完成') : s === 'blocked' ? tr('卡住待决定') : tr('失败')
+
+// spawn_subagent 那条工具记录下面挂它的执行轨迹：导出物要能当证据链看，不能只剩一个标题
+function subagentBlock(t: ToolCallInfo, traces?: SubagentTrace[]): string {
+  if (!traces?.length) return ''
+  const input = (t.input ?? {}) as Record<string, unknown>
+  const task = typeof input.task === 'string' ? input.task : ''
+  const title = typeof input.title === 'string' ? input.title : ''
+  const hit = traces.find((x) => (task && x.task === task) || (title && x.title === title))
+  if (!hit) return ''
+  const meta = [
+    hit.permission === 'write' ? tr('读写') : tr('只读'),
+    `${subStatusText(hit.status)}${hit.elapsedMs ? ` · ${(hit.elapsedMs / 1000).toFixed(1)}s` : ''}`,
+    `${tr('{n} 步', { n: hit.steps?.length ?? 0 })}`,
+  ].join(' · ')
+  const body = hit.steps?.length
+    ? hit.steps.map((s, i) => `${i + 1}. \`${fmtTime(s.at)}\` ${s.label}`).join('\n')
+    : tr('（没有记到步骤）')
+  const tail = hit.summary ? `\n\n**${tr('结论')}**\n\n${hit.summary}` : ''
+  return `<details><summary>${tr('子代理执行轨迹（{meta}）', { meta })}</summary>\n\n${body}${tail}\n\n</details>`
+}
+
 // h = 用户消息的标题级别（仅对话 2，完整报告里嵌在章节下用 3）
-function conversationParts(items: ReportItem[], h = 2): string[] {
+function conversationParts(items: ReportItem[], h = 2, traces?: SubagentTrace[]): string[] {
   const H = '#'.repeat(h)
   const parts: string[] = []
   for (const it of items) {
     switch (it.kind) {
       case 'user_message': parts.push(`${H} 🧑 ${tr('用户')}\n\n${it.text}`); break
       case 'agent_message': if (it.text.trim()) parts.push(`${H}# 🤖 AI\n\n${it.text}`); break
-      case 'tool_call': parts.push(toolBlock(it)); break
+      case 'tool_call': parts.push([toolBlock(it), it.tool?.name === 'spawn_subagent' ? subagentBlock(it.tool, traces) : ''].filter(Boolean).join('\n\n')); break
       case 'todo':
         if (it.todos?.length) parts.push(`**${tr('任务清单')}**\n\n${it.todos.map((t) => `- [${t.status === 'completed' ? 'x' : ' '}] ${t.content}`).join('\n')}`)
         break
@@ -118,8 +153,8 @@ function conversationParts(items: ReportItem[], h = 2): string[] {
 
 const stamp = (now: Date) => `> ${tr('导出于 {time}', { time: fmtTime(now.toISOString()) })}`
 
-export function conversationToMarkdown(title: string, items: ReportItem[], opts: { redact?: boolean; now?: Date } = {}): string {
-  const md = [`# ${title}`, stamp(opts.now ?? new Date()), ...conversationParts(items)].join('\n\n') + '\n'
+export function conversationToMarkdown(title: string, items: ReportItem[], opts: { redact?: boolean; now?: Date; subagents?: SubagentTrace[] } = {}): string {
+  const md = [`# ${title}`, stamp(opts.now ?? new Date()), ...conversationParts(items, 2, opts.subagents)].join('\n\n') + '\n'
   return opts.redact ? redactSecrets(md) : md
 }
 
@@ -129,6 +164,8 @@ export interface SessionReportInput {
   items: ReportItem[]
   audit: AuditEntry[]
   hosts: Pick<HostSummary, 'id' | 'label' | 'env'>[]
+  /** 子代理执行轨迹：嵌到对应 spawn_subagent 那条下面 */
+  subagents?: SubagentTrace[]
   redact?: boolean
   now?: Date
 }
@@ -222,7 +259,7 @@ export function buildSessionReport(input: SessionReportInput): string {
       `  - ${tr('回滚：{cmd}', { cmd: `\`${a.rollback ?? ''}\`` })}${a.rollbackNote ? tr('（{note}）', { note: a.rollbackNote }) : ''}`,
     ].join('\n')).join('\n')
     : tr('report|无')
-  const conv = conversationParts(items, 3)
+  const conv = conversationParts(items, 3, input.subagents)
   const md = [
     `# ${tr('会话报告：{title}', { title })}`, stamp(input.now ?? new Date()),
     `## 1. ${tr('概要')}\n\n${summary}`,

@@ -8,7 +8,22 @@ export type CommandHandler = (command: string, source: 'user' | 'ai') => void
 // silent：不回显命令/输出到 UI、不记命令历史（内部探测用，如资源管理器取 pwd）
 // wire：实际发进 shell 的命令（密钥保险箱占位符已换成明文）；command 只用于回显 / 命令历史 / 拦截判定，始终是占位符原文
 // onStall：命令长时间无输出时的兜底判定（规则没识别出来时由调用方问模型「是不是在等输入」），返回 'waiting' 则中止
-export interface ExecCaptureOpts { silent?: boolean; wire?: string; onStall?: (tail: string) => Promise<'waiting' | 'continue'> }
+// handoff：判定为等输入时不发 Ctrl-C，命令留在终端里交给用户敲答案（终端保持原样，调用方不应再往里发命令）
+export interface ExecCaptureOpts {
+  silent?: boolean
+  wire?: string
+  onStall?: (tail: string) => Promise<'waiting' | 'continue'>
+  handoff?: boolean
+  /**
+   * auto 模式：判定为等输入时问一次「这条提示怎么答」。
+   * 返回要写进终端的一行（不含换行，如 'y'）；返回 undefined = 交回给用户（命令留在终端里）。
+   * 一条命令最多自动答 MAX_AUTO_ANSWERS 次，防止死循环。
+   */
+  answerFor?: (prompt: string) => Promise<string | undefined>
+}
+
+/** auto 模式下同一条命令最多自动答几次（多步向导、连续确认会问好几次） */
+const MAX_AUTO_ANSWERS = 5
 // noHistory：不进用户输入行缓冲、不记命令历史（自动应答发的密码/yes 不是命令）
 export interface WriteOpts { noHistory?: boolean }
 
@@ -215,16 +230,23 @@ export abstract class BaseTerminal implements Terminal {
       const startedAt = Date.now()
       let stallTimer: NodeJS.Timeout | undefined
       let probed = false
-      const abortForInput = (prompt: string): void => {
+      let answered = 0
+      let answering = false
+      const abortForInput = (prompt: string, forceHandoff?: boolean): void => {
         if (!this.capturing) return
         clearTimeout(timer)
         if (stallTimer) clearTimeout(stallTimer)
         const cur = this.capturing
         this.capturing = undefined
         if (signal) signal.removeEventListener('abort', onAbort)
-        this.writeRaw('\x03')   // 收尾：Ctrl-C 退回提示符，别把终端留在交互态（如 mysql>）
+        // handoff：不中止，命令留在终端里等用户敲答案（终端保持原样）；否则 Ctrl-C 退回提示符
+        const handoff = forceHandoff === true || opts?.handoff === true
+        if (!handoff) this.writeRaw('\x03')
         cleanup()
-        const r: SentinelResult = { output: groomOutput(cur.parser.partial()), exitCode: -1, truncated: true, needsInput: prompt, stalled: true }
+        const r: SentinelResult = {
+          output: groomOutput(cur.parser.partial()), exitCode: -1, truncated: true, needsInput: prompt, stalled: true,
+          ...(handoff ? { handedOff: true } : {}),
+        }
         finish(r)
         resolve(r)
       }
@@ -233,12 +255,28 @@ export abstract class BaseTerminal implements Terminal {
         stallTimer = setTimeout(checkStall, STALL_MS)   // 定时器触发时 checkStall 已定义
         stallTimer.unref?.()
       }
+      // 判定为等输入之后：auto 模式先让调用方决定怎么答（y/n 自己答、需要用户就别答），答不了再交回
+      const handleInput = (prompt: string): void => {
+        const pick = opts?.answerFor
+        if (!pick || answering || answered >= MAX_AUTO_ANSWERS) { abortForInput(prompt, !!pick); return }
+        answering = true
+        void pick(prompt)
+          .then((answer) => {
+            answering = false
+            if (!this.capturing) return
+            if (!answer) { abortForInput(prompt, true); return }   // 交给用户：保留现场
+            answered++
+            this.writeRaw(`${answer}\r`)
+            armStall()   // 答案发出去后命令会继续跑，重新计时
+          })
+          .catch(() => { answering = false; abortForInput(prompt, true) })
+      }
       const checkStall = (): void => {
         if (!this.capturing) return
         if (Date.now() - startedAt < STALL_MIN_RUN_MS) { armStall(); return }
         const tail = this.capturing.parser.partial()
         const byRule = detectNeedsInput(tail)
-        if (byRule) { abortForInput(byRule); return }
+        if (byRule) { handleInput(byRule); return }
         const ask = opts?.onStall
         if (!ask || probed) { armStall(); return }
         probed = true
@@ -246,7 +284,7 @@ export abstract class BaseTerminal implements Terminal {
           .then((verdict) => {
             if (verdict === 'waiting') {
               const last = tail.trimEnd().split('\n').pop()?.trim().slice(0, 200)
-              abortForInput(last || '（检测到命令在等待输入）')   // i18n-ignore 模型提示词 / 给模型的结果
+              handleInput(last || '（检测到命令在等待输入）')   // i18n-ignore 模型提示词 / 给模型的结果
             } else armStall()
           })
           .catch(() => armStall())   // 判定失败：宁可多等，也不误杀

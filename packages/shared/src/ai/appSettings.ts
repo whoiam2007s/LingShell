@@ -48,6 +48,8 @@ export const APP_SETTING_SPECS: readonly SettingSpec[] = [
   { key: 'system.uploadEncrypt', type: 'boolean', label: '上传默认加密', writable: true },
   { key: 'system.contextLimitTokens', type: 'number', min: 10000, max: 2000000, label: '自动压缩阈值（tokens）', writable: true },
   { key: 'system.contextResetSteps', type: 'number', min: 10, max: 1000, label: '建议开新会话的步数', writable: true },
+  { key: 'system.contextWarnAt', type: 'number', min: 0, max: 99, label: '上下文提醒阈值（百分比，0 = 关闭）—— 纯界面提醒，AI 只读', writable: false },
+  { key: 'system.interactivePolicy', type: 'string', label: '命令卡在等输入时（auto = AI 自己判断着答 / abort = 中止并交回 AI 改写重跑 / handoff = 保留现场交给你）—— 决定 AI 自己的行为，AI 只读；需要时建议用户去设置里改', writable: false },
   { key: 'system.subagentTimeoutSec', type: 'number', min: 60, max: 1800, label: '子代理默认超时（秒，默认 600 = 10 分钟）', writable: true },
   { key: 'system.subagentMaxConcurrent', type: 'number', min: 1, max: 6, label: '子代理最大并发（默认 3）', writable: true },
   { key: 'system.terminalEnv', type: 'string', label: '本地终端环境变量（每行一个 KEY=VALUE）', writable: true },

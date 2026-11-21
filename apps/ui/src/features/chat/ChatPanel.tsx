@@ -1,7 +1,8 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Pencil, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, Download, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert } from 'lucide-react'
+import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert, MoreHorizontal } from 'lucide-react'
 import { useConversation, type ContextState, type ConvItem, type SessionPhase, type OutgoingAttachments } from './useConversation.js'
+import { SessionFlowDrawer } from './SessionFlowDrawer.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
 import { MessageItem, MsgActionsContext, type MsgActions } from './items/MessageItem.js'
 import { ToolSessionContext } from '../auth/index.js'
@@ -96,6 +97,8 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const prevSidRef = useRef(activeSessionId)
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  // 会话流程图弹窗（标题栏「⋯」→ 会话流程图）
+  const [flowOpen, setFlowOpen] = useState(false)
 
   // ── 输入框高度：**默认一行，不记忆**。只在需要时把框上沿往上拖临时拉高，
   // 双击那道边回到一行；下次启动还是默认一行。
@@ -354,12 +357,14 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const exportSession = async (mode: ExportMode, redact: boolean) => {
     const title = titleOf(sessionTitle)
     const name = title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)
-    if (mode === 'chat') { void client.system.saveTextFile(`${name}.md`, conversationToMarkdown(title, items, { redact })); return }
+    // 子代理的执行轨迹一起导出：否则文件里只剩一行 spawn_subagent，中间十几步全丢
+    const subagents = activeSessionId ? await client.subagent.list(activeSessionId).catch(() => []) : []
+    if (mode === 'chat') { void client.system.saveTextFile(`${name}.md`, conversationToMarkdown(title, items, { redact, subagents })); return }
     const [audit, hosts] = await Promise.all([
       client.audit.listForSession(activeSessionId).catch(() => []),
       client.hosts.list().catch(() => []),
     ])
-    const md = buildSessionReport({ title, items, audit, hosts, redact })
+    const md = buildSessionReport({ title, items, audit, hosts, redact, subagents })
     if (mode === 'report') { void client.system.saveTextFile(`${name}-${tr('报告')}.md`, md); return }
     const { markdownToHtml } = await import('./reportHtml.js')
     void client.system.saveTextFile(`${name}-${tr('报告')}.html`, markdownToHtml(tr('会话报告：{title}', { title }), md))
@@ -527,10 +532,17 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   // ── `!命令` 直通终端（参考 Gemini CLI / Claude Code 的 ! 模式）──────────
   // 走撰写栏同一套确认（危险命令 / 隐藏字符 / 多行发到生产），这里对生产终端单行也确认；执行完结果变成「终端块」标签，接着写问题再发给 AI
   const bang = bangCommand(input)
-  // 上下文快到压缩阈值（80%）时提醒一次；点 × 只关掉当前会话的提示（换会话还会提醒）
+  // 上下文快到压缩阈值时提醒一次（阈值在「设置 → AI」，0 = 关闭）；点 × 只关掉当前会话的提示
   const [compactHintOff, setCompactHintOff] = useState('')
+  const [warnAt, setWarnAt] = useState(80)
+  useEffect(() => {
+    const load = () => { client.settings.get().then((s) => setWarnAt(s.system?.contextWarnAt ?? 80), () => {}) }
+    load()
+    window.addEventListener('focus', load)   // 改完设置切回窗口就生效，不用重启
+    return () => window.removeEventListener('focus', load)
+  }, [])
   const compactPct = usage?.compactAt ? Math.round((usage.inputTokens / usage.compactAt) * 100) : 0
-  const showCompactHint = !!activeSessionId && !busy && compactPct >= 80 && compactPct < 100 && compactHintOff !== activeSessionId
+  const showCompactHint = !!activeSessionId && !busy && warnAt > 0 && compactPct >= warnAt && compactPct < 100 && compactHintOff !== activeSessionId
   const [shellBusy, setShellBusy] = useState('')
   const [shellAsk, setShellAsk] = useState<{ plan: ComposePlan; tid: string; cmd: string } | null>(null)
   const execBang = async (tid: string, title: string, cmd: string) => {
@@ -683,6 +695,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
 
       {/* 会话 header */}
       <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
+        onFlow={activeSessionId && items.length ? () => setFlowOpen(true) : undefined}
         postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} workDir={workDir} onRename={onRename} onNew={onNew} onOpenGit={onOpenGit} models={canChat ? models : undefined}
         preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
         thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode}
@@ -695,6 +708,27 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
           onNew,
           onOpenHistory,
         } : undefined} />
+
+      {/* 会话流程图：标题栏「⋯」里点开，按轮次展示 提问+chips → 工具/文字 → 产物 */}
+      {flowOpen && activeSessionId && (
+        <SessionFlowDrawer
+          items={items.map((it) => ({
+            id: it.itemId, turnId: it.turnId, kind: it.kind, status: it.status, text: it.text,
+            tool: it.tool ? { name: it.tool.name, input: it.tool.input, output: it.tool.output } : undefined,
+            at: it.at, callAt: it.callAt,
+            // 用户消息带的附件 / 引用 → 流程图里的 chip 节点（文件、图片、终端、其它上下文）
+            chips: it.attachments?.map((a) => ({
+              kind: a.kind === 'file' || a.kind === 'dir' ? 'file' as const
+                : a.kind === 'image' ? 'image' as const
+                  : a.ctx === 'terminal' ? 'terminal' as const
+                    : a.ctx === 'host' ? 'terminal' as const
+                      : 'other' as const,
+              label: a.name,
+              ref: a.path ?? a.imageId ?? undefined,
+            })),
+          }))}
+          title={sessionTitle} onClose={() => setFlowOpen(false)} />
+      )}
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -1282,7 +1316,7 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
   )
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, workDir, onRename, onNew, onOpenGit, models, preview, thinking, onPickThinking, mode, onPickMode, switcher }: {
+function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, workDir, onRename, onNew, onOpenGit, models, preview, thinking, onPickThinking, mode, onPickMode, switcher, onFlow }: {
   /** 标题后的会话切换箭头（hover 出最近会话列表） */
   switcher?: Omit<SessionSwitcherProps, 'sessions'> & { sessions: SessionMeta[] }
   preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
@@ -1302,6 +1336,7 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
   onRename?: (t: string) => void
   onNew?: () => void
   onOpenGit?: () => void   // 点分支 tag：打开 Git 面板
+  onFlow?: () => void      // 打开会话流程图（标题栏「⋯」菜单里）
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -1357,13 +1392,12 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
           <span className="max-w-[300px] truncate" title={workDir ? `${titleOf(title)}\n${tr('工作目录：{path}', { path: workDir })}` : `${titleOf(title)}\n${tr('未绑定工作目录（用默认工作区）')}`}>{titleOf(title)}</span>
           {/* 只有点铅笔图标才进入编辑，点标题文字不触发（避免误触） */}
           {switcher && <SessionSwitcher {...switcher} />}
-          {onRename && (
-            <button onClick={() => { setDraft(title); setEditing(true) }} title={tr('重命名')}
-              className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-muted)] opacity-0 transition-opacity hover:text-[var(--color-accent)] group-hover:opacity-100">
-              <Pencil className="h-3 w-3" />
-            </button>
+          {/* 编辑 / 导出 / 流程图都收进「⋯」，标题栏不再挂一排图标 */}
+          {(onRename || onExport || onFlow) && (
+            <MoreMenu
+              onRename={onRename ? () => { setDraft(title); setEditing(true) } : undefined}
+              onExport={onExport} postmortem={postmortem} onFlow={onFlow} />
           )}
-          {onExport && <ExportMenu onExport={onExport} postmortem={postmortem} />}
           {/* 这个会话派过子代理时，名称后面显示数量与状态；点开看各自结论 */}
           {sessionId && <SubagentBadge sessionId={sessionId} live={busy} />}
         </div>
@@ -1379,41 +1413,60 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
 }
 type ExportMode = 'chat' | 'report' | 'html'
 type PostmortemAction = { off?: string; run: () => void }   // off = 禁用原因
-// 导出菜单：仅对话 / 完整报告（Markdown、HTML）/ 故障复盘报告（AI 生成）+ 脱敏开关（默认开）
-function ExportMenu({ onExport, postmortem }: { onExport: (mode: ExportMode, redact: boolean) => void; postmortem?: PostmortemAction }) {
+// 标题栏「⋯」菜单：重命名 / 导出（三种 + 故障复盘 + 脱敏开关）/ 会话流程图
+function MoreMenu({ onRename, onExport, postmortem, onFlow }: {
+  onRename?: () => void
+  onExport?: (mode: ExportMode, redact: boolean) => void
+  postmortem?: PostmortemAction
+  onFlow?: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [redact, setRedact] = useState(true)
-  const pick = (m: ExportMode) => { setOpen(false); onExport(m, redact) }
   const item = 'block w-full rounded px-2 py-1 text-left hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]'
+  const group = 'mt-1 border-t border-[var(--color-border-subtle)] px-2 pt-1 text-[10.5px] text-[var(--color-text-muted)]'
+  const pick = (m: ExportMode) => { setOpen(false); onExport?.(m, redact) }
   return (
     <span className="relative flex shrink-0">
-      <button onClick={() => setOpen((o) => !o)} title={tr('导出会话')}
-        className={`flex h-5 w-5 items-center justify-center text-[var(--color-text-muted)] transition-opacity hover:text-[var(--color-accent)] group-hover:opacity-100 ${open ? 'opacity-100' : 'opacity-0'}`}>
-        <Download className="h-3 w-3" />
+      <button onClick={() => setOpen((o) => !o)} title={tr('更多')} data-session-more
+        className={`flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-muted)] hover:text-[var(--color-accent)] ${open ? 'bg-[var(--color-bg-hover)] text-[var(--color-accent)]' : ''}`}>
+        <MoreHorizontal className="h-3.5 w-3.5" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-5 z-50 w-52 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] p-1 text-[12px] font-normal text-[var(--color-text-secondary)] shadow-lg">
-            <button className={item} onClick={() => pick('chat')}>{tr('仅对话（Markdown）')}</button>
-            <button className={item} onClick={() => pick('report')} title={tr('概要 + 对话 + 执行记录 + 文件改动 + 授权记录')}>{tr('完整报告（Markdown）')}</button>
-            <button className={item} onClick={() => pick('html')}>{tr('完整报告（HTML）')}</button>
-            {postmortem && (
-              <button data-export-postmortem className={`${item} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--color-text-secondary)]`} disabled={!!postmortem.off}
-                onClick={() => { setOpen(false); postmortem.run() }}
-                title={postmortem.off ?? tr('由 AI 按复盘模板（影响、时间线、根因、处理过程、恢复验证、改进项）整理本会话；时间线取自执行记录的真实时间。生成后在回复下方「保存为文件」')}>
-                {tr('故障复盘报告（Markdown）')}
-              </button>
+          <div data-session-more-menu className="absolute left-0 top-5 z-50 w-56 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] p-1 text-[12px] font-normal text-[var(--color-text-secondary)] shadow-lg">
+            {onRename && <button className={item} onClick={() => { setOpen(false); onRename() }}>{tr('重命名')}</button>}
+            {onExport && (
+              <>
+                <div className={group}>{tr('导出会话')}</div>
+                <button className={item} onClick={() => pick('chat')}>{tr('仅对话（Markdown）')}</button>
+                <button className={item} onClick={() => pick('report')} title={tr('概要 + 对话 + 执行记录 + 文件改动 + 授权记录')}>{tr('完整报告（Markdown）')}</button>
+                <button className={item} onClick={() => pick('html')}>{tr('完整报告（HTML）')}</button>
+                {postmortem && (
+                  <button className={`${item} disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--color-text-secondary)]`} disabled={!!postmortem.off}
+                    onClick={() => { setOpen(false); postmortem.run() }}
+                    title={postmortem.off ?? tr('由 AI 按复盘模板整理本会话；时间线取自执行记录的真实时间')}>
+                    {tr('故障复盘报告（Markdown）')}
+                  </button>
+                )}
+                <label className="mt-1 flex cursor-pointer items-center gap-1.5 border-t border-[var(--color-border-subtle)] px-2 pt-1.5 text-[11px] text-[var(--color-text-muted)]" title={tr('密码、令牌、私钥等机密会被替换掉')}>
+                  <Checkbox checked={redact} onCheckedChange={setRedact} />{tr('脱敏敏感信息')}
+                </label>
+              </>
             )}
-            <label className="mt-1 flex cursor-pointer items-center gap-1.5 border-t border-[var(--color-border-subtle)] px-2 pt-1.5 text-[11px] text-[var(--color-text-muted)]" title={tr('密码、令牌、私钥、sk-/AKIA 密钥等替换为 [已脱敏]')}>
-              <Checkbox checked={redact} onCheckedChange={setRedact} />{tr('脱敏敏感信息')}
-            </label>
+            {onFlow && (
+              <>
+                <div className={group}>{tr('查看')}</div>
+                <button className={item} data-session-flow-open onClick={() => { setOpen(false); onFlow() }}>{tr('会话流程图')}</button>
+              </>
+            )}
           </div>
         </>
       )}
     </span>
   )
 }
+
 
 function HdrBtn({ title, onClick, children }: { title: string; onClick?: () => void; children: React.ReactNode }) {
   return <button title={title} onClick={onClick} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">{children}</button>

@@ -1,5 +1,6 @@
 import { Switch } from '../../../components/ui/Switch.js'
 import { NumberInput } from '../../../components/ui/NumberInput.js'
+import { Select } from '../../../components/ui/Select.js'
 import { AppLockSettings } from './AppLockSettings.js'
 import { CommandRules } from './CommandRules.js'
 import { AiReviewSection } from './AiReviewSettings.js'
@@ -84,6 +85,19 @@ export function AiSecuritySettings() {
           tip={tr('对话上下文超过阈值时，自动把较早的对话压缩成摘要，任务不中断。阈值按当前会话所用模型配置的「上下文窗口」计算，不用单独设置；各配置的具体数值见「模型设置」。')} />
         <Row label={tr('建议开新会话步数')} hint={tr('0 = 不提示')} tip={tr('会话执行到这么多步、且已压缩过时，提示是否用压缩摘要开新会话（只是建议，可忽略）。')}>
           <NumberInput className="w-28" value={sys.contextResetSteps} min={0} max={10000} onChange={(n) => set({ contextResetSteps: n })} />
+        </Row>
+        <Row label={tr('上下文提醒阈值')} hint={tr('百分比，0 = 关闭提醒')}
+          tip={tr('上下文用到压缩阈值的这个百分比时，对话输入框上方出一条提示（显示当前百分比、可点「立即压缩」）。到 100% 仍会自动压缩，这个提示只是提前告诉你。')}>
+          <NumberInput className="w-28" value={sys.contextWarnAt} min={0} max={99} onChange={(n) => set({ contextWarnAt: n })} />
+        </Row>
+        <Row label={tr('命令卡在等输入时')} hint={tr('AI 执行的命令停下来问你时怎么处理')}
+          tip={tr('AI 自主处理（缺省）：先让 AI 判断这条提示怎么答——普通 y/n 自己答、能查到的值自己填；删除 / 卸载 / 格式化这类不可逆操作它会弹选项卡问你，你同意才继续；密码这类它拿不到的才交给你。中止并交回 AI：发 Ctrl-C 结束命令，由 AI 换成非交互写法重跑。保留现场交给你：不打断命令，停在终端里等你自己敲。')}>
+          <Select size="sm" className="w-52" value={sys.interactivePolicy} onValueChange={(v) => set({ interactivePolicy: v as 'abort' | 'auto' | 'handoff' })}
+            options={[
+              { value: 'auto', label: tr('AI 自主处理') },
+              { value: 'abort', label: tr('中止并交回 AI') },
+              { value: 'handoff', label: tr('保留现场交给你') },
+            ]} />
         </Row>
         <Row label={tr('子代理默认超时')} hint={tr('秒，默认 600（10 分钟）')}
           tip={tr('派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。')}>

@@ -46,4 +46,37 @@ describe.skipIf(!REAL_SLOW)('execCapture（真实终端）', () => {
       expect(Date.now() - t0).toBeLessThan(45000)
     })
   }, 60000)
+
+  it('handoff 模式：判定等输入时不中止，命令留在终端里', async () => {
+    await withTerm(async (m, id) => {
+      const r = await m.execCapture(id, `read -p "continue? (y/n) " answer`, undefined, 60000, { handoff: true })
+      expect(r.needsInput).toBeTruthy()
+      expect(r.handedOff).toBe(true)   // 标记由「没发 Ctrl-C」那条分支设置
+    })
+  }, 60000)
+
+  it('auto 模式：answerFor 给出答案后命令继续跑完（不中止、不交回）', async () => {
+    await withTerm(async (m, id) => {
+      const asked: string[] = []
+      const r = await m.execCapture(id, `read -p "continue? (y/n) " answer; echo "ANSWER=$answer"`, undefined, 60000, {
+        answerFor: async (prompt) => { asked.push(prompt); return 'y' },
+      })
+      expect(asked.length, '应该问过一次「怎么答」').toBeGreaterThan(0)
+      expect(asked[0]).toContain('y/n')
+      // 答案被写进终端 → read 读到 y → 后面的 echo 照常执行 → 命令正常结束
+      expect(r.handedOff).toBeUndefined()
+      expect(r.exitCode, `实际输出=${JSON.stringify(r.output)}`).toBe(0)
+      expect(r.output).toContain('ANSWER=y')
+    })
+  }, 90000)
+
+  it('auto 模式：answerFor 返回 undefined 时保留现场交回', async () => {
+    await withTerm(async (m, id) => {
+      const r = await m.execCapture(id, `read -p "password: " pw`, undefined, 60000, {
+        answerFor: async () => undefined,
+      })
+      expect(r.needsInput).toBeTruthy()
+      expect(r.handedOff).toBe(true)
+    })
+  }, 90000)
 })

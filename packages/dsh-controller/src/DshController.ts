@@ -1465,6 +1465,42 @@ export class DshController {
     }
   }
 
+  /**
+   * auto 模式：命令停在等输入时，问模型「这条提示该怎么答」。
+   * 返回要写进终端的一行（如 'y'）；返回 undefined = 答不了，交给用户（保留现场）。
+   *
+   * 规则写死在提示词里，避免模型拿不准时乱答：
+   * - 普通确认（y/n、[Y/n]、继续、覆盖同名文件、按任意键）→ 自己答
+   * - 需要具体值（路径、版本、名称）→ 能从上面输出里读到的就答，读不到就 null
+   * - 删除 / 卸载 / 格式化 / 清空 / 覆盖生产配置这类不可逆的 → 一律 null（交给用户决定）
+   * - 密码、令牌、验证码 → null
+   */
+  async decideInput(prompt: string, context?: string): Promise<string | undefined> {
+    const p = (prompt || '').trim().slice(-400)
+    if (!p) return undefined
+    const ctx = (context || '').trim().slice(-1200)
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(), 5000)
+    try {
+      const r = await this.complete(
+        '你是终端的操作助手。只输出一个 JSON 对象，不要解释。',   // i18n-ignore 模型提示词（答案决策）
+        '一条命令停在等待输入，请判断该怎么回答。规则：1) 普通确认（y/n、[Y/n]、continue、overwrite、press any key）→ 直接给答案，如 "y"。2) 需要具体值（路径、版本号、名称）→ 只从下面给出的输出里能读到的才答，读不到就 null。3) 删除 / 卸载 / 格式化 / 清空 / 覆盖生产配置等不可逆操作 → 必须 null（交给用户决定）。4) 密码、令牌、验证码 → null。只回答两种之一：{"answer":"y"} 或 {"answer":null}\n\n命令最近的输出：\n' + ctx + '\n\n等待输入的提示行：\n' + p,   // i18n-ignore 模型提示词（答案决策）
+        ac.signal,
+        'decide-input',
+      )
+      const m = /"answer"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(r)
+      if (!m) return undefined
+      const ans = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
+      // 多半行以内、不含换行才接受（防止模型回一大段说明）
+      if (!ans || ans.length > 200 || /[\r\n]/.test(ans)) return undefined
+      return ans
+    } catch {
+      return undefined
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   // ── 图片识别子请求（read_image 工具用）──────────────────
   // 与 complete() 同一套 hand-built 调用，但用**会话当前的路由与模型**（会话里切过模型也算），
   // 并且消息里带图片块。图片先进附件库，适配器发请求时按引用读字节（与用户消息里的图片块同一套）。
