@@ -7,6 +7,10 @@ import type { Terminal, DataHandler, WriteOpts } from './Terminal.js'
 import type { SentinelResult } from './sentinel.js'
 import { PROMPT_NEWLINE_SETUP } from './promptNewline.js'
 
+/** 允许从 Manager 透传给 BaseTerminal.execCapture 的选项名。
+ *  **加新选项必须加到这里**，否则会被静默丢掉（且没有编译错误）。 */
+const CAPTURE_OPT_KEYS = ['wire', 'silent', 'handoff', 'onStall', 'answerFor'] as const
+
 
 // ssh：建连参数（含跳板/编码/标题），供「复制会话」原样再开一个；persist：要求保持会话（复制时也用新 tmux 会话）
 interface Entry { term: Terminal; info: TerminalInfo; ssh?: SshConnectOpts & { title?: string }; persist?: boolean }
@@ -308,15 +312,11 @@ export class TerminalManager {
     e.info.locked = true
     this.opts?.emit?.(id, true)
     try {
-      // 逐个显式转发：这里漏一个，上层传下来的选项就静默失效（onStall / answerFor 都踩过这个坑）
-      const o = {
-        ...(opts?.wire !== undefined ? { wire: opts.wire } : {}),
-        ...(opts?.silent ? { silent: true } : {}),
-        ...(opts?.handoff ? { handoff: true } : {}),
-        ...(opts?.onStall ? { onStall: opts.onStall } : {}),
-        ...(opts?.answerFor ? { answerFor: opts.answerFor } : {}),
-      }
-      return await e.term.execCapture(command, timeoutMs, signal, Object.keys(o).length ? o : undefined)
+      // 白名单整体透传：往 BaseTerminal.execCapture 加新选项时，**必须加到 CAPTURE_OPT_KEYS**，
+      // 否则会被静默丢掉（onStall / answerFor 都踩过这个坑，且全链路没报错，只有真实终端用例能发现）
+      const o: Record<string, unknown> = {}
+      if (opts) for (const k of CAPTURE_OPT_KEYS) { const v = opts[k]; if (v !== undefined) o[k] = v }
+      return await e.term.execCapture(command, timeoutMs, signal, Object.keys(o).length ? (o as never) : undefined)
     } finally {
       e.info.locked = false
       this.opts?.emit?.(id, false)

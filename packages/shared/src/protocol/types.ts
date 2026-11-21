@@ -275,7 +275,11 @@ export interface SystemSettings {
   contextLimitTokens: number
   // 会话执行到这么多步、且已压缩过时，弹窗建议用压缩摘要开新会话（只是建议，可忽略）
   contextResetSteps: number
-  /** 上下文用到压缩阈值的百分之多少时出提醒条（0 = 关闭提醒），默认 80 */
+  /**
+   * 上下文用到「压缩阈值」的百分之多少时出提醒条（0 = 关闭提醒），默认 90。
+   * 例：压缩阈值是窗口的 60%，这里 90 → 实际在窗口用到 54% 时提醒。
+   * 提醒条上显示的是**占整个上下文窗口的比例**（54%），不是这个 90。
+   */
   contextWarnAt: number
   /**
    * 命令判定为「在等输入」后怎么处理：
@@ -385,7 +389,7 @@ export type TerminalThemeId = 'auto' | 'dark' | 'light' | 'solarized-dark' | 'dr
 export type TerminalCursorStyle = 'block' | 'underline' | 'bar'
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   historyLimit: 200, execTimeoutSec: 50, uploadEncrypt: true,
-  contextLimitTokens: 600000, contextResetSteps: 100, contextWarnAt: 80, interactivePolicy: 'auto', subagentTimeoutSec: 600, subagentMaxConcurrent: 3, terminalEnv: '', confirmDangerous: true, aiRedact: true,
+  contextLimitTokens: 600000, contextResetSteps: 100, contextWarnAt: 90, interactivePolicy: 'auto', subagentTimeoutSec: 600, subagentMaxConcurrent: 3, terminalEnv: '', confirmDangerous: true, aiRedact: true,
   customRules: '', localNotes: '',
   terminalFontSize: 13, terminalTheme: 'auto',
   terminalRecording: false, recordingRetentionDays: 30,

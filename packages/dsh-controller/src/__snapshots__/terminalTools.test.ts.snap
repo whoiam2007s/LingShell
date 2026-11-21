@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`工具定义 > 工具清单与顺序（加 / 删工具时更新快照，别再手改名单） 1`] = `
+[
+  "list_terminals",
+  "read_terminal",
+  "send_terminal_input",
+  "exec_in_terminal",
+  "exec_on_terminals",
+  "start_background",
+  "check_background",
+  "wait",
+  "create_terminal",
+  "propose_host_knowledge",
+  "propose_quick_commands",
+  "propose_runbook",
+  "run_on_hosts",
+  "upload_file",
+  "read_file",
+  "write_file",
+  "download_file",
+  "get_app_setting",
+  "set_app_setting",
+  "list_config",
+  "save_skill",
+  "save_db_connection",
+  "save_model_profile",
+  "save_mcp_server",
+  "spawn_subagent",
+]
+`;

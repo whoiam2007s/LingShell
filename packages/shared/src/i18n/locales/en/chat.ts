@@ -506,7 +506,7 @@ export const chat: Record<string, string> = {
   '第 {n} 步': 'Step {n}',
   '已关闭预演，交给 AI 执行选中的 {n} 步': 'Preview off. The AI will run the {n} selected step(s).',
   '已交 AI 执行 {n} 步': 'Handed {n} step(s) to the AI',
-  '上下文已用 {pct}%，到 100% 会自动压缩。': 'Context is {pct}% used; it compacts automatically at 100%.',
+  '上下文已用 {used}%，到 {at}% 会自动压缩。': 'Context is {used}% used; it compacts automatically at {at}%.',
   '立即压缩': 'Compact now',
   '本会话不再提示': "Don't show this again for this session",
   '展开 / 收起详情': 'Expand / collapse details',

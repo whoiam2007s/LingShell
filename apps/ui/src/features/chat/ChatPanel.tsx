@@ -534,14 +534,19 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const bang = bangCommand(input)
   // 上下文快到压缩阈值时提醒一次（阈值在「设置 → AI」，0 = 关闭）；点 × 只关掉当前会话的提示
   const [compactHintOff, setCompactHintOff] = useState('')
-  const [warnAt, setWarnAt] = useState(80)
+  const [warnAt, setWarnAt] = useState(90)
   useEffect(() => {
-    const load = () => { client.settings.get().then((s) => setWarnAt(s.system?.contextWarnAt ?? 80), () => {}) }
+    const load = () => { client.settings.get().then((s) => setWarnAt(s.system?.contextWarnAt ?? 90), () => {}) }
     load()
     window.addEventListener('focus', load)   // 改完设置切回窗口就生效，不用重启
     return () => window.removeEventListener('focus', load)
   }, [])
+  // 触发：占「压缩阈值」的百分比（阈值 60% + 提醒 90% → 窗口用到 54% 时提醒）
   const compactPct = usage?.compactAt ? Math.round((usage.inputTokens / usage.compactAt) * 100) : 0
+  // 显示：占「整个上下文窗口」的百分比（用户看到的是 54%，不是 90） + 到多少会真正压缩
+  const winTok = usage?.window ?? usage?.limit ?? 0
+  const usedPct = winTok && usage ? Math.round((usage.inputTokens / winTok) * 100) : compactPct
+  const compactAtPct = winTok && usage?.compactAt ? Math.round((usage.compactAt / winTok) * 100) : 100
   const showCompactHint = !!activeSessionId && !busy && warnAt > 0 && compactPct >= warnAt && compactPct < 100 && compactHintOff !== activeSessionId
   const [shellBusy, setShellBusy] = useState('')
   const [shellAsk, setShellAsk] = useState<{ plan: ComposePlan; tid: string; cmd: string } | null>(null)
@@ -843,7 +848,7 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         {/* 上下文快到压缩阈值：提醒一次，可立即压缩或关掉本会话的提示 */}
         {showCompactHint && (
           <div data-compact-hint className="mx-3 mb-1 flex items-center gap-2 rounded-md border border-[color:color-mix(in_srgb,var(--color-warn)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-[11.5px]">
-            <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">{tr('上下文已用 {pct}%，到 100% 会自动压缩。', { pct: compactPct })}</span>
+            <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">{tr('上下文已用 {used}%，到 {at}% 会自动压缩。', { used: usedPct, at: compactAtPct })}</span>
             <button onClick={() => { void client.agent.compact(activeSessionId).catch(() => {}) }} disabled={busy}
               className="shrink-0 rounded bg-[var(--color-accent)] px-2 py-0.5 text-[11px] text-[var(--color-bg-base)] disabled:opacity-40">{tr('立即压缩')}</button>
             <button onClick={() => setCompactHintOff(activeSessionId)} title={tr('本会话不再提示')}

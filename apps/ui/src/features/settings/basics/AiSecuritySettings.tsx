@@ -86,8 +86,8 @@ export function AiSecuritySettings() {
         <Row label={tr('建议开新会话步数')} hint={tr('0 = 不提示')} tip={tr('会话执行到这么多步、且已压缩过时，提示是否用压缩摘要开新会话（只是建议，可忽略）。')}>
           <NumberInput className="w-28" value={sys.contextResetSteps} min={0} max={10000} onChange={(n) => set({ contextResetSteps: n })} />
         </Row>
-        <Row label={tr('上下文提醒阈值')} hint={tr('百分比，0 = 关闭提醒')}
-          tip={tr('上下文用到压缩阈值的这个百分比时，对话输入框上方出一条提示（显示当前百分比、可点「立即压缩」）。到 100% 仍会自动压缩，这个提示只是提前告诉你。')}>
+        <Row label={tr('上下文提醒阈值')} hint={tr('压缩阈值的百分比，默认 90')}
+          tip={tr('上下文用到「压缩阈值」的这个百分比时，输入框上方出一条提示。例：压缩阈值 60%、这里填 90 → 窗口用到 54% 就提醒；提示条上显示的是占整个上下文窗口的比例（54%），并写明到 60% 会自动压缩。填 0 关闭提醒。')}>
           <NumberInput className="w-28" value={sys.contextWarnAt} min={0} max={99} onChange={(n) => set({ contextWarnAt: n })} />
         </Row>
         <Row label={tr('命令卡在等输入时')} hint={tr('AI 执行的命令停下来问你时怎么处理')}
