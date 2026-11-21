@@ -31,7 +31,7 @@ export function SidePanel({ open, onClose, side, widthClass, widthKey, children 
   widthKey?: string
   children: ReactNode
 }) {
-  const base = side === 'left' ? 270 : 340
+  const base = 450
   const memKey = widthKey ?? `auto-${side}-${widthClass ?? base}`
   const [w, setW] = useState<number | undefined>(() => {
     const raw = localStorage.getItem(storeKey(memKey))
@@ -112,7 +112,7 @@ export function SidePanel({ open, onClose, side, widthClass, widthKey, children 
     localStorage.removeItem(storeKey(memKey))
   }, [memKey])
 
-  const fallback = widthClass ?? (side === 'left' ? 'w-[270px]' : 'w-[340px]')
+  const fallback = widthClass ?? 'w-[450px]'
   const isLeft = side === 'left'
   const el = (
     <div className="pointer-events-none fixed bottom-0 z-40 overflow-hidden" style={{ top, left: inset.left, right: inset.right }}>

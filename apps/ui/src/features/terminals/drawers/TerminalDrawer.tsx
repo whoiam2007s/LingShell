@@ -13,7 +13,7 @@ export function TerminalDrawer({ open, onClose, wide, xwide, widthClass, widthKe
   widthKey?: string
   children: ReactNode
 }) {
-  const fallback = widthClass ?? (xwide ? 'w-[680px]' : wide ? 'w-[440px]' : 'w-[340px]')
+  const fallback = widthClass ?? (xwide ? 'w-[680px]' : 'w-[450px]')
   return (
     <SidePanel open={open} onClose={onClose} side="right" widthClass={fallback} widthKey={widthKey}>
       {children}

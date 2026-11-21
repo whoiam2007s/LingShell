@@ -13,8 +13,10 @@ import type { ItemKind, ItemStatus } from '../protocol/events.js'
  * 流程图里要看到的是流向和排布，不是日志正文。
  */
 
-/** 列内最多显示的节点数，超出折叠成「其余 +N」 */
-export const FLOW_COL_MAX = 8
+/** 列内最多显示的节点数，超出折叠成「其余 +N」。
+ *  现在图上一次只画 8 轮（窗口化），单列节点不会太多，所以阈值放到 40 让工具尽量全展示；
+ *  只有极端轮次（一列 40+ 个）才折叠兜底。 */
+export const FLOW_COL_MAX = 40
 
 export interface FlowChip {
   kind: 'terminal' | 'file' | 'image' | 'text' | 'card' | 'other'
