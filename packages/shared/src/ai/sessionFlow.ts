@@ -188,9 +188,10 @@ export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number; fr
     // 上一轮的末尾 → 本轮提问：轮与轮之间按时间顺序串起来
     if (prevLast) edges.push({ from: prevLast, to: askId, kind: 'next' })
 
-    // chip：提问携带的引用
+    // chip：提问携带的引用（串成一条链：提问 → chip1 → chip2 …，不是从提问扇形分发）
     const chips = ask?.chips ?? []
     const chipIds: { id: string; ref?: string }[] = []
+    let prevChip = askId
     for (const [i, c] of chips.entries()) {
       const id = `${askId}-chip${i}`
       chipIds.push({ id, ref: c.ref })
@@ -198,7 +199,8 @@ export function buildSessionFlow(items: FlowInput[], opts: { colMax?: number; fr
         id, turn, stage: 0, kind: 'chip', label: c.label,
         title: `${c.label}${c.ref ? ` · ${c.ref}` : ''}`, detail: c.ref,
       })
-      edges.push({ from: askId, to: id, kind: 'chip' })
+      edges.push({ from: prevChip, to: id, kind: 'chip' })
+      prevChip = id
     }
 
     // 阶段 1：工具 / 文字 / 授权

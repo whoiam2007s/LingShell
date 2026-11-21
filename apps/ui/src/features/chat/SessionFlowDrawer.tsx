@@ -48,9 +48,9 @@ function NodeBox({ data }: NodeProps) {
     >
       <Handle type="target" position={Position.Left} id="l" style={{ opacity: 0 }} />
       <Handle type="source" position={Position.Right} id="r" style={{ opacity: 0 }} />
-      {/* chip 从提问「底部」接进来（竖向），提问与 chip 同列对齐，看起来是一条竖线串下来 */}
+      {/* chip 链：从上一节「底部」出、从下一节「顶部」进 —— 提问和 chips 串成一条竖线 */}
       {isChip && <Handle type="target" position={Position.Top} id="t" style={{ opacity: 0 }} />}
-      {d.kind === 'ask' && <Handle type="source" position={Position.Bottom} id="b" style={{ opacity: 0 }} />}
+      {(isChip || d.kind === 'ask') && <Handle type="source" position={Position.Bottom} id="b" style={{ opacity: 0 }} />}
       <span style={{ fontSize: 8.5, flexShrink: 0 }}>{ICON[d.kind]}</span>
       <span style={{ fontSize: d.kind === 'ask' ? 10 : 9.5, fontWeight: d.kind === 'ask' ? 600 : 500, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.label}</span>
       {d.count && d.count > 1 && <span style={{ fontSize: 8, color: accent, flexShrink: 0 }}>{d.folded ? `+${d.count}` : `×${d.count}`}</span>}
