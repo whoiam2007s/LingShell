@@ -48,6 +48,9 @@ function NodeBox({ data }: NodeProps) {
     >
       <Handle type="target" position={Position.Left} id="l" style={{ opacity: 0 }} />
       <Handle type="source" position={Position.Right} id="r" style={{ opacity: 0 }} />
+      {/* chip 从提问「底部」接进来（竖向），提问与 chip 同列对齐，看起来是一条竖线串下来 */}
+      {isChip && <Handle type="target" position={Position.Top} id="t" style={{ opacity: 0 }} />}
+      {d.kind === 'ask' && <Handle type="source" position={Position.Bottom} id="b" style={{ opacity: 0 }} />}
       <span style={{ fontSize: 8.5, flexShrink: 0 }}>{ICON[d.kind]}</span>
       <span style={{ fontSize: d.kind === 'ask' ? 10 : 9.5, fontWeight: d.kind === 'ask' ? 600 : 500, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.label}</span>
       {d.count && d.count > 1 && <span style={{ fontSize: 8, color: accent, flexShrink: 0 }}>{d.folded ? `+${d.count}` : `×${d.count}`}</span>}
@@ -92,13 +95,18 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
         y += H[n.kind] + VGAP
       }
     }
+    const kindOf = (id: string) => flow.nodes.find((n) => n.id === id)?.kind
     const edges: Edge[] = flow.edges.map((e, i) => {
       const on = !!sel && (sel === e.from || sel === e.to)
       const color = EDGE_COLOR[e.kind]
+      // 提问 → chip 走竖向（提问底部 → chip 顶部）；其余走横向（右 → 左）
+      const down = e.kind === 'chip' && kindOf(e.to) === 'chip'
       return {
         id: `e${i}`, source: e.from, target: e.to,
+        sourceHandle: down ? 'b' : 'r',
+        targetHandle: down ? 't' : 'l',
         type: 'default',
-        animated: e.kind === 'write' || e.kind === 'chip',
+        animated: e.kind === 'write' || (e.kind === 'chip' && !down),
         style: {
           stroke: color,
           strokeWidth: on ? 1.6 : e.kind === 'weak' ? 0.9 : 1.2,
