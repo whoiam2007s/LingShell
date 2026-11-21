@@ -200,6 +200,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     requestPlan,
     requestAsk: (r, s) => askBroker.request(r, s),
     execTimeoutMs: () => sys().execTimeoutSec * 1000,
+    skillsRoot: join(paths.root, 'skills'),
     contextLimitTokens: () => AUTO_COMPACT_CAP,   // 实际阈值 = min(600K, 模型上下文窗口 × 60%)，见 dsh-controller compaction.ts
     contextResetSteps: () => sys().contextResetSteps,
     subagentTimeoutSec: () => sys().subagentTimeoutSec,

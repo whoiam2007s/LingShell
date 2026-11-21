@@ -5,6 +5,10 @@
 // dsh 的 tools/pre-execute 是原生的 allow/deny/ask 三态网关，看得到工具名、入参和
 // 发起调用的 agent，所以鉴权整体上移到网关，工具体只管干活。少一层协议、少一半代码。
 import { randomBytes } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { existsSync, realpathSync } from 'node:fs'
+import { extname, join, sep } from 'node:path'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
 import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
 import type { DbConn } from '@lingshell/shared'
@@ -87,6 +91,8 @@ export interface TerminalToolDeps {
   writeFile?(terminalId: string, path: string, content: string): Promise<{ path: string; backupPath?: string; hash?: string }>
   downloadFile?(terminalId: string, remotePath: string): Promise<{ localPath: string }>
   execTimeoutMs?(): number
+  /** Skill 库根目录（<数据目录>/skills）：run_skill_script 只允许跑它下面的 scripts/ */
+  skillsRoot?: string
   // 规则识别不出「命令是不是在等输入」时的兜底判定（用一次小模型调用）；缺省则不判，只等超时
   probeWaitingInput?(tail: string): Promise<boolean>
   // 判定为等输入后怎么处理：abort（缺省，发 Ctrl-C 退回提示符）/ handoff（保留现场，命令留给用户敲答案）
@@ -169,6 +175,7 @@ const NEEDS: Record<string, 'read' | 'write'> = {
   write_file: 'write',
   download_file: 'read',
   run_on_hosts: 'read',        // 只读命令（不是只读直接拒），每台目标主机都要读取授权（见 decideFleet）
+  run_skill_script: 'write',   // 跑 skill 自带的脚本：按「skill 名」给授权（授权一次，本会话该 skill 的脚本都放行）
 }
 /**
  * 改的是**应用自身配置**、不针对某台主机的工具：授权粒度用伪主机键，不是 local。
@@ -639,8 +646,24 @@ function decideFleet(deps: TerminalToolDeps, sessionId: string, args: unknown): 
  * 授权决策：把 AuthRegistry 的三态翻成 dsh 的 PreToolDecision。
  * 纯函数（decide 本身无 IO），单独抽出来是为了脱离 dsh 运行时直接测。
  */
+/** 跑 skill 自带脚本：授权粒度是「skill:<名字>」—— 同意一次，本会话该 skill 的所有脚本都不用再问 */
+function decideSkillScript(deps: TerminalToolDeps, sessionId: string, args: unknown): Decision {
+  const skill = String((args as { skill?: unknown })?.skill ?? '')
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(skill)) return { kind: 'deny', reason: tr('skill 名不合法：{name}', { name: skill || 'empty' }) }
+  if (!deps.skillsRoot) return { kind: 'deny', reason: tr('当前环境没有接入 Skill 目录') }
+  const key = `skill:${skill}`
+  const d = deps.decide(sessionId, key, 'write')
+  if (d.kind === 'allow') return { kind: 'allow', ...ruleOf(d.rule) }
+  if (d.kind === 'deny') {
+    deps.audit({ sessionId, terminalId: key, command: `skill ${skill} 的脚本`, decision: `deny:${d.reason}`, ...ruleOf(d.rule) })   // i18n-ignore 执行记录原文
+    return { kind: 'deny', reason: `permission_denied: ${d.reason}` }
+  }
+  return { kind: 'ask', reason: d.reason, ...ruleOf(d.rule) }
+}
+
 export function decideFor(deps: TerminalToolDeps, sessionId: string, toolName: string, args: unknown): Decision {
   if (!NEEDS[toolName]) return { kind: 'allow' }               // 无需授权的工具
+  if (toolName === 'run_skill_script') return decideSkillScript(deps, sessionId, args)
   if (toolName === 'exec_on_terminals') return decideMulti(deps, sessionId, args)
   if (toolName === 'run_on_hosts') return decideFleet(deps, sessionId, args)
   const needed0 = neededForCall(deps, toolName, args)
@@ -896,6 +919,50 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         deps.terminals.write(args.terminal_id, `${text}\r`, { noHistory: true })
         deps.audit({ sessionId: sidOf(exec), terminalId: args.terminal_id, decision: 'write_allowed' })
         return `已向终端输入：${text === '' ? '（回车）' : text}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+    },
+    {
+      name: 'run_skill_script',
+      description: '运行某个 Skill 自带的脚本（只允许 <skill>/scripts/ 下的文件）。授权按 skill 走：同一会话里授权一次，这个 skill 的其它脚本都不用再问。只能「脚本 + 参数」，不支持管道 / 重定向 / 串联 —— 那些写法用 exec_in_terminal。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      parameters: {
+        skill: str('Skill 名，与它 SKILL.md 里 frontmatter 的 name 一致'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        script: str('scripts/ 目录下的文件名，如 check.sh（.sh 用 bash、.js/.mjs 用 node、.py 用 python）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        args: { type: 'array' as const, items: { type: 'string' as const }, description: '参数列表：一个元素一个参数，不要把选项和它的值写在一起' },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        cwd: { type: 'string' as const, description: '工作目录（可选，默认应用当前目录）' },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        timeout_sec: { type: 'number' as const, description: '超时秒数（可选，默认 60，最大 600）' },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      },
+      output: textOut,
+      async execute(args: any, exec: any) {
+        userOverride(exec)
+        const skill = String(args.skill ?? '')
+        const script = String(args.script ?? '')
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(skill)) throw new Error(`skill 名不合法：${skill}`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        if (!/^[A-Za-z0-9._-]+$/.test(script) || script.includes('..')) throw new Error(`脚本名不合法：${script}`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        if (!deps.skillsRoot) throw new Error('当前环境没有接入 Skill 目录')   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        const dir = join(deps.skillsRoot, skill, 'scripts')
+        const full = join(dir, script)
+        if (!existsSync(full)) throw new Error(`skill ${skill} 下没有 scripts/${script}`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        // 防符号链接穿越：解析后的真实路径必须仍在 scripts/ 里
+        const realDir = realpathSync(dir)
+        const real = realpathSync(full)
+        if (!real.startsWith(realDir + sep)) throw new Error('只能运行 scripts/ 目录下的脚本')   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        const ext = extname(script).toLowerCase()
+        const interp = ext === '.sh' ? 'bash' : ext === '.js' || ext === '.mjs' ? 'node' : ext === '.py' ? 'python' : undefined
+        if (!interp) throw new Error(`不支持的脚本类型：${ext || '（无扩展名）'}（只支持 .sh / .js / .mjs / .py）`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        const argv = Array.isArray(args.args) ? (args.args as unknown[]).map((x) => String(x)) : []
+        const ms = clampInt(args.timeout_sec, 5, 600, 60) * 1000
+        const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : undefined
+        const run = promisify(execFile)
+        try {
+          const r = await run(interp, [real, ...argv], { cwd, timeout: ms, maxBuffer: 8 * 1024 * 1024 }) as { stdout: string; stderr: string }
+          deps.audit({ sessionId: sidOf(exec), terminalId: `skill:${skill}`, command: `${skill}/scripts/${script}`, decision: 'exec_allowed' })
+          return `skill ${skill} 的 scripts/${script} 跑完了（退出码 0）\n\n${r.stdout.slice(0, 20_000)}${r.stderr ? `\n\n[stderr]\n${r.stderr.slice(0, 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        } catch (e) {
+          const err = e as { code?: number | string; stdout?: string; stderr?: string; message?: string; killed?: boolean }
+          if (err.killed) throw new Error(`skill ${skill} 的 scripts/${script} 超时（${ms / 1000} 秒）`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          deps.audit({ sessionId: sidOf(exec), terminalId: `skill:${skill}`, command: `${skill}/scripts/${script}`, decision: 'exec_failed' })
+          return `skill ${skill} 的 scripts/${script} 失败（退出码 ${err.code ?? '?'}）\n\n${String(err.stdout ?? '').slice(0, 20_000)}${err.stderr ? `\n\n[stderr]\n${String(err.stderr).slice(0, 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        }
       },
     },
     {

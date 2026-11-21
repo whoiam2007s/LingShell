@@ -5,6 +5,7 @@ exports[`工具定义 > 工具清单与顺序（加 / 删工具时更新快照�
   "list_terminals",
   "read_terminal",
   "send_terminal_input",
+  "run_skill_script",
   "exec_in_terminal",
   "exec_on_terminals",
   "start_background",
