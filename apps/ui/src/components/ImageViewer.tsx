@@ -2,9 +2,10 @@
 // 多张时 ← → 键或两侧按钮切换。Esc 或 × 关闭（不点遮罩关闭）。
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Minus, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Minus, Plus, X, ExternalLink } from 'lucide-react'
 import { tr, type MsgAttachment } from '@lingshell/shared'
 import { imageSrc, naturalSize } from '../lib/imageSrc.js'
+import { client } from '../client/index.js'
 
 const MIN = 0.02, MAX = 16, STEP = 1.25, PAD = 24
 type View = { s: number; x: number; y: number }
@@ -102,6 +103,10 @@ export function ImageViewer({ items, index, onClose }: { items: MsgAttachment[];
         <button data-zoom-in onClick={() => zoomCenter(STEP)} title={tr('放大')} className={BTN}><Plus className="h-4 w-4" /></button>
         <button data-zoom-fit onClick={() => setView(fit())} title={tr('适应窗口')} className={BTN}>{tr('适应窗口')}</button>
         <button data-zoom-1 onClick={() => setView(actual())} title={tr('原始大小')} className={BTN}>1:1</button>
+        {a.path && (
+          <button data-open-external onClick={() => { void client.fs.openLocal(a.path as string).catch(() => {}) }}
+            title={tr('用系统默认软件打开')} className={BTN}><ExternalLink className="h-4 w-4" /></button>
+        )}
         <button data-close onClick={onClose} title={tr('关闭（Esc）')} className={`${BTN} ml-2`}><X className="h-4 w-4" /></button>
       </div>
       {/* 图片区：拖拽平移、双击切换适应 / 1:1 */}

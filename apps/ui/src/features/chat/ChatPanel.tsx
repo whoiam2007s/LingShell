@@ -4,6 +4,8 @@ import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Termina
 import { useConversation, type ContextState, type ConvItem, type SessionPhase, type OutgoingAttachments } from './useConversation.js'
 import { SessionFlowDrawer } from './SessionFlowDrawer.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
+import { onOpenPathPreview } from '../../lib/chatBus.js'
+import { FilePreview } from '../explorer/index.js'
 import { MessageItem, MsgActionsContext, type MsgActions } from './items/MessageItem.js'
 import { ToolSessionContext } from '../auth/index.js'
 import { ReasoningItem } from './items/ReasoningItem.js'
@@ -99,6 +101,9 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const taRef = useRef<HTMLTextAreaElement>(null)
   // 会话流程图弹窗（标题栏「⋯」→ 会话流程图）
   const [flowOpen, setFlowOpen] = useState(false)
+  // 对话里点文件路径 → 弹原生预览（本地文件；不支持的格式在预览里可「用系统程序打开」）
+  const [peekPath, setPeekPath] = useState<string>()
+  useEffect(() => onOpenPathPreview((p) => setPeekPath(p)), [])
   // 流程图里展开子代理用：打开时拉一次这个会话派过的子代理（与导出会话同源）
   const [flowSubs, setFlowSubs] = useState<SubagentView[]>([])
   useEffect(() => {
@@ -740,6 +745,9 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
           }))}
           title={sessionTitle} subagents={flowSubs} onClose={() => setFlowOpen(false)} />
       )}
+
+      {/* 点对话里的文件路径 → 原生预览（本地文件；图片/md/csv/pdf 在应用内看，其它可「用系统程序打开」） */}
+      {peekPath && <FilePreview scope="local" path={peekPath} onClose={() => setPeekPath(undefined)} />}
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
       <div className="relative flex min-h-0 flex-1 flex-col">

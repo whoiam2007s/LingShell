@@ -2,5 +2,6 @@
 export { DirSyncDialog, openDirSync } from './DirSyncDialog.js'
 export { DualPane } from './DualPane.js'
 export { ExplorerDrawer } from './ExplorerDrawer.js'
+export { FilePreview } from './FilePreview.js'
 export { UploadDialog } from './UploadDialog.js'
 export { getLastDir } from './explorerMemory.js'
