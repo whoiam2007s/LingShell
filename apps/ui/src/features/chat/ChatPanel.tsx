@@ -18,7 +18,7 @@ import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
-import type { TurnTimes, SessionMeta } from '@lingshell/shared'
+import type { TurnTimes, SessionMeta, SubagentView } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode, INPUT_MAX, insertCapped, capInput } from '@lingshell/shared'
 import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
 import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
@@ -99,6 +99,12 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const taRef = useRef<HTMLTextAreaElement>(null)
   // 会话流程图弹窗（标题栏「⋯」→ 会话流程图）
   const [flowOpen, setFlowOpen] = useState(false)
+  // 流程图里展开子代理用：打开时拉一次这个会话派过的子代理（与导出会话同源）
+  const [flowSubs, setFlowSubs] = useState<SubagentView[]>([])
+  useEffect(() => {
+    if (!flowOpen || !activeSessionId) return
+    void client.subagent.list(activeSessionId).then(setFlowSubs).catch(() => setFlowSubs([]))
+  }, [flowOpen, activeSessionId])
 
   // ── 输入框高度：**默认一行，不记忆**。只在需要时把框上沿往上拖临时拉高，
   // 双击那道边回到一行；下次启动还是默认一行。
@@ -732,7 +738,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
               ref: a.path ?? a.imageId ?? undefined,
             })),
           }))}
-          title={sessionTitle} onClose={() => setFlowOpen(false)} />
+          title={sessionTitle} subagents={flowSubs} onClose={() => setFlowOpen(false)} />
       )}
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}

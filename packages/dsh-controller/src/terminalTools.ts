@@ -20,7 +20,7 @@ export interface TerminalLike {
   readSnapshot(terminalId: string, lines: number): string
   // opts.wire：实际发进 shell 的命令（密钥保险箱占位符已换成明文）；command 是占位符原文（回显 / 命令历史）
   // opts.silent：不回显命令 / 输出、不记命令历史（后台任务没有旁路通道时用，见 sideExec）
-  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; handoff?: boolean; onStall?: (tail: string) => Promise<'waiting' | 'continue'>; answerFor?: (tail: string) => Promise<string | undefined> }): Promise<{ output: string; exitCode: number; truncated?: boolean; needsInput?: string; stalled?: boolean; handedOff?: boolean }>
+  execCapture(terminalId: string, command: string, signal?: AbortSignal, timeoutMs?: number, opts?: { wire?: string; silent?: boolean; handoff?: boolean; onStall?: (tail: string) => Promise<'waiting' | 'continue'>; answerFor?: (tail: string) => Promise<string | undefined> }): Promise<{ output: string; exitCode: number; truncated?: boolean; needsInput?: string; stalled?: boolean; handedOff?: boolean; autoAnswered?: string[] }>
   /** 往终端写一行（send_terminal_input 用）；noHistory = 不进命令输入行缓冲、不记历史 */
   write?(terminalId: string, data: string, opts?: { noHistory?: boolean }): void
 }
@@ -184,6 +184,10 @@ export const authKeyOf = (toolName: string): string => (toolName === 'spawn_suba
 
 // 给模型看：handoff 模式下的处理指引（命令没被中止，留在终端里等用户敲）
 const handoffNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已按设置「保留现场」处理：**没有中止**，命令就停在终端里，控制权已经交给用户。\n现在：① 不要往这个终端发普通命令（会被当成它的答案）；② 不要重跑这条命令；③ 也不用让用户另跑一遍。\n接下来：先跟用户说明它在等什么；用户给了答案后，用 send_terminal_input 把答案发进这个终端（一次一行），再用 read_terminal 看结果 —— 也可以让用户自己在那里敲。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+
+// 给模型和用户看：auto 模式中途替用户答过什么（透明化，别让用户不知道 AI 做了什么决定）
+const autoNote = (answers?: string[]) => (!answers?.length ? ''
+  : `中途替你自动回答了 ${answers.length} 次：${answers.join(' / ')}（设置 → AI →「命令卡在等输入时」可改成每次问你）`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 /**
  * 失效终端 id 的自动对应：应用重启 / 跨版本升级后终端 id 会变，模型手里的旧 id 对不上。
@@ -936,7 +940,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
             output: r.output, exit_code: r.exitCode, truncated: true,
             needs_input: r.needsInput,
             ...(r.handedOff ? { handed_off: true } : {}),
-            note: [staleNote, r.handedOff ? handoffNote(r.needsInput) : needsInputNote(r.needsInput)].filter(Boolean).join('\n'),
+            note: [staleNote, autoNote(r.autoAnswered), r.handedOff ? handoffNote(r.needsInput) : needsInputNote(r.needsInput)].filter(Boolean).join('\n'),
           })
         }
         const notes = [

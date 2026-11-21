@@ -256,6 +256,8 @@ export const sharedB: Record<string, string> = {
   '{n} 轮 · {m} 个节点': '{n} turns · {m} nodes',
   ' · 折叠 {n} 个': ' · {n} folded',
   '第 {n} 轮': 'Turn {n}',
+  '子代理 · {n} 步': 'Subagent · {n} steps',
+  '结论：': 'Conclusion: ',
   '你的提问': 'Your prompt',
   'AI 说明': 'AI note',
   '授权': 'Approval',

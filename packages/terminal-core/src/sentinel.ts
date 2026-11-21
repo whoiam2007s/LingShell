@@ -40,6 +40,8 @@ export interface SentinelResult {
    * 这时终端里那条命令还在跑，调用方不应再往这个终端发命令。
    */
   handedOff?: boolean
+  /** auto 模式：中途替用户自动回答过的答案（按顺序，最多 5 个）—— 上层据此告诉用户「AI 替你答了什么」 */
+  autoAnswered?: string[]
 }
 
 export class SentinelParser {
