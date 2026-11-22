@@ -1,6 +1,7 @@
 ---
 name: code-quality
 description: 写代码 / 改代码前先查现成实现，优先复用；改公共代码前先查引用；代码要简洁；改完自检
+version: 1.1.0
 when_to_use: 要写新代码、改现有代码、重构模块、修 bug、加功能之前；改动涉及公共组件 / 工具函数 / 类型 / 常量时
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---

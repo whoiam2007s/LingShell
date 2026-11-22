@@ -140,6 +140,7 @@ export class LocalSkills {
         seen.add(meta.name)
         out.push({
           ...base, files, name: meta.name, description: meta.description, origin: s.origin ?? 'manual',
+          ...(meta.version ? { version: meta.version } : {}),
           enabled: !dup && s.enabled !== false,
           modelInvocable: s.modelInvocable ?? !meta.disableModelInvocation,
           userInvocable: meta.userInvocable !== false,

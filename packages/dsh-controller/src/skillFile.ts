@@ -9,6 +9,7 @@ export const isSkillName = (s: string): boolean => s.length <= 64 && SKILL_NAME.
 export interface SkillMeta {
   name: string
   description: string
+  version?: string   // frontmatter `version`，用于界面展示与「内置 skill 有新版」提示
   whenToUse?: string
   disableModelInvocation?: boolean   // frontmatter `disable-model-invocation: true` → 不给 AI 自动调用
   userInvocable?: boolean            // frontmatter `user-invocable: false` → 不出现在「+ → Skills」
@@ -71,6 +72,8 @@ export function parseSkillMd(text: string): ParsedSkill {
   const description = get('description')?.value?.trim() ?? ''
   if (!description) return { ok: false, error: tr('frontmatter 缺少 description') }
   const meta: SkillMeta = { name, description }
+  const ver = get('version')
+  if (typeof ver?.value === 'string' && ver.value.trim()) meta.version = ver.value.trim()
   const when = get('whenToUse') ?? get('when_to_use')
   if (typeof when?.value === 'string' && when.value.trim()) meta.whenToUse = when.value.trim()
   for (const [key, field, camel] of [['disable-model-invocation', 'disableModelInvocation', 'disableModelInvocation'], ['user-invocable', 'userInvocable', 'userInvocable']] as const) {
@@ -81,7 +84,7 @@ export function parseSkillMd(text: string): ParsedSkill {
     if (b === undefined) return { ok: false, error: tr('{key} 只能是 true / false', { key }) }
     meta[field] = b
   }
-  const known = new Set(['name', 'description', 'whenToUse', 'when_to_use', 'disable-model-invocation', 'user-invocable'])
+  const known = new Set(['name', 'description', 'version', 'whenToUse', 'when_to_use', 'disable-model-invocation', 'user-invocable'])
   const extra = es.filter((e) => !known.has(e.key)).flatMap((e) => e.raw)
   const body = lines.slice(end + 1).join('\n').replace(/^\n+/, '').replace(/\s+$/, '')
   return { ok: true, meta, body, extra }
@@ -90,6 +93,7 @@ export function parseSkillMd(text: string): ParsedSkill {
 /** 生成 SKILL.md。字符串用 JSON 双引号写（合法 YAML），extra 是原文件里的其它键（原样保留） */
 export function buildSkillMd(meta: SkillMeta, body: string, extra: string[] = []): string {
   const lines = ['---', `name: ${meta.name}`, `description: ${JSON.stringify(meta.description.trim())}`]
+  if (meta.version) lines.push(`version: ${JSON.stringify(meta.version)}`)
   if (meta.whenToUse) lines.push(`whenToUse: ${JSON.stringify(meta.whenToUse)}`)
   if (meta.disableModelInvocation !== undefined) lines.push(`disable-model-invocation: ${meta.disableModelInvocation}`)
   if (meta.userInvocable !== undefined) lines.push(`user-invocable: ${meta.userInvocable}`)

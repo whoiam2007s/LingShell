@@ -43,7 +43,7 @@ export function SkillsPanel() {
     try { const r = await client.skills.read(s.name); setForm({ old: s.name, ...r }) }
     catch (e) { setErr(errText(e)) }
   }
-  const doReset = () => { if (resetTarget) client.skills.resetBuiltin(resetTarget.name).then(() => refresh()).catch((e) => setErr(errText(e))); setResetTarget(null) }
+  const doReset = () => { if (resetTarget) { const n = resetTarget.name; client.skills.resetBuiltin(n).then(() => { setMsg(tr('已把「{name}」重置为当前内置版本', { name: n })); return refresh() }).catch((e) => setErr(errText(e))) } setResetTarget(null) }
   const doDelete = () => {
     if (delTarget) client.skills.remove(delTarget.name).then(refresh).catch((e) => setErr(errText(e)))
     setDelTarget(null)
@@ -94,6 +94,7 @@ export function SkillsPanel() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="truncate font-mono font-medium text-[var(--color-text-primary)]">{s.name}</span>
+                    {s.version && <span data-skill-version className="shrink-0 rounded bg-[var(--color-bg-raised)] px-1 text-[10.5px] text-[var(--color-text-muted)]" title={tr('SKILL.md 里的 version')}>v{s.version}</span>}
                     <span className="shrink-0 rounded border border-[var(--color-border-subtle)] px-1 text-[10.5px] text-[var(--color-text-muted)]">{tr(ORIGIN[s.origin])}</span>
                     {s.files.length > 0 && <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]" title={s.files.join('\n')}>{tr('{n} 个资源文件', { n: s.files.length })}</span>}
                     {!s.userInvocable && !s.error && <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]" title={tr('SKILL.md 里写了 user-invocable: false')}>{tr('不在「+」菜单')}</span>}
