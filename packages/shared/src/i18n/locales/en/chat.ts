@@ -810,7 +810,7 @@ export const chat: Record<string, string> = {
   '切换会话（最近 {n} 条）': 'Switch session (last {n})',
   '让 AI 看用量（把当前范围的用量汇总挂到对话，不自动发送）': 'Let AI review usage (adds a context chip for the current range; not sent automatically)',
   // 0.1.20：后台任务（start_background）在界面上露出的部分
-  'AI 工作中… · {n} 个后台任务在跑': 'AI is working… · {n} background task(s) running',
+  'AI 工作中… · {n} 个任务在跑': 'AI is working… · {n} task(s) running',
   '{n} 个后台任务在跑（完成会自动继续）': '{n} background task(s) running (it will continue automatically when they finish)',
   '后台 {n}': 'Background {n}',
   '后台': 'Background',

@@ -22,6 +22,8 @@ export interface BgTask {
   /** 最近一次被模型自己 check 的时间 / 回合 */
   checkedAt?: number
   checkedTurn?: number
+  /** 连续几轮查不到它（终端关了 / 连接断了 / job 文件被清了）：攒够了就放弃跟踪 */
+  misses?: number
 }
 
 export type BgEnd = 'finished' | 'unknown' | 'cancelled'
@@ -36,6 +38,12 @@ export interface BgEnded {
 export const BG_DEDUPE_MS = 10_000
 /** 同一会话连续推送上限：超过就改推一条汇总（防止注入风暴） */
 export const BG_NOTICE_LIMIT = 5
+/**
+ * 连续这么多轮查不到就放弃跟踪（5 秒一轮 ≈ 1 分钟）。
+ * 为什么需要：终端被关掉 / 连接断了以后，查询会一直失败，任务却永远留在表里 ——
+ * 定时器就再也不停，每 5 秒对一个已经不存在的终端发一次命令，跑到应用关闭为止。
+ */
+export const BG_MAX_MISS = 12
 
 export class BgTaskRegistry {
   private m = new Map<string, BgTask>()
@@ -66,6 +74,20 @@ export class BgTaskRegistry {
     if (!t) return
     t.checkedAt = at
     if (turn !== undefined) t.checkedTurn = turn
+  }
+
+  /** 这一轮没查到它：返回累计次数（调用方按 BG_MAX_MISS 决定是否放弃） */
+  miss(jobId: string): number {
+    const t = this.m.get(jobId)
+    if (!t) return 0
+    t.misses = (t.misses ?? 0) + 1
+    return t.misses
+  }
+
+  /** 查到了（不管跑没跑完）：清掉失败计数，免得偶发一次超时就把它丢掉 */
+  seen(jobId: string): void {
+    const t = this.m.get(jobId)
+    if (t) delete t.misses
   }
 }
 

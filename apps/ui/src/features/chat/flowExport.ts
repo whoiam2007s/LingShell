@@ -123,24 +123,20 @@ export function downloadSvg(name: string, svg: string): void {
  */
 export async function downloadPng(name: string, svg: string, scale = 2): Promise<void> {
   const img = new Image()
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
-  try {
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('image load failed'))
-      img.src = url
-    })
-    const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = w; canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('canvas unavailable')
-    ctx.scale(scale, scale)
-    ctx.drawImage(img, 0, 0)
-    triggerDownload(name, canvas.toDataURL('image/png'))
-  } finally {
-    URL.revokeObjectURL(url)
-  }
+  // 用 data: URL 而不是 blob:：不受 CSP 的 img-src 限制，也不用管 revoke 时机
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('image load failed'))
+  })
+  const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w; canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('canvas unavailable')
+  ctx.scale(scale, scale)
+  ctx.drawImage(img, 0, 0)
+  triggerDownload(name, canvas.toDataURL('image/png'))
 }
 
 function triggerDownload(name: string, href: string): void {

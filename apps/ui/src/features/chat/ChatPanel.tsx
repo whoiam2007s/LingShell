@@ -478,7 +478,11 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     if (!activeSessionId) return
     if (!bgPolling) { setBgTasks((cur) => (cur.length ? [] : cur)); return }
     let alive = true
-    const tick = () => { void client.bg.list(activeSessionId).then((l) => { if (alive) setBgTasks(l) }).catch(() => { /* 会话已关：下次轮询自然停 */ }) }
+    // 内容没变就保持同一个数组引用：否则每一轮（2.5 秒）都会触发一次整块对话重渲染，
+    // 流式输出时会明显卡顿
+    const same = (a: { jobId: string }[], b: { jobId: string }[]) =>
+      a.length === b.length && a.every((x, i) => x.jobId === b[i].jobId)
+    const tick = () => { void client.bg.list(activeSessionId).then((l) => { if (alive) setBgTasks((cur) => (same(cur, l) ? cur : l)) }).catch(() => { /* 会话已关：下次轮询自然停 */ }) }
     tick()
     const t = setInterval(tick, 2500)
     return () => { alive = false; clearInterval(t) }
@@ -1611,7 +1615,7 @@ function QueuedMessages({ texts, onWithdraw }: { texts: string[]; onWithdraw: (i
 function WorkingIndicator({ bg }: { bg: number }) {
   // 有后台任务在跑也算「正在进行」：用户看到的是会话还在做事，但输入框照常可用（纯显示，不锁任何东西）
   const text = bg > 0
-    ? tr('AI 工作中… · {n} 个后台任务在跑', { n: bg })
+    ? tr('AI 工作中… · {n} 个任务在跑', { n: bg })
     : tr('AI 工作中…')
   return (
     <div data-working-indicator className="flex items-center gap-2 px-5 py-1.5 text-[12px] text-[var(--color-text-muted)]">

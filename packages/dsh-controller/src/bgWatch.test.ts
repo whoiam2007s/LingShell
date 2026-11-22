@@ -30,6 +30,18 @@ describe('后台任务表', () => {
     r.markChecked('z'.repeat(16), 5000)   // 不存在的 id：不炸、不新增
     expect(r.size).toBe(1)
   })
+
+  // 终端关了 / 连接断了之后查询会一直失败：不放弃的话定时器永远停不下来，
+  // 每 5 秒对一个已经不存在的终端发一次命令（自评审发现的泄漏）
+  it('连续查不到就累计 misses，查到了清零', () => {
+    const r = new BgTaskRegistry()
+    r.add(task())
+    expect(r.miss('a'.repeat(16))).toBe(1)
+    expect(r.miss('a'.repeat(16))).toBe(2)
+    r.seen('a'.repeat(16))
+    expect(r.miss('a'.repeat(16))).toBe(1)   // 中间查到过一次，重新计数
+    expect(r.miss('z'.repeat(16))).toBe(0)   // 不存在的 id 不炸
+  })
 })
 
 describe('该不该通知', () => {

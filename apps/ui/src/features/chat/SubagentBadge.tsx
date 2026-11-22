@@ -35,17 +35,24 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
   const rootRef = useRef<HTMLDivElement>(null)
 
   // live（回合进行中）时轮询几次：子代理跑起来/结束时状态要跟着变。
-  // 后台任务在会话空闲时也可能在跑，所以这里一直按 3 秒轮询（只是读内存表，代价很小）。
+  // 空闲时只有「还有东西在显示」才继续轮询 —— 否则每个面板每 5 秒都在问一次内存表，
+  // 而且每次都拿到新数组、白触发一次重渲染（自评审发现）
+  const active = live || list.length > 0 || bg.length > 0
   useEffect(() => {
     let alive = true
+    // 内容没变就保持原引用，别让轮询把界面每 3 秒重渲一次
+    type Row = { jobId?: string; id?: string; status?: string; steps?: unknown[] }
+    const keyOf = (x: Row) => `${x.jobId ?? x.id ?? ''}|${x.status ?? ''}|${x.steps?.length ?? 0}`
+    const same = (a: Row[], b: Row[]) => a.length === b.length && a.every((x, i) => keyOf(x) === keyOf(b[i]))
     const load = () => {
-      void client.subagent.list(sessionId).then((l: SubagentView[]) => { if (alive) setList(l) }).catch(() => {})
-      void client.bg.list(sessionId).then((l) => { if (alive) setBg(l) }).catch(() => {})
+      void client.subagent.list(sessionId).then((l: SubagentView[]) => { if (alive) setList((cur) => (same(cur, l) ? cur : l)) }).catch(() => {})
+      void client.bg.list(sessionId).then((l) => { if (alive) setBg((cur) => (same(cur, l) ? cur : l)) }).catch(() => {})
     }
-    load()
+    load()   // 先查一次：从「空闲且空」的状态也要能发现刚起来的任务
+    if (!active) return () => { alive = false }
     const t = setInterval(load, live ? 3000 : 5000)
     return () => { alive = false; clearInterval(t) }
-  }, [sessionId, live])
+  }, [sessionId, live, active])
 
   // 点外面关掉
   useEffect(() => {

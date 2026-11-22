@@ -15,7 +15,7 @@ import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
 import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
-import { BgTaskRegistry, NoticeLimiter, noticeOverflowText, noticeText, shouldNotify, type BgEnded } from './bgWatch.js'
+import { BG_MAX_MISS, BgTaskRegistry, NoticeLimiter, noticeOverflowText, noticeText, shouldNotify, type BgEnded } from './bgWatch.js'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SessionStore, { buildForkSeed } from '@deepseek-ai/dsh-session'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -842,10 +842,20 @@ export class DshController {
       const now = Date.now()
       await Promise.all([...this.bg.byTerminal()].map(async ([terminalId, tasks]) => {
         const st = await this.bgQuery(terminalId, tasks.map((t) => t.jobId))
-        if (!st) return
+        if (!st) {
+          // 整台终端查不到（关了 / 连不上）：累计失败，攒够了就放弃跟踪，别让定时器永远转下去
+          for (const t of tasks) if (this.bg.miss(t.jobId) >= BG_MAX_MISS) this.bg.remove(t.jobId)
+          return
+        }
         for (const t of tasks) {
           const r = st.get(t.jobId)
-          if (!r || r.status === 'running') continue   // 查不到当「还没结束」：宁可晚通知，也不误报完成
+          if (!r) {
+            // 这个 job 查不到（job 文件被清了之类）：同样按失败累计，不无限等
+            if (this.bg.miss(t.jobId) >= BG_MAX_MISS) this.bg.remove(t.jobId)
+            continue
+          }
+          this.bg.seen(t.jobId)
+          if (r.status === 'running') continue
           this.bg.remove(t.jobId)
           if (!shouldNotify(t, now)) continue          // 模型刚自己查过：不再重复推
           ended.push({ task: t, end: r.status === 'finished' ? 'finished' : 'unknown', ...(r.exitCode === undefined ? {} : { exitCode: r.exitCode }) })
@@ -911,22 +921,27 @@ export class DshController {
     }
   }
 
-  /** 用户点停止 / 关会话：把它名下的后台任务真的停掉（先 TERM 后 KILL），并且不叫醒模型 */
-  async cancelBgOfSession(sessionId: string): Promise<void> {
+  /**
+   * 用户点停止 / 关会话：把它名下的后台任务真的停掉（先 TERM 后 KILL），并且不叫醒模型。
+   * 同步清登记、把杀进程扔到后台 —— 停命令本身要等 TERM→KILL（最多几秒），
+   * 在这里 await 的话用户点「停止」要等好几秒回合才真的停（0.1.20 自评审发现）。
+   */
+  cancelBgOfSession(sessionId: string): void {
     const tasks = this.bg.of(sessionId)
     if (!tasks.length) return
     const deps = this.toolDeps
-    await Promise.all(tasks.map(async (t) => {
-      this.bg.remove(t.jobId)
-      if (!deps) return
-      const cmd = buildStopBackgroundCommand(t.jobId)
-      try {
-        if (deps.sideExec) await deps.sideExec(t.terminalId, cmd, { timeoutMs: 15_000 })
-        else await deps.terminals.execCapture(t.terminalId, cmd, undefined, 15_000, { silent: true })
-      } catch { /* 终端可能已经没了：记录照样清掉，别再骚扰 */ }
-    }))
+    for (const t of tasks) this.bg.remove(t.jobId)
     this.bgLimiter.reset(sessionId)
     if (this.bg.size === 0) this.stopBgTimer()
+    if (!deps) return
+    for (const t of tasks) {
+      const cmd = buildStopBackgroundCommand(t.jobId)
+      const run = deps.sideExec
+        ? deps.sideExec(t.terminalId, cmd, { timeoutMs: 15_000 })
+        : deps.terminals.execCapture(t.terminalId, cmd, undefined, 15_000, { silent: true })
+      // 终端可能已经没了：记录照样清掉，失败也就算了
+      void Promise.resolve(run).catch(() => {})
+    }
   }
 
   private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string; allowed?: string[] }>()
@@ -1557,7 +1572,8 @@ export class DshController {
   async interruptTurn(sessionId: string): Promise<void> {
     // 先把这个会话名下的后台任务真的停掉（先 TERM 后 KILL）：用户点了停止，就别让它在后台继续跑。
     // 取消的任务不叫醒模型 —— 它没必要为一条已经被停掉的任务再开一轮。
-    await this.cancelBgOfSession(sessionId)
+    // 不 await：登记同步清掉、杀进程在后台跑，用户点停止要立刻见效。
+    this.cancelBgOfSession(sessionId)
     // 先连带停掉这个会话派出去的子代理：否则用户点了「停止」，子代理还在后台跑（最多跑满 10 分钟超时）。
     // 子代理是独立隐藏会话，必须逐个 cancel；状态由它自己的 turnFailed 收尾（记成「已随主会话一起停止」）
     for (const [sid, sub] of [...this.subagents]) {

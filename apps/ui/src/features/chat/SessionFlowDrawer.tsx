@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Download, X } from 'lucide-react'
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { buildSessionFlow, tr, type FlowInput, type FlowNode, type FlowNodeKind, type SubagentView } from '@lingshell/shared'
+import { buildSessionFlow, tr, type FlowInput, type FlowNode, type SubagentView } from '@lingshell/shared'
 // 尺寸 / 配色 / 图标与「导出图片」共用一份（见 flowExport.ts），避免界面和导出各写一套走样
 import { EDGE_COLOR, FLOW_ICON as ICON, NODE_H as H, NODE_W as W, buildFlowSvg, downloadPng, downloadSvg, type ExportEdge, type ExportNode } from './flowExport.js'
 
