@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { existsSync, realpathSync } from 'node:fs'
 import { extname, join, sep } from 'node:path'
+import { isSkillName } from './skillFile.js'
 import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
 import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
 import type { DbConn } from '@lingshell/shared'
@@ -193,8 +194,10 @@ export const authKeyOf = (toolName: string): string => (toolName === 'spawn_suba
 const handoffNote = (prompt: string) => `这条命令停在等你输入（提示：${prompt}），已按设置「保留现场」处理：**没有中止**，命令就停在终端里，控制权已经交给用户。\n现在：① 不要往这个终端发普通命令（会被当成它的答案）；② 不要重跑这条命令；③ 也不用让用户另跑一遍。\n接下来：先跟用户说明它在等什么；用户给了答案后，用 send_terminal_input 把答案发进这个终端（一次一行），再用 read_terminal 看结果 —— 也可以让用户自己在那里敲。`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 // 给模型和用户看：auto 模式中途替用户答过什么（透明化，别让用户不知道 AI 做了什么决定）
+// 答案可能是一整段文字，逐条截断，别让 note 长到读不下去
+const autoClip = (s: string) => (s.length > 40 ? `${s.slice(0, 40)}…` : s)
 const autoNote = (answers?: string[]) => (!answers?.length ? ''
-  : `中途替你自动回答了 ${answers.length} 次：${answers.join(' / ')}（设置 → AI →「命令卡在等输入时」可改成每次问你）`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+  : `中途替你自动回答了 ${answers.length} 次：${answers.map(autoClip).join(' / ')}（设置 → AI →「命令卡在等输入时」可改成每次问你）`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
 
 /**
  * 失效终端 id 的自动对应：应用重启 / 跨版本升级后终端 id 会变，模型手里的旧 id 对不上。
@@ -649,7 +652,7 @@ function decideFleet(deps: TerminalToolDeps, sessionId: string, args: unknown): 
 /** 跑 skill 自带脚本：授权粒度是「skill:<名字>」—— 同意一次，本会话该 skill 的所有脚本都不用再问 */
 function decideSkillScript(deps: TerminalToolDeps, sessionId: string, args: unknown): Decision {
   const skill = String((args as { skill?: unknown })?.skill ?? '')
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(skill)) return { kind: 'deny', reason: tr('skill 名不合法：{name}', { name: skill || 'empty' }) }
+  if (!isSkillName(skill)) return { kind: 'deny', reason: tr('skill 名不合法：{name}', { name: skill || 'empty' }) }
   if (!deps.skillsRoot) return { kind: 'deny', reason: tr('当前环境没有接入 Skill 目录') }
   const key = `skill:${skill}`
   const d = deps.decide(sessionId, key, 'write')
@@ -936,15 +939,20 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         userOverride(exec)
         const skill = String(args.skill ?? '')
         const script = String(args.script ?? '')
-        if (!/^[a-z0-9][a-z0-9-]*$/.test(skill)) throw new Error(`skill 名不合法：${skill}`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        if (!isSkillName(skill)) throw new Error(`skill 名不合法：${skill}`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         if (!/^[A-Za-z0-9._-]+$/.test(script) || script.includes('..')) throw new Error(`脚本名不合法：${script}`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         if (!deps.skillsRoot) throw new Error('当前环境没有接入 Skill 目录')   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         const dir = join(deps.skillsRoot, skill, 'scripts')
         const full = join(dir, script)
         if (!existsSync(full)) throw new Error(`skill ${skill} 下没有 scripts/${script}`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        // 防符号链接穿越：解析后的真实路径必须仍在 scripts/ 里
-        const realDir = realpathSync(dir)
-        const real = realpathSync(full)
+        // 防符号链接穿越：解析后的真实路径必须仍在 scripts/ 里。
+        // realpath 对不存在的目录 / 断链会抛 ENOENT，先兜成看得懂的提示，别把裸错误丢给模型
+        let realDir: string
+        let real: string
+        try {
+          realDir = realpathSync(dir)
+          real = realpathSync(full)
+        } catch { throw new Error(`skill ${skill} 下没有可用的 scripts 目录`) }   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         if (!real.startsWith(realDir + sep)) throw new Error('只能运行 scripts/ 目录下的脚本')   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         const ext = extname(script).toLowerCase()
         const interp = ext === '.sh' ? 'bash' : ext === '.js' || ext === '.mjs' ? 'node' : ext === '.py' ? 'python' : undefined

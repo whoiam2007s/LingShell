@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it, expect, vi } from 'vitest'
 import {
   terminalToolDefs, decideFor, commitGrant, terminalIdOf, type TerminalToolDeps,
@@ -948,5 +950,46 @@ describe('spawn_subagent', () => {
     const out2 = JSON.parse(await defOf(d2, 'spawn_subagent').execute({ task: '跑很久' } as never, exec() as never))
     expect(out2.ok).toBe(false)
     expect(out2.error).toBe('timeout')
+  })
+})
+
+// 跑 skill 自带的脚本：能执行任意本地脚本，所以校验和授权边界必须有测试
+describe('run_skill_script', () => {
+  const mkScripts = (root: string, skill: string, files: Record<string, string>) => {
+    mkdirSync(join(root, skill, 'scripts'), { recursive: true })
+    for (const [f, c] of Object.entries(files)) writeFileSync(join(root, skill, 'scripts', f), c)
+  }
+
+  it('授权按 skill 走（不是终端）：名字不合法 / 没接 Skill 目录直接拒，需要授权时走 ask', () => {
+    const d = deps({ skillsRoot: 'C:/x' } as never)
+    expect(decideFor(d, 'sess_1', 'run_skill_script', { skill: 'code-quality', script: 'check.sh' })).toEqual({ kind: 'allow' })
+    expect(decideFor(d, 'sess_1', 'run_skill_script', { skill: 'Bad_Name', script: 'check.sh' })).toMatchObject({ kind: 'deny' })
+    expect(decideFor(d, 'sess_1', 'run_skill_script', { skill: `${'a'.repeat(65)}`, script: 'check.sh' })).toMatchObject({ kind: 'deny' })
+    const noRoot = deps()
+    expect(decideFor(noRoot, 'sess_1', 'run_skill_script', { skill: 'a', script: 'b' })).toMatchObject({ kind: 'deny' })
+    const ask = deps({ skillsRoot: 'C:/x', decide: () => ({ kind: 'ask', reason: 'need_grant' }) } as never)
+    expect(decideFor(ask, 'sess_1', 'run_skill_script', { skill: 'code-quality', script: 'check.sh' }).kind).toBe('ask')
+  })
+
+  it('路径与类型校验：穿越 / 不在 scripts 下 / 不支持的扩展名都拒；正常脚本能跑并拿到参数', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'skill-scripts-'))
+    try {
+      mkScripts(root, 'demo', { 'ok.mjs': 'console.log(process.argv.slice(2).join(","))', 'notes.txt': 'x' })
+      const d = deps({ skillsRoot: root } as never)
+      const run = (args: Record<string, unknown>) => defOf(d, 'run_skill_script').execute(args as never, exec() as never)
+
+      // 用 .mjs 跑 node：不依赖 bash / python 是否在 PATH，Windows CI 也稳
+      expect(await run({ skill: 'demo', script: 'ok.mjs', args: ['a', 'b c'] })).toContain('a,b c')
+
+      await expect(run({ skill: 'demo', script: '../SKILL.md' })).rejects.toThrow(/脚本名不合法/)
+      await expect(run({ skill: 'demo', script: 'notes.txt' })).rejects.toThrow(/不支持的脚本类型/)
+      await expect(run({ skill: 'demo', script: 'nope.mjs' })).rejects.toThrow(/没有 scripts/)
+      // skill 名不合规（大写、超长）在工具体里也要拦，不能只靠授权网关
+      await expect(run({ skill: 'Demo', script: 'ok.mjs' })).rejects.toThrow(/skill 名不合法/)
+      // skill 目录里根本没有这个脚本
+      await expect(run({ skill: 'noscripts', script: 'ok.mjs' })).rejects.toThrow(/没有 scripts/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

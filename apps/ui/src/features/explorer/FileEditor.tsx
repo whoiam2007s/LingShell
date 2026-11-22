@@ -40,6 +40,8 @@ const DECO_CLS: Record<number, string> = { [D.Space]: 'ed-sp', [D.Tab]: 'ed-tab'
 // Tab / Shift+Tab 缩进、回车保持缩进、Ctrl+/ 注释、Alt+↑↓ 移动行、Shift+Alt+↓ 复制行、Ctrl+Shift+K 删除行、JSON / YAML 保存前检查
 /** 能渲染成「查看」形态的格式（md 渲染 / csv 表格 / pdf / 图片）；其余只读文本 */
 const PREVIEWABLE = /\.(md|markdown|csv|tsv|pdf|png|jpe?g|gif|webp|bmp|svg)$/i
+/** 其中浏览器预览器要自己读字节的（readText 对它们必报「二进制文件」）：查看这些格式时不下发读文本 */
+const BINARY_PREVIEW = /\.(pdf|png|jpe?g|gif|webp|bmp)$/i
 
 export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean }) {
   const sudo = scope !== 'local' && !!scope.sudo
@@ -94,18 +96,24 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
     const withNl = finalNewline && t !== '' && !t.endsWith('\n') ? `${t}\n` : t
     return eol === 'crlf' ? withNl.replace(/\n/g, '\r\n') : withNl
   }
-  // 比较时统一成 LF：只差换行符（CRLF↔LF）不算改动，否则打开就显示「有未保存改动」、切不回查看
+  // 比较时统一成 LF：只差换行符（CRLF↔LF）不算改动，否则打开就显示「有未保存改动」、切不回查看。
+  // 但状态栏手动切「换行符」本身就是要保存的改动：只比内容会把「LF 文件切成 CRLF」判成没改动，
+  // 保存按钮直接变灰（requestSave 还会提示「没有改动」），所以换行符选择也一起比。
   const same = (a: string, b: string) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n')
-  const dirty = base !== undefined && !same(toDisk(text), base)
+  const baseEol = eol0 ? (eol0.crlf > eol0.lf ? 'crlf' : 'lf') : 'lf'
+  const dirty = base !== undefined && (!same(toDisk(text), base) || eol !== baseEol)
 
-  // 打开时读一次（父组件按 path 做 key 重挂载）；打不开的，切到 sudo 或验证完密码后再读
+  // 打开时读一次（父组件按 path 做 key 重挂载）；打不开的，切到 sudo 或验证完密码后再读。
+  // 图片 / PDF 在只读查看时由预览器自己读字节，readText 对它们必报「二进制文件」，所以不下发；
+  // 切到编辑模式（binaryView 变 false）时再读，读不了会走 loadErr 提示。
+  const binaryView = readOnly && BINARY_PREVIEW.test(path)
   useEffect(() => {
-    if (base !== undefined) return
+    if (base !== undefined || binaryView) return
     setLoadErr(undefined)
     client.fs.readText(scope, path)
       .then((t) => { setBase(t); setText(t.replace(/\r\n/g, '\n')) })
       .catch((e: unknown) => setLoadErr(fmtErr(e)))
-  }, [sudo, retry])
+  }, [sudo, retry, binaryView])
 
   // ── 保存 ──
   const requestSave = (force = false) => {
@@ -439,13 +447,15 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
             {deniedMsg(err) && <button data-sudo-save onClick={() => { setErr(undefined); setSudoSave(true); onSudo!() }} className="shrink-0 rounded border border-[var(--color-danger)] px-2 py-0.5 text-[11px] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)]">{tr('用 sudo 保存')}</button>}
           </div>
         )}
-        {loadErr ? (
+        {readOnly && PREVIEWABLE.test(path) ? (
+          // 查看模式优先走预览器：md / csv 把已经读好的正文传下去（切编辑还要用），不再重复读一次；
+          // 图片 / PDF 没读文本，由预览器自己读字节
+          <PreviewBody scope={scope} path={path} text={binaryView ? undefined : text} />
+        ) : loadErr ? (
           <div data-editor-loaderr className="p-4 text-[12.5px] text-[var(--color-danger)]">{tr('无法打开：{err}', { err: loadErr })}
             {deniedMsg(loadErr) && <button data-sudo-open onClick={onSudo} className="ml-3 rounded border border-[var(--color-danger)] px-2 py-0.5 text-[11px] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)]">{tr('用 sudo 打开')}</button>}</div>
         ) : base === undefined ? (
           <div className="p-4 text-[12px] text-[var(--color-text-muted)]">{tr('加载中…')}</div>
-        ) : readOnly && PREVIEWABLE.test(path) ? (
-          <PreviewBody scope={scope} path={path} />
         ) : (
           <div className="flex min-h-0 flex-1 bg-[var(--color-bg-base)] font-mono text-[12px] leading-[18px]">
             <div ref={gutter} className="shrink-0 select-none overflow-hidden border-r border-[var(--color-border-subtle)] py-2 text-right text-[color:color-mix(in_srgb,var(--color-text-muted)_70%,transparent)]">

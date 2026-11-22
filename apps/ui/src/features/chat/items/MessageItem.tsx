@@ -95,11 +95,15 @@ const MarkdownBody = memo(function MarkdownBody({ text, streaming }: { text: str
     table({ node, children }) { return <MdTable node={node}>{children}</MdTable> },
     // 外链一律交给系统浏览器：绝不在应用内导航（否则会把整个页面冲掉）
     a({ href, children, title }) {
-      const ok = !!href && /^https?:\/\//i.test(href)
+      // 只有真能打开的地址才渲染成链接：http(s) 走系统浏览器，mailto 交给系统邮件程序；
+      // 其它（# 锚点、相对路径）在应用里点了本来也没反应，渲染成普通文字，别让人以为能点
+      const web = !!href && /^https?:\/\//i.test(href)
+      const mail = !!href && /^mailto:/i.test(href)
+      if (!web && !mail) return <span title={title}>{children}</span>
       return (
-        <a href={href} rel="noreferrer" title={title ?? (ok ? tr('在系统浏览器中打开') : undefined)}
+        <a href={href} rel="noreferrer" title={title ?? (web ? tr('在系统浏览器中打开') : tr('用邮件程序打开'))}
           className="text-[var(--color-accent)] underline decoration-dotted underline-offset-2 hover:decoration-solid"
-          onClick={(e) => { e.preventDefault(); if (ok) window.open(href, '_blank', 'noopener') }}>
+          onClick={(e) => { e.preventDefault(); window.open(href, '_blank', 'noopener') }}>
           {children}
         </a>
       )

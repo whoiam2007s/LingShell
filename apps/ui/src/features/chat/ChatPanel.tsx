@@ -111,10 +111,12 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     const abs = !/^([a-zA-Z]:[\\/]|[\\/]|~)/.test(p) && workDir
       ? `${workDir.replace(/[\\/]+$/, '')}/${p.replace(/^\.\//, '')}`
       : p
-    // 不存在就别弹窗了：消息里的示例路径、还没创建的文件很常见，弹个错误框很吵
+    // 只支持本地文件：会话可以同时对多台主机干活，文本里的路径没有主机归属，
+    // 远端路径（/etc/nginx/nginx.conf 这类）在这里点不开，提示里说明白别让人以为坏了。
+    // 不存在也别弹窗：消息里的示例路径、还没创建的文件很常见，弹个错误框很吵
     void client.fs.stats('local', [abs]).then((s) => {
       if (s.files > 0) setPeekPath(abs)
-      else flashPeek(tr('文件不存在：{p}', { p: abs }))
+      else flashPeek(tr('本地没有这个文件（远端主机上的文件请在终端里查看）：{p}', { p: abs }))
     }).catch(() => setPeekPath(abs))
   }), [workDir])
   // 流程图里展开子代理用：打开时拉一次这个会话派过的子代理（与导出会话同源）
