@@ -5,7 +5,7 @@ import { useConversation, type ContextState, type ConvItem, type SessionPhase, t
 import { SessionFlowDrawer } from './SessionFlowDrawer.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
 import { onOpenPathPreview } from '../../lib/chatBus.js'
-import { FilePreview } from '../explorer/index.js'
+import { FileEditor } from '../explorer/index.js'
 import { MessageItem, MsgActionsContext, type MsgActions } from './items/MessageItem.js'
 import { ToolSessionContext } from '../auth/index.js'
 import { ReasoningItem } from './items/ReasoningItem.js'
@@ -760,7 +760,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       )}
 
       {/* 点对话里的文件路径 → 原生预览（本地文件；图片/md/csv/pdf 在应用内看，其它可「用系统程序打开」） */}
-      {peekPath && <FilePreview scope="local" path={peekPath} onClose={() => setPeekPath(undefined)} />}
+      {peekPath && <FileEditor scope="local" path={peekPath} onClose={() => setPeekPath(undefined)} />}
       {peekNote && (
         <div className="pointer-events-none fixed left-1/2 top-14 z-[70] -translate-x-1/2 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] shadow-lg">
           {peekNote}

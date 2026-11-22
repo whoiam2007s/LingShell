@@ -57,6 +57,29 @@ function MarkdownImage({ src, alt, title, scope, basePath }: { src?: string; alt
 
 // 资源管理器里的文件预览（双击 / 右键「预览」）：图片用 ImageViewer（缩放 / 拖拽）、Markdown 渲染、CSV / TSV 表格、PDF 用内置查看器（iframe），
 // 超过 20MB 或读不了的提示下载 / 用系统程序打开。弹窗只能按 × / Esc 关
+/** 预览正文（不带弹窗外壳）：统一弹窗的查看模式直接用它 */
+export function PreviewBody({ scope, path }: { scope: FsScope; path: string }) {
+  const [data, setData] = useState<PreviewData>()
+  const [err, setErr] = useState('')
+  useEffect(() => { client.preview.read(scope, path).then(setData).catch((e) => setErr(errMsg(e))) }, [scope, path])
+  if (err) return <div className="p-5 text-[12.5px] text-[var(--color-danger)]">{tr('无法预览：{err}', { err })}</div>
+  if (!data) return <div className="flex items-center gap-1.5 p-5 text-[12px] text-[var(--color-text-muted)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tr('读取中…')}</div>
+  if (data.kind === 'image') {
+    return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--color-bg-base)] p-3">
+      <img data-preview-image src={`data:${previewMime(data.name)};base64,${data.base64}`} alt={data.name} className="max-h-full max-w-full object-contain" />
+    </div>
+  }
+  if (data.kind === 'markdown') {
+    return <div className="min-h-0 flex-1 overflow-auto px-8 py-5">
+      <div className="markdown-body mx-auto max-w-[860px] break-words text-[13px] text-[var(--color-text-primary)]">
+        <Markdown remarkPlugins={[remarkGfm]} components={{ img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} scope={scope} basePath={path} /> } as Components}>{data.text ?? ''}</Markdown>
+      </div>
+    </div>
+  }
+  if (data.kind === 'pdf') return <PdfView data={data} />
+  return <CsvView text={data.text ?? ''} sep={data.kind === 'tsv' ? '\t' : ','} />
+}
+
 /** 看着是文本 / 代码文件（预览不支持时改用编辑器打开）：常见扩展名，或没有扩展名的（Dockerfile、Makefile 之类） */
 const TEXTISH = /\.(js|mjs|cjs|ts|tsx|jsx|json|jsonc|py|rb|go|rs|java|kt|c|h|cpp|hpp|cs|php|sh|bash|zsh|ps1|bat|cmd|yml|yaml|toml|ini|conf|cfg|env|txt|log|md|markdown|sql|html|htm|css|scss|less|xml|vue|svelte|gradle|lock|editorconfig|gitignore|dockerignore)$/i
 

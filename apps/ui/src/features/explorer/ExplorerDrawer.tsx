@@ -14,7 +14,6 @@ import { ChmodDialog } from './ChmodDialog.js'
 import { openDirSync } from './DirSyncDialog.js'
 import { openLogViewer } from '../logs/index.js'
 import { previewKind } from '@lingshell/shared'
-import { FilePreview } from './FilePreview.js'
 import { openDirInVscode } from '../../components/VscodeRemote.js'
 import { attachPathsToChat, LOCAL_PATHS_MIME } from '../../lib/localPaths.js'
 import { setLastDir } from './explorerMemory.js'
@@ -134,8 +133,7 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
   const [confirmDel, setConfirmDel] = useState<{ paths: string[]; plan: DeletePlan } | null>(null)
   const [chmodFor, setChmodFor] = useState<{ paths: string[]; mode: number; anyDir: boolean } | null>(null)
   const [editing, setEditing] = useState<{ path: string; edit: boolean } | null>(null)   // 正在打开的文件：edit=true 直接进编辑模式（右键「编辑文件」），否则默认只读查看
-  const [previewing, setPreviewing] = useState<string | null>(null)   // 正在预览的图片 / Markdown / CSV / PDF
-  const openFile = (p: string) => (previewKind(p) ? setPreviewing(p) : setEditing({ path: p, edit: false }))   // 双击：能预览的预览，其余进编辑器（默认只读查看）
+  const openFile = (p: string) => setEditing({ path: p, edit: false })   // 双击：统一弹窗的查看模式（md 渲染 / csv 表格 / 代码只读文本）
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<string>()
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -893,7 +891,7 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
             const e = menu.entry
             return (
               <>
-                {!e.isDir && previewKind(e.name) && <MI onClick={() => setPreviewing(e.path)}>{tr('查看文件')}</MI>}
+                {!e.isDir && <MI onClick={() => setEditing({ path: e.path, edit: false })}>{tr('查看文件')}</MI>}
                 {!e.isDir && <MI onClick={() => setEditing({ path: e.path, edit: true })} kbd="Enter">{tr('编辑文件')}</MI>}
                 {isRemote && !e.isDir && <MI onClick={() => editExternal(e.path)}>{tr('用本地编辑器打开')}</MI>}
                 {isRemote && !winHost && !e.isDir && <MI onClick={() => { openLogViewer(scopeKey, { kind: 'file', path: e.path }); onClose() }}>{tr('实时查看（tail -f）')}</MI>}
@@ -999,14 +997,11 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
           // 切回查看：能预览的换回预览弹窗（.md 渲染 / CSV 表格 / 图片 / PDF），不能预览的（代码）回到只读文本
           const p = editing.path
           setEditing(null)
-          if (previewKind(p)) setPreviewing(p)
-          else setEditing({ path: p, edit: false })
+          setEditing({ path: p, edit: false })
         }}
         onSudo={isRemote && !sudoMode ? () => setSudoMode(true) : undefined} onNeedPw={() => setSudoAsk(true)} />}
       {sudoAsk && scope0 !== 'local' && <SudoDialog terminalId={scope0.terminalId} title={pane?.title} onCancel={() => setSudoAsk(false)}
         onDone={() => { setSudoAsk(false); setSudoTick((n) => n + 1); refreshAll(); setNote(tr('sudo 已验证：目录已按 root 身份刷新，刚才没做成的操作请再做一次')) }} />}
-      {previewing && <FilePreview key={previewing} scope={scope} path={previewing} onClose={() => setPreviewing(null)} onEdit={() => { setEditing({ path: previewing, edit: true }); setPreviewing(null) }}
-        onDownload={isRemote && onDownload ? () => download([previewing]) : undefined} />}
     </div>
   )
 }

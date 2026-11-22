@@ -43,7 +43,7 @@ export function SkillsPanel() {
     try { const r = await client.skills.read(s.name); setForm({ old: s.name, ...r }) }
     catch (e) { setErr(errText(e)) }
   }
-  const doReset = () => { if (resetTarget) client.skills.resetBuiltin(resetTarget.name).then(refresh).catch((e) => setErr(errText(e))); setResetTarget(null) }
+  const doReset = () => { if (resetTarget) client.skills.resetBuiltin(resetTarget.name).then(() => refresh()).catch((e) => setErr(errText(e))); setResetTarget(null) }
   const doDelete = () => {
     if (delTarget) client.skills.remove(delTarget.name).then(refresh).catch((e) => setErr(errText(e)))
     setDelTarget(null)
@@ -126,7 +126,7 @@ export function SkillsPanel() {
       {msg && <div className="text-[12px] text-[var(--color-success)]">{msg}</div>}
       {preview && <ImportDialog preview={preview} onClose={() => { void client.skills.cancelImport(preview.token).catch(() => {}); setPreview(null) }}
         onDone={(name) => { setPreview(null); setMsg(tr('已导入 {name}，立即生效', { name })); refresh() }} />}
-      <ConfirmDialog open={!!resetTarget} title={tr('刷新同步')}
+      <ConfirmDialog open={!!resetTarget} title={tr('刷新同步')} confirmText={tr('重置')}
         message={tr('把「{name}」重置为随应用内置的版本？你改过的内容会丢失。', { name: resetTarget?.name ?? '' })}
         onConfirm={doReset} onCancel={() => setResetTarget(null)} />
       <ConfirmDialog open={!!delTarget} title={tr('删除 Skill')} message={tr('确定删除 {name}？会删除它的整个目录（含资源文件），不可恢复。', { name: delTarget?.name ?? '' })} onConfirm={doDelete} onCancel={() => setDelTarget(null)} />

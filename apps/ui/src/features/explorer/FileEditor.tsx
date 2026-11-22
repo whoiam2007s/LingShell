@@ -4,6 +4,7 @@ import { X, Save, Sparkles, Search, Pilcrow, ScanEye, WrapText, Eraser, ChevronU
 import { configKind, syntaxLangOf, highlightText, HIGHLIGHT_MAX, SUDO_NEED_PW, tk, tr, type ExplainItem, type FsScope, type TokKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { DiffView } from '../../components/DiffView.js'
+import { PreviewBody } from './FilePreview.js'
 import { ConfigExplainPanel } from './ConfigExplainPanel.js'
 import {
   findSuspects, trailingSpaces, indentInfo, eolInfo, cleanText, findAll, replaceAll, lineCol, lineStart, indentLines, outdentLines, newlineKeepIndent,
@@ -37,6 +38,9 @@ const DECO_CLS: Record<number, string> = { [D.Space]: 'ed-sp', [D.Tab]: 'ed-tab'
 // 辅助：显示空白（空格 · / Tab →，行尾空白标红）、可疑字符检查（BOM / 零宽 / 不换行空格 / 全角空格 / 控制字符，一键清理）、
 // 查找替换（Ctrl+F / Ctrl+H）、跳到行（Ctrl+G）、自动换行、状态栏（行列 / 选中 / 缩进 / 换行符可切换）、
 // Tab / Shift+Tab 缩进、回车保持缩进、Ctrl+/ 注释、Alt+↑↓ 移动行、Shift+Alt+↓ 复制行、Ctrl+Shift+K 删除行、JSON / YAML 保存前检查
+/** 能渲染成「查看」形态的格式（md 渲染 / csv 表格 / pdf / 图片）；其余只读文本 */
+const PREVIEWABLE = /\.(md|markdown|csv|tsv|pdf|png|jpe?g|gif|webp|bmp|svg)$/i
+
 export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false, onSwitchToView }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean; onSwitchToView?: () => void }) {
   const sudo = scope !== 'local' && !!scope.sudo
   const fmtErr = (e: unknown) => { const m = errMsg(e); if (m.includes(SUDO_NEED_PW)) { onNeedPw?.(); return m.replace(SUDO_NEED_PW, '') } return m }
@@ -434,6 +438,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
             {deniedMsg(loadErr) && <button data-sudo-open onClick={onSudo} className="ml-3 rounded border border-[var(--color-danger)] px-2 py-0.5 text-[11px] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)]">{tr('用 sudo 打开')}</button>}</div>
         ) : base === undefined ? (
           <div className="p-4 text-[12px] text-[var(--color-text-muted)]">{tr('加载中…')}</div>
+        ) : readOnly && PREVIEWABLE.test(path) ? (
+          <PreviewBody scope={scope} path={path} />
         ) : (
           <div className="flex min-h-0 flex-1 bg-[var(--color-bg-base)] font-mono text-[12px] leading-[18px]">
             <div ref={gutter} className="shrink-0 select-none overflow-hidden border-r border-[var(--color-border-subtle)] py-2 text-right text-[color:color-mix(in_srgb,var(--color-text-muted)_70%,transparent)]">
