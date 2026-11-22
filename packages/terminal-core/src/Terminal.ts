@@ -249,7 +249,8 @@ export abstract class BaseTerminal implements Terminal {
           ...(handoff ? { handedOff: true } : {}),
         }
         finish(r)
-        if (autoAnswers.length) r.autoAnswered = [...autoAnswers]; resolve(r)
+        if (autoAnswers.length) r.autoAnswered = [...autoAnswers]
+        resolve(r)
       }
       const armStall = (): void => {
         if (stallTimer) clearTimeout(stallTimer)

@@ -139,8 +139,13 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   }
   // 关闭 / 切回查看：有改动先问（保存并继续 / 不保存 / 取消）
   const goView = () => setReadOnly(true)
-  // 丢弃改动：把编辑区恢复成磁盘内容（否则关窗口时还是「有未保存改动」，又弹一次）
-  const discard = () => { if (base !== undefined) { setText(base.replace(/\r\n/g, '\n')); setSaved(false); setErr(undefined); setSyntaxWarn(undefined) } }
+  // 丢弃改动：把编辑区恢复成磁盘内容、换行符也回到磁盘那边的选择
+  // （否则切过 LF/CRLF 的话 dirty 仍为 true，关窗口时又弹一次「有未保存的改动」）
+  const discard = () => {
+    if (base === undefined) return
+    setText(base.replace(/\r\n/g, '\n')); setEol(baseEol)
+    setSaved(false); setErr(undefined); setSyntaxWarn(undefined)
+  }
   const requestClose = () => (dirty ? setAsk('close') : onClose())
   useEffect(() => { if (sudoSave && sudo) { setSudoSave(false); confirmSave() } }, [sudo, sudoSave])
 
