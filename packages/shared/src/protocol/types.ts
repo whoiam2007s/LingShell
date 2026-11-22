@@ -1023,7 +1023,7 @@ export interface SkillImportPreview {
   conflict: boolean       // 已有同名 skill
   suggestedName: string   // 冲突时建议的新名字
 }
-export interface SkillInput { name: string; description: string; body: string }
+export interface SkillInput { name: string; description: string; body: string; version?: string }
 
 // 子代理（主会话派出去做单一任务的独立会话）：会话标题栏下拉里显示
 export interface SubagentView {

@@ -162,10 +162,10 @@ export class LocalSkills {
   }
 
   /** 编辑用：解析后的字段 + 正文 */
-  async read(name: string): Promise<{ name: string; description: string; body: string }> {
+  async read(name: string): Promise<{ name: string; description: string; body: string; version?: string }> {
     const p = parseSkillMd(await readFile(join(await this.dirOf(name), 'SKILL.md'), 'utf8'))
     if (!p.ok) throw new Error(p.error)
-    return { name: p.meta.name, description: p.meta.description, body: p.body }
+    return { name: p.meta.name, description: p.meta.description, body: p.body, ...(p.meta.version ? { version: p.meta.version } : {}) }
   }
 
   /** 新建（old 缺省）或修改。改名 = 目录跟着改名；frontmatter 里其它键原样保留 */
@@ -179,7 +179,11 @@ export class LocalSkills {
     if (old) {
       const dir = await this.dirOf(old)
       const prev = parseSkillMd(await readFile(join(dir, 'SKILL.md'), 'utf8'))
-      const meta: SkillMeta = prev.ok ? { ...prev.meta, name, description: input.description.trim() } : { name, description: input.description.trim() }
+      const ver = (input.version ?? '').trim()
+      const base = prev.ok ? { ...prev.meta, name, description: input.description.trim() } : { name, description: input.description.trim() }
+      // 版本号：填了就用填的，清空就删掉（不再写回旧值）
+      const meta: SkillMeta = { ...base }
+      if (ver) meta.version = ver; else delete meta.version
       await writeFile(join(dir, 'SKILL.md'), buildSkillMd(meta, input.body, prev.ok ? prev.extra : []))
       if (name !== old) {
         await mv(dir, join(this.root, name))
@@ -190,7 +194,8 @@ export class LocalSkills {
     } else {
       const dir = join(this.root, name)
       await mkdir(dir, { recursive: true })
-      await writeFile(join(dir, 'SKILL.md'), buildSkillMd({ name, description: input.description.trim() }, input.body))
+      const v0 = (input.version ?? '').trim()
+      await writeFile(join(dir, 'SKILL.md'), buildSkillMd({ name, description: input.description.trim(), ...(v0 ? { version: v0 } : {}) }, input.body))
       st[name] = { origin: 'created' }
       await this.saveState(st)
     }

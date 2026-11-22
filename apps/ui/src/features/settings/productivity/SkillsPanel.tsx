@@ -12,8 +12,8 @@ const PAGE_TIP = tk('Skill 是一份可复用的任务指令（SKILL.md，可附
 const ORIGIN: Record<SkillInfo['origin'], string> = { imported: tk('skill|导入'), created: tk('skill|新建'), manual: tk('目录里放入') }
 const NAME_HINT = tk('小写字母、数字和连字符，如 nginx-check')
 
-interface Form { old?: string; name: string; description: string; body: string }
-const empty: Form = { name: '', description: '', body: '' }
+interface Form { old?: string; name: string; description: string; body: string; version: string }
+const empty: Form = { name: '', description: '', body: '', version: '' }
 
 // 设置弹窗「Skills」页：导入（文件夹 / .zip / .skill）、新建、编辑、启停、「AI 可自动调用」、删除、打开目录
 export function SkillsPanel() {
@@ -40,7 +40,7 @@ export function SkillsPanel() {
   }
   const edit = async (s: SkillInfo) => {
     setErr('')
-    try { const r = await client.skills.read(s.name); setForm({ old: s.name, ...r }) }
+    try { const r = await client.skills.read(s.name); setForm({ ...r, version: r.version ?? '', old: s.name }) }
     catch (e) { setErr(errText(e)) }
   }
   const doReset = () => { if (resetTarget) { const n = resetTarget.name; client.skills.resetBuiltin(n).then(() => { setMsg(tr('已把「{name}」重置为当前内置版本', { name: n })); return refresh() }).catch((e) => setErr(errText(e))) } setResetTarget(null) }
@@ -52,7 +52,7 @@ export function SkillsPanel() {
   if (form) {
     const set = (p: Partial<Form>) => setForm({ ...form, ...p })
     const save = async () => {
-      try { await client.skills.save({ name: form.name.trim(), description: form.description, body: form.body }, form.old); setForm(null); setErr(''); refresh() }
+      try { await client.skills.save({ name: form.name.trim(), description: form.description, body: form.body, version: form.version.trim() || undefined }, form.old); setForm(null); setErr(''); refresh() }
       catch (e) { setErr(errText(e)) }
     }
     return (
@@ -64,6 +64,9 @@ export function SkillsPanel() {
           </Row>
           <Row label={tr('描述')} hint={tr('AI 靠它判断什么时候用')} wide tip={tr('会出现在 AI 看到的 skill 目录里（只有名称和描述）。写清楚做什么、什么情况下用，例如「排查 Linux 磁盘占用：找出大目录和大文件，给出清理建议」。')}>
             <input value={form.description} onChange={(e) => set({ description: e.target.value })} placeholder={tr('做什么、什么时候用')} className={`w-full ${INPUT}`} />
+          </Row>
+          <Row label={tr('版本')} hint={tr('可选，如 1.0.0；显示在列表里')} tip={tr('写在 SKILL.md 的 frontmatter（version），只是给人看的版本标记，不影响 AI 行为。内置 skill 升版本后用户能一眼看出是不是新版。')}>
+            <input value={form.version} onChange={(e) => set({ version: e.target.value })} placeholder="1.0.0" className={`w-40 font-mono ${INPUT}`} />
           </Row>
           <Row label={tr('指令正文')} hint={tr('Markdown，AI 加载后照做')} wide tip={tr('写步骤、注意事项、要用的命令。引用同目录的资源文件时写相对路径（如 scripts/check.sh），AI 会按 skill 目录去找。')}>
             <textarea value={form.body} onChange={(e) => set({ body: e.target.value })} rows={14} className={`${taCls} font-mono`}
