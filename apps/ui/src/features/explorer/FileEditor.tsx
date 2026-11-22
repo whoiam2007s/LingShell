@@ -131,6 +131,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   }
   // 关闭 / 切回查看：有改动先问（保存并继续 / 不保存 / 取消）
   const goView = () => setReadOnly(true)
+  // 丢弃改动：把编辑区恢复成磁盘内容（否则关窗口时还是「有未保存改动」，又弹一次）
+  const discard = () => { if (base !== undefined) { setText(base.replace(/\r\n/g, '\n')); setSaved(false); setErr(undefined); setSyntaxWarn(undefined) } }
   const requestClose = () => (dirty ? setAsk('close') : onClose())
   useEffect(() => { if (sudoSave && sudo) { setSudoSave(false); confirmSave() } }, [sudo, sudoSave])
 
@@ -387,8 +389,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
           )}
           <button data-ed-edit onClick={toggleEdit} title={readOnly ? tr('切换到编辑') : tr('切回查看（有未保存的改动会提示先保存）')} className={tool(!readOnly)}><Pencil className="h-3.5 w-3.5" /></button>
           <button data-ed-external onClick={openExternal} title={tr('用系统默认软件打开')} className={tool(false)}><ExternalLink className="h-3.5 w-3.5" /></button>
-          <button onClick={() => requestSave()} disabled={readOnly || !dirty || busy} title={tr('保存（Ctrl+S）')}
-            className={`${btn} flex items-center gap-1 border border-transparent bg-[var(--color-accent)] text-[var(--color-bg-base)] hover:opacity-90 disabled:opacity-40`}><Save className="h-3.5 w-3.5" />{tr('保存')}</button>
+          {!readOnly && <button onClick={() => requestSave()} disabled={!dirty || busy} title={tr('保存（Ctrl+S）')}
+            className={`${btn} flex items-center gap-1 border border-transparent bg-[var(--color-accent)] text-[var(--color-bg-base)] hover:opacity-90 disabled:opacity-40`}><Save className="h-3.5 w-3.5" />{tr('保存')}</button>}
           <button onClick={requestClose} title={tr('关闭（Esc）')} className="flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><X className="h-3.5 w-3.5" /></button>
         </div>
         {find && (
@@ -513,7 +515,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
               <p className="mb-4 text-[12.5px] text-[var(--color-text-secondary)]">{ask === 'close' ? tr('关闭后本次编辑的内容会丢失。') : tr('切回查看前，本次编辑的内容需要处理。')}</p>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setAsk(null)} autoFocus className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('取消')}</button>
-                <button onClick={() => { const a = ask; setAsk(null); if (a === 'close') onClose(); else goView() }}
+                <button onClick={() => { const a = ask; setAsk(null); discard(); if (a === 'close') onClose(); else goView() }}
                   className={`${btn} border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)]`}>{tr('不保存')}</button>
                 <button onClick={() => { const a = ask; confirmSave(() => { setAsk(null); if (a === 'close') onClose(); else goView() }) }}
                   className={`${btn} border border-transparent bg-[var(--color-accent)] font-medium text-[var(--color-bg-base)] hover:opacity-90`}>{tr('保存并继续')}</button>

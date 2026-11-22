@@ -264,9 +264,9 @@ export class LocalSkills {
   /** 把某个内置 skill 重置成随应用发布的版本（覆盖用户改过的内容）；不是内置的会报错 */
   async resetBuiltin(name: string, srcDir?: string): Promise<void> {
     if (!srcDir) throw new Error(tr('当前环境没有内置 skill 目录'))
-    const dir = await this.dirOf(name)
-    const dst = join(this.root, dir)
-    const from = join(srcDir, dir)
+    // dirOf 返回的是**完整路径**（<root>/<目录名>），这里不能再 join 一次
+    const dst = await this.dirOf(name)
+    const from = join(srcDir, basename(dst))
     if (!existsSync(join(from, 'SKILL.md'))) throw new Error(tr('应用里没有「{name}」的内置源文件，无法重置', { name }))
     await rm(dst, { recursive: true, force: true })
     await cp(from, dst, { recursive: true })
