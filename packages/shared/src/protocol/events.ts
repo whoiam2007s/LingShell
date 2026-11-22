@@ -250,7 +250,18 @@ export type McpStatusEvent = { type: 'mcp:status'; servers: McpServerStatus[] }
 // ── 自动更新 ──
 // disabled = 未配置更新源（或开发模式），updater 完全不启用、不联网
 export type UpdateState = 'disabled' | 'checking' | 'none' | 'available' | 'downloading' | 'downloaded' | 'error'
-export interface UpdateStatus { state: UpdateState; version?: string; percent?: number; error?: string }
+export interface UpdateStatus {
+  state: UpdateState
+  version?: string
+  percent?: number
+  // 下载进度：总字节 / 已下载字节 / 实时速度（B/s），来自 electron-updater 的 download-progress 事件，只用于界面展示
+  total?: number
+  transferred?: number
+  bytesPerSecond?: number
+  // 服务器不支持 Range（GitHub 的下载 CDN 会返回 501）→ 差分失败、已回退整包下载；只用来解释「这次为什么很慢」
+  fullDownload?: boolean
+  error?: string
+}
 export type UpdateStatusEvent = { type: 'update:status' } & UpdateStatus
 
 // 应用锁状态变化（手动锁 / 空闲 / 系统锁屏 / 解锁）
