@@ -106,6 +106,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const [peekNote, setPeekNote] = useState('')
   const peekTimer = useRef<number | undefined>(undefined)
   const flashPeek = (msg: string) => { setPeekNote(msg); window.clearTimeout(peekTimer.current); peekTimer.current = window.setTimeout(() => setPeekNote(''), 2600) }
+  useEffect(() => () => window.clearTimeout(peekTimer.current), [])   // 卸载后别再往里 setState
   useEffect(() => onOpenPathPreview((p) => {
     // 相对路径按会话工作目录解析：主进程按应用自己的 cwd 找，会报「文件不存在」
     const abs = !/^([a-zA-Z]:[\\/]|[\\/]|~)/.test(p) && workDir
@@ -116,6 +117,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     // 不存在也别弹窗：消息里的示例路径、还没创建的文件很常见，弹个错误框很吵
     void client.fs.stats('local', [abs]).then((s) => {
       if (s.files > 0) setPeekPath(abs)
+      else if (s.dirs > 0) flashPeek(tr('这是目录，用资源管理器打开：{p}', { p: abs }))
       else flashPeek(tr('本地没有这个文件（远端主机上的文件请在终端里查看）：{p}', { p: abs }))
     }).catch(() => setPeekPath(abs))
   }), [workDir])

@@ -971,6 +971,25 @@ describe('run_skill_script', () => {
     expect(decideFor(ask, 'sess_1', 'run_skill_script', { skill: 'code-quality', script: 'check.sh' }).kind).toBe('ask')
   })
 
+  it('批准后落 skill 级授权：卡片写清是哪个脚本，授权与审计都记在 skill 键上', () => {
+    const d = deps({ skillsRoot: 'C:/x', decide: () => ({ kind: 'ask', reason: 'need_grant' }) } as never)
+    const args = { skill: 'code-quality', script: 'check.sh' }
+    // 授权卡：不能显示成「本地终端」，要写清跑哪个 skill 的哪个脚本
+    expect(approvalView(d, 'run_skill_script', args)).toMatchObject({
+      terminalId: 'skill:code-quality',
+      command: expect.stringContaining('code-quality/scripts/check.sh'),
+    })
+    expect(describeCall('run_skill_script', args)).toContain('code-quality/scripts/check.sh')
+    // 点「允许」→ 授权必须落在 skill:<名字> 上（decideSkillScript 查的就是这个键），
+    // 否则「授权一次、这个 skill 其它脚本都不用再问」就是空话
+    commitGrant(d, 'sess_1', 'run_skill_script', args, 'user', undefined)
+    expect(d.grant).toHaveBeenCalledWith('sess_1', 'skill:code-quality', 'write')
+    expect(d.audit).toHaveBeenCalledWith(expect.objectContaining({
+      terminalId: 'skill:code-quality',
+      command: expect.stringContaining('check.sh'),
+    }))
+  })
+
   it('路径与类型校验：穿越 / 不在 scripts 下 / 不支持的扩展名都拒；正常脚本能跑并拿到参数', async () => {
     const root = mkdtempSync(join(tmpdir(), 'skill-scripts-'))
     try {

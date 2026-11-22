@@ -238,6 +238,9 @@ export class LocalSkills {
       const srcHash = await hashDir(from)
       const prev = st[dir]?.builtinHash
       if (!existsSync(join(to, 'SKILL.md'))) {
+        // 目录在但缺 SKILL.md（半截复制 / 用户删了文件）：先清掉残留再复制，
+        // 否则 cp 是合并语义，旧文件会留在新版本里
+        await rm(to, { recursive: true, force: true })
         await cp(from, to, { recursive: true })
         added++
         this.log?.('info', 'builtin skill installed', { dir })
@@ -269,6 +272,7 @@ export class LocalSkills {
 
   /** 把某个内置 skill 重置成随应用发布的版本（覆盖用户改过的内容）；不是内置的会报错 */
   async resetBuiltin(name: string, srcDir?: string): Promise<void> {
+    if (!isSkillName(name)) throw new Error(tr('skill 名不合法：{name}', { name }))
     if (!srcDir) throw new Error(tr('当前环境没有内置 skill 目录'))
     // dirOf 返回的是**完整路径**（<root>/<目录名>），这里不能再 join 一次
     const dst = await this.dirOf(name)

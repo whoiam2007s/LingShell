@@ -290,6 +290,8 @@ export function describeCall(toolName: string, args: unknown): string | undefine
   if (toolName === 'list_config') return tr('查看 Skill / 数据库连接 / 模型配置 / MCP 服务列表')
   if (toolName === 'get_app_setting') return tr('读取应用设置')
   if (toolName === 'set_app_setting') return tr('修改应用设置：{key}', { key: String(a.key ?? '') })
+  // 跑 skill 自带脚本：把具体是哪个脚本写出来，授权卡和执行记录都要看得见
+  if (toolName === 'run_skill_script') return tr('运行 Skill 脚本：{skill}/scripts/{script}', { skill: String(a.skill ?? ''), script: String(a.script ?? '') })
   return undefined
 }
 
@@ -347,6 +349,14 @@ export function approvalView(deps: Pick<TerminalToolDeps, 'resolveHostKey' | 'te
     return {
       terminalId: hosts[0]?.id ?? 'local', command: describeCall(toolName, args), ...(explain ? { explain } : {}),
       targets: hosts.map((h) => ({ terminalId: h.id, hostKey: h.id, label: h.label })),
+    }
+  }
+  if (toolName === 'run_skill_script') {
+    // 跑 skill 脚本也不针对终端：授权粒度是 skill 名，卡片上别显示成「本地终端」
+    const command = describeCall(toolName, args)
+    return {
+      terminalId: `skill:${String((args as { skill?: unknown })?.skill ?? '')}`, targets: undefined,
+      ...(command ? { command } : {}), ...(explain ? { explain } : {}),
     }
   }
   return {
@@ -732,6 +742,15 @@ export function decideFor(deps: TerminalToolDeps, sessionId: string, toolName: s
  * 与 MCP 版 McpBridge.guard 的后半段同语义。
  */
 export function commitGrant(deps: TerminalToolDeps, sessionId: string, toolName: string, args: unknown, reason?: string, rule?: string): void {
+  if (toolName === 'run_skill_script') {
+    // 跑 skill 脚本不针对终端：授权键是 skill:<名字>（与 decideSkillScript 查的键一致）。
+    // 不在这里落 grant，工具说明里「授权一次，这个 skill 的其它脚本都不用再问」就是空话；
+    // 不写 audit，用户批过什么也就查不到了。
+    const key = `skill:${String((args as { skill?: unknown })?.skill ?? '')}`
+    if (reason !== 'dangerous_command') deps.grant(sessionId, key, 'write')
+    deps.audit({ sessionId, terminalId: key, command: describeCall(toolName, args) ?? key, decision: `allow:${reason ?? 'user'}`, ...ruleOf(rule) })
+    return
+  }
   if (toolName === 'run_on_hosts') {
     // 只给当时确实要问的主机落读取授权（已放行的不动）
     const command = fleetCommandOf(args)
@@ -961,15 +980,21 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const ms = clampInt(args.timeout_sec, 5, 600, 60) * 1000
         const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : undefined
         const run = promisify(execFile)
+        // 超长输出截断时要说一声，别让模型以为脚本只输出了这么点
+        const cap = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}\n…已截断（原始 ${s.length} 字符）` : s)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        const audit = (decision: string) => deps.audit({ sessionId: sidOf(exec), terminalId: `skill:${skill}`, command: `${skill}/scripts/${script}`, decision })
         try {
           const r = await run(interp, [real, ...argv], { cwd, timeout: ms, maxBuffer: 8 * 1024 * 1024 }) as { stdout: string; stderr: string }
-          deps.audit({ sessionId: sidOf(exec), terminalId: `skill:${skill}`, command: `${skill}/scripts/${script}`, decision: 'exec_allowed' })
-          return `skill ${skill} 的 scripts/${script} 跑完了（退出码 0）\n\n${r.stdout.slice(0, 20_000)}${r.stderr ? `\n\n[stderr]\n${r.stderr.slice(0, 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          audit('exec_allowed')
+          return `skill ${skill} 的 scripts/${script} 跑完了（退出码 0）\n\n${cap(r.stdout, 20_000)}${r.stderr ? `\n\n[stderr]\n${cap(r.stderr, 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         } catch (e) {
           const err = e as { code?: number | string; stdout?: string; stderr?: string; message?: string; killed?: boolean }
-          if (err.killed) throw new Error(`skill ${skill} 的 scripts/${script} 超时（${ms / 1000} 秒）`, { cause: e })   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-          deps.audit({ sessionId: sidOf(exec), terminalId: `skill:${skill}`, command: `${skill}/scripts/${script}`, decision: 'exec_failed' })
-          return `skill ${skill} 的 scripts/${script} 失败（退出码 ${err.code ?? '?'}）\n\n${String(err.stdout ?? '').slice(0, 20_000)}${err.stderr ? `\n\n[stderr]\n${String(err.stderr).slice(0, 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          if (err.killed) {   // 超时也留一条记录（之前这条路径什么都不写）
+            audit('exec_timeout')
+            throw new Error(`skill ${skill} 的 scripts/${script} 超时（${ms / 1000} 秒）`, { cause: e })   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          }
+          audit('exec_failed')
+          return `skill ${skill} 的 scripts/${script} 失败（退出码 ${err.code ?? '?'}）\n\n${cap(String(err.stdout ?? ''), 20_000)}${err.stderr ? `\n\n[stderr]\n${cap(String(err.stderr), 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         }
       },
     },

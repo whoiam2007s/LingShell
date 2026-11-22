@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { Loader2 } from 'lucide-react'
 import { parseDelimited, previewMime, tr, type FsScope, type PreviewData } from '@lingshell/shared'
 import { client } from '../../client/index.js'
+import { ImageViewer } from '../../components/ImageViewer.js'
 import { Input } from '../../components/ui/Input.js'
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
@@ -57,6 +58,7 @@ function MarkdownImage({ src, alt, title, scope, basePath }: { src?: string; alt
 export function PreviewBody({ scope, path, text }: { scope: FsScope; path: string; text?: string }) {
   const [data, setData] = useState<PreviewData>()
   const [err, setErr] = useState('')
+  const [zoom, setZoom] = useState(false)   // 图片点开后用 ImageViewer（缩放 / 拖拽 / ← → 切换）
   // md / csv 的正文父组件已经读过（切编辑还要用），这里直接用，不再读一遍；图片 / PDF 没有正文，走 preview.read
   const textKind = text === undefined ? undefined
     : /\.(md|markdown)$/i.test(path) ? 'markdown' : /\.tsv$/i.test(path) ? 'tsv' : /\.csv$/i.test(path) ? 'csv' : undefined
@@ -76,9 +78,14 @@ export function PreviewBody({ scope, path, text }: { scope: FsScope; path: strin
   if (err) return <div className="p-5 text-[12.5px] text-[var(--color-danger)]">{tr('无法预览：{err}', { err })}</div>
   if (!data) return <div className="flex items-center gap-1.5 p-5 text-[12px] text-[var(--color-text-muted)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tr('读取中…')}</div>
   if (data.kind === 'image') {
-    return <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--color-bg-base)] p-3">
-      <img data-preview-image src={`data:${previewMime(data.name)};base64,${data.base64}`} alt={data.name} className="max-h-full max-w-full object-contain" />
-    </div>
+    const src = `data:${previewMime(data.name)};base64,${data.base64}`
+    return <>
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--color-bg-base)] p-3">
+        <img data-preview-image src={src} alt={data.name} title={tr('点击放大（可缩放 / 拖拽）')} onClick={() => setZoom(true)}
+          className="max-h-full max-w-full cursor-zoom-in object-contain" />
+      </div>
+      {zoom && <ImageViewer items={[{ kind: 'image', name: data.name, path, src }]} index={0} onClose={() => setZoom(false)} />}
+    </>
   }
   if (data.kind === 'markdown') return mdBlock(data.text ?? '')
   if (data.kind === 'pdf') return <PdfView data={data} />

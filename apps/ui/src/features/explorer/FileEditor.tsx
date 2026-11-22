@@ -452,7 +452,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
             {deniedMsg(err) && <button data-sudo-save onClick={() => { setErr(undefined); setSudoSave(true); onSudo!() }} className="shrink-0 rounded border border-[var(--color-danger)] px-2 py-0.5 text-[11px] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)]">{tr('用 sudo 保存')}</button>}
           </div>
         )}
-        {readOnly && PREVIEWABLE.test(path) ? (
+        {readOnly && PREVIEWABLE.test(path) && !loadErr ? (
           // 查看模式优先走预览器：md / csv 把已经读好的正文传下去（切编辑还要用），不再重复读一次；
           // 图片 / PDF 没读文本，由预览器自己读字节
           <PreviewBody scope={scope} path={path} text={binaryView ? undefined : text} />
