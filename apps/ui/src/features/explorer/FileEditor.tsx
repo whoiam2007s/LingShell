@@ -7,9 +7,10 @@ import { DiffView } from '../../components/DiffView.js'
 import { PreviewBody } from './FilePreview.js'
 import { ConfigExplainPanel } from './ConfigExplainPanel.js'
 import {
-  findSuspects, trailingSpaces, indentInfo, eolInfo, cleanText, findAll, replaceAll, lineCol, lineStart, indentLines, outdentLines, newlineKeepIndent,
+  findSuspects, trailingSpaces, indentInfo, cleanText, findAll, replaceAll, lineCol, lineStart, indentLines, outdentLines, newlineKeepIndent,
   toggleComment, commentToken, moveLines, duplicateLines, deleteLines, checkSyntax, SUSPECT_LABEL, type Sel, type EditResult, type SyntaxProblem,
 } from './editorOps.js'
+import { buildDiskText, discardedText, eolOf, isDirty, normalizeEolText, type Eol } from './fileBuffer.js'
 
 // 高亮颜色取主题变量（深浅主题都跟着变）；只改颜色不改粗细 / 斜体，否则字宽变了会和光标错位
 const TOK_CLS: Record<TokKind, string> = {
@@ -85,23 +86,14 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   const flip = (k: string, set: (f: (v: boolean) => boolean) => void) => set((v) => { localStorage.setItem(k, v ? '0' : '1'); return !v })
   useEffect(() => { if (!note) return; const t = setTimeout(() => setNote(''), 5000); return () => clearTimeout(t) }, [note])
 
-  // 换行符：默认按原文件（混用时按多的那种），状态栏可切换
-  const eol0 = useMemo(() => (base === undefined ? undefined : eolInfo(base)), [base])
-  const [eol, setEol] = useState<'lf' | 'crlf'>('lf')
-  useEffect(() => { if (eol0) setEol(eol0.crlf > eol0.lf ? 'crlf' : 'lf') }, [eol0])
-  // 原文件以换行结尾就保证保存后也以换行结尾（常见编辑器的 insert_final_newline）：
-  // 用户在最后那个空行里接着打字，textarea 里就没有末尾换行了，直接存会让 cat 输出和下一行粘连、部分配置解析出错
+  // 换行符：默认按原文件（混用时按多的那种），状态栏可切换。判据/落盘/脏标记全是纯函数，见 fileBuffer.ts
+  const eol0 = useMemo(() => eolOf(base), [base])
+  const [eol, setEol] = useState<Eol>('lf')
+  useEffect(() => { if (eol0) setEol(eol0.eol) }, [eol0])
   const finalNewline = base?.endsWith('\n') ?? false
-  const toDisk = (t: string) => {
-    const withNl = finalNewline && t !== '' && !t.endsWith('\n') ? `${t}\n` : t
-    return eol === 'crlf' ? withNl.replace(/\n/g, '\r\n') : withNl
-  }
-  // 比较时统一成 LF：只差换行符（CRLF↔LF）不算改动，否则打开就显示「有未保存改动」、切不回查看。
-  // 但状态栏手动切「换行符」本身就是要保存的改动：只比内容会把「LF 文件切成 CRLF」判成没改动，
-  // 保存按钮直接变灰（requestSave 还会提示「没有改动」），所以换行符选择也一起比。
-  const same = (a: string, b: string) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n')
-  const baseEol = eol0 ? (eol0.crlf > eol0.lf ? 'crlf' : 'lf') : 'lf'
-  const dirty = base !== undefined && (!same(toDisk(text), base) || eol !== baseEol)
+  const baseEol: Eol = eol0?.eol ?? 'lf'
+  const toDisk = (t: string) => buildDiskText(t, { finalNewline, eol })
+  const dirty = isDirty({ base, text, eol, baseEol })
 
   // 打开时读一次（父组件按 path 做 key 重挂载）；打不开的，切到 sudo 或验证完密码后再读。
   // 图片 / PDF 在只读查看时由预览器自己读字节，readText 对它们必报「二进制文件」，所以不下发；
@@ -111,7 +103,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
     if (base !== undefined || binaryView) return
     setLoadErr(undefined)
     client.fs.readText(scope, path)
-      .then((t) => { setBase(t); setText(t.replace(/\r\n/g, '\n')) })
+      .then((t) => { setBase(t); setText(normalizeEolText(t)) })
       .catch((e: unknown) => setLoadErr(fmtErr(e)))
   }, [sudo, retry, binaryView])
 
@@ -143,7 +135,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   // （否则切过 LF/CRLF 的话 dirty 仍为 true，关窗口时又弹一次「有未保存的改动」）
   const discard = () => {
     if (base === undefined) return
-    setText(base.replace(/\r\n/g, '\n')); setEol(baseEol)
+    setText(discardedText(base)); setEol(baseEol)
     setSaved(false); setErr(undefined); setSyntaxWarn(undefined)
   }
   const requestClose = () => (dirty ? setAsk('close') : onClose())
@@ -502,7 +494,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
             {suspects.length > 0 && <button data-ed-suspects title={`${[...new Set(suspects.map((s) => tr(SUSPECT_LABEL[s.kind])))].join(tr('、'))}\n${tr('点击跳到下一处')}`} onClick={nextSuspect} className={`${stat} text-[var(--color-danger)]`}>{tr('可疑字符 {n}', { n: suspects.length })}</button>}
             {trails.length > 0 && <span title={tr('行尾有多余的空格 / Tab（打开「显示空白字符」可以看到）')} className="shrink-0 px-1.5 text-[var(--color-warn)]">{tr('行尾空白 {n}', { n: trails.length })}</span>}
             {mixedIndent && <button data-ed-mixed title={tr('有 {tabs} 行用 Tab 缩进、{spaces} 行用空格缩进（YAML 不允许 Tab）\n点击跳到少数那种的下一行', { tabs: ind.tabs, spaces: ind.spaces })} onClick={nextMixed} className={`${stat} text-[var(--color-warn)]`}>{tr('缩进混用')}</button>}
-            {eol0 && eol0.crlf > 0 && eol0.lf > 0 && <span title={tr('原文件 {crlf} 行 CRLF、{lf} 行 LF；保存时统一成右边选的', { crlf: eol0.crlf, lf: eol0.lf })} className="shrink-0 px-1.5 text-[var(--color-warn)]">{tr('换行符混用')}</span>}
+            {eol0?.mixed && <span title={tr('原文件 {crlf} 行 CRLF、{lf} 行 LF；保存时统一成右边选的', { crlf: eol0.crlf, lf: eol0.lf })} className="shrink-0 px-1.5 text-[var(--color-warn)]">{tr('换行符混用')}</span>}
             {text.startsWith('\uFEFF') && <span title={tr('文件开头有 BOM（有些程序读配置会出错，可一键清理）')} className="shrink-0 px-1.5 text-[var(--color-danger)]">BOM</span>}
             <button data-ed-indent title={`${tr('按 Tab 键插入什么')}${yamlNoTab ? `\n${tr('YAML 不允许 Tab 缩进，这个文件按 Tab 键插入空格')}` : ''}\n${tr('点击切换：Tab → 空格 2 → 空格 4（会记住）')}`} onClick={nextUnit} className={stat}>{unit === '\t' ? 'Tab' : tr('空格 {n}', { n: unit.length })}{yamlNoTab ? tr('（YAML）') : ''}</button>
             <button data-ed-eol title={tr('换行符：点击切换（保存时按这里写）')} onClick={() => setEol((v) => (v === 'lf' ? 'crlf' : 'lf'))} className={stat}>{eol === 'crlf' ? 'CRLF' : 'LF'}</button>

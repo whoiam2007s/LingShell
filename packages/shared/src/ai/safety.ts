@@ -112,7 +112,7 @@ export interface ReviewPromptInput {
   hosts: { label: string; env?: string }[]
   context: string           // 会话最近上下文摘要
   rules: string             // 这些主机适用的分层规则（已截断）
-  knowledge: string[]       // 这些主机的知识卡标题
+  memory: string[]       // 这些主机的记忆卡标题
 }
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…（已截断）` : s)   // i18n-ignore 发给复核模型的提示词
 
@@ -131,7 +131,7 @@ export function buildReviewPrompt(i: ReviewPromptInput): { system: string; user:
     i.explain ? `执行方 AI 的说明：${clip(i.explain, 300)}` : '',   // i18n-ignore 发给复核模型的提示词
     i.rollback ? `执行方给的回滚命令：\n${clip(i.rollback, 600)}` : '',   // i18n-ignore 发给复核模型的提示词
     i.rules.trim() ? `适用的主机规则：\n${clip(i.rules.trim(), 2500)}` : '适用的主机规则：（无）',   // i18n-ignore 发给复核模型的提示词
-    i.knowledge.length ? `该主机的知识卡（标题）：${i.knowledge.slice(0, 20).join('；')}` : '',   // i18n-ignore 发给复核模型的提示词
+    i.memory.length ? `该主机的记忆卡（标题）：${i.memory.slice(0, 20).join('；')}` : '',   // i18n-ignore 发给复核模型的提示词
     i.context.trim() ? `会话最近的上下文（摘要）：\n${clip(i.context.trim(), 1500)}` : '',   // i18n-ignore 发给复核模型的提示词
   ]
   return { system, user: parts.filter(Boolean).join('\n\n') }

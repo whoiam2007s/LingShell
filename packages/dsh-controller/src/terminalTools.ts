@@ -10,8 +10,8 @@ import { promisify } from 'node:util'
 import { existsSync, realpathSync } from 'node:fs'
 import { extname, join, sep } from 'node:path'
 import { isSkillName } from './skillFile.js'
-import type { AuthLevel, HostEnv, FleetHost, FleetRow, KnowledgeScope, AiReviewResult } from '@lingshell/shared'
-import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, KNOWLEDGE_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
+import type { AuthLevel, HostEnv, FleetHost, FleetRow, MemoryScope, AiReviewResult } from '@lingshell/shared'
+import { resolveFleetTargets, summarizeFleet, clampInt, FLEET_MAX_HOSTS, FLEET_DEFAULT_TIMEOUT_SEC, FLEET_MAX_TIMEOUT_SEC, FLEET_DECISION, MEMORY_CATEGORIES, normalizeQuickProposal, runbookFromProposal, tr, tk, describeSettings, readSetting, specOf, validateSetting, APP_SETTING_SPECS, AI_CONFIG_KINDS, AI_CONFIG_KIND_LABEL, AI_CONFIG_KIND_HINT, isAiConfigKind, checkSkillInput, checkDbConnInput, checkModelProfileInput, checkMcpServerInput, summarizeEntity, maskedNote, type AiConfigKind, type SkillDraft, type ModelProfileDraft, type McpDraft } from '@lingshell/shared'
 import type { DbConn } from '@lingshell/shared'
 import { checkSubagentTask, parseToolList, type SubagentResult } from './subagent.js'
 import { unifiedDiff } from './diff.js'
@@ -46,9 +46,9 @@ export interface AuditRecord {
   review?: AiReviewResult                  // AI 复核结果（授权 / 执行记录里显示）
 }
 
-/** AI 提议知识卡的请求（工具已把 terminal_id 解析成 hostKey）；主进程补全归属、校验后发卡片给 UI */
-export interface KnowledgeProposalReq {
-  cardId?: string; scope?: KnowledgeScope; target?: string
+/** AI 提议记忆卡的请求（工具已把 terminal_id 解析成 hostKey）；主进程补全归属、校验后发卡片给 UI */
+export interface MemoryProposalReq {
+  cardId?: string; scope?: MemoryScope; target?: string
   title: string; content: string; category?: string
 }
 
@@ -104,12 +104,12 @@ export interface TerminalToolDeps {
   sessionIdOf?(agentId: string): string
   // 取走用户在授权卡上对这次调用的改动：deny=拒绝并附原因，command=改过的命令
   takeUserOverride?(callId: string): UserOverride | undefined
-  // 终端所在主机的分级与知识卡标题（无则空对象），随 list_terminals / create_terminal 输出给模型
-  hostMeta?(terminalId: string): { env?: HostEnv; knowledge?: string[] }
+  // 终端所在主机的分级与记忆卡标题（无则空对象），随 list_terminals / create_terminal 输出给模型
+  hostMeta?(terminalId: string): { env?: HostEnv; memory?: string[] }
   // 终端最近已知的当前目录（提示符上报 / 上次 pwd 的缓存，不触发探测）：随 list_terminals 和系统提示给模型，省掉只为「在哪个目录」跑 pwd
   terminalCwd?(terminalId: string): string | undefined
-  // AI 提议新增 / 更新知识卡：只发卡片给 UI，不落盘。归属不合法（临时主机、分组不存在、卡片不存在）时抛错
-  proposeKnowledge?(sessionId: string, req: KnowledgeProposalReq): { targetLabel: string }
+  // AI 提议新增 / 更新记忆卡：只发卡片给 UI，不落盘。归属不合法（临时主机、分组不存在、卡片不存在）时抛错
+  proposeMemory?(sessionId: string, req: MemoryProposalReq): { targetLabel: string }
   // 跨主机提问：可访问的已保存主机（只有名称 / id / 分组 / 环境）、并行执行、只读判定
   fleetHosts?(): FleetHost[]
   // 应用设置（白名单见 shared/ai/appSettings.ts）：返回 AppSettings 形状的对象（含 system）。
@@ -153,6 +153,13 @@ export interface TerminalToolDeps {
   // 终端里不出现包装命令、也不占用终端。cwd=true：先进入该终端的当前目录。
   // 返回 undefined = 这个终端没有旁路（如 WSL）；抛错 = 通道开不出来。两种情况都退回交互终端里静默执行（不回显、不进历史）
   sideExec?(terminalId: string, command: string, o: { timeoutMs: number; signal?: AbortSignal; cwd?: boolean }): Promise<{ output: string; exitCode: number } | undefined>
+  /**
+   * 后台任务生命周期回调（宿主侧观察者用，见 bgWatch.ts）：
+   * start_background 起好之后、check_background 查过之后各通知一次。
+   * 观察者据此盯住任务，跑完主动叫醒模型 —— 模型不必再自己 wait + check 循环。
+   */
+  onBgStarted?(info: { jobId: string; sessionId: string; terminalId: string; command: string }): void
+  onBgChecked?(info: { jobId: string; sessionId: string }): void
 }
 
 // 工具名 → 需要的权限档；不在表里的（list_terminals / create_terminal）无需授权
@@ -178,6 +185,28 @@ const NEEDS: Record<string, 'read' | 'write'> = {
   run_on_hosts: 'read',        // 只读命令（不是只读直接拒），每台目标主机都要读取授权（见 decideFleet）
   run_skill_script: 'write',   // 跑 skill 自带的脚本：按「skill 名」给授权（授权一次，本会话该 skill 的脚本都放行）
 }
+/**
+ * 自检测试用：工具 → 读 / 写归类（与 NEEDS 同一份数据，不另抄一份）。
+ * 漏一项的后果是**静默无授权**（网关拿不到档位就当放行），所以由 tables.test.ts 逐项断言。
+ */
+export const TOOL_NEEDS: Readonly<Record<string, 'read' | 'write'>> = NEEDS
+
+/**
+ * 可以并发执行的工具（白名单，只放「无共享可变状态」的）：
+ * 引擎默认把**没声明**的工具当独占，串行跑 —— 所以「派 3 个子代理」实际是 3 倍串行时间。
+ * 这里集中声明，别在 26 个定义里一个个加（加漏了是静默失效：不报错，只是不并行）。
+ *
+ * 独占的必须继续独占：同一终端的写操作（exec_in_terminal / write_file / send_terminal_input）、
+ * 以及内部已经并行的多主机工具（再并发会放大成 N×M）。
+ */
+const CONCURRENT_OK = new Set([
+  'spawn_subagent', 'read_file', 'list_terminals', 'read_terminal',
+  'get_app_setting', 'list_config', 'start_background', 'check_background',
+])
+
+/** 并发安全检查：可并发的工具里，只有「写档子代理」要继续独占（否则会同时弹多张授权卡） */
+export const concurrencySafeOf = (name: string) => (args: unknown): boolean =>
+  name === 'spawn_subagent' ? (args as { permission?: unknown } | null)?.permission !== 'write' : true
 /**
  * 改的是**应用自身配置**、不针对某台主机的工具：授权粒度用伪主机键，不是 local。
  * 用 local 会把「批准改个设置」记成「本地终端写入授权」——auto 档下顺带放宽了本地文件写入。
@@ -514,6 +543,52 @@ export function buildCheckBackgroundCommand(jobId: string, lines = 80, waitSec =
 
 export interface BackgroundStatus { job_id: string; status: 'running' | 'finished' | 'unknown'; exit_code?: number; tail: string }
 
+/**
+ * 宿主侧观察者用的**批量**状态查询：一次连上就把该终端所有在跑的任务一起问完。
+ * 与单条查询的区别：不等（观察者自己按节奏轮询）、一次多 job、不带日志尾巴（没必要）。
+ * 输出每行 `__LINGSHELL_JOBS__ <job_id> <status> [exit]`。
+ */
+export const JOBS_MARK = '__LINGSHELL_JOBS__'
+export function buildBgStatusCommand(jobIds: readonly string[]): string {
+  const ids = jobIds.filter(isJobId)
+  if (!ids.length) return 'true'
+  const body = ids.map((j) => {
+    const b = `${JOB_DIR}/${j}`
+    return `if [ -f ${b}.exit ]; then s="finished $(cat ${b}.exit)";`
+      + ` elif kill -0 "$(cat ${b}.pid 2>/dev/null)" 2>/dev/null; then s=running;`
+      + ` elif [ -f ${b}.exit ]; then s="finished $(cat ${b}.exit)";`
+      + ` else s=unknown; fi; echo "${JOBS_MARK} ${j} $s";`
+  }).join(' ')
+  return `( ${body} )`
+}
+
+/** 解析批量状态查询的输出；没认出来的 job 不出现在结果里（调用方按「本轮没查到」处理） */
+export function parseBgStatusOutput(output: string): Map<string, { status: BackgroundStatus['status']; exitCode?: number }> {
+  const out = new Map<string, { status: BackgroundStatus['status']; exitCode?: number }>()
+  const re = new RegExp(`${JOBS_MARK}\\s+([0-9a-f]{16})\\s+(running|finished|unknown)(?:\\s+(\\d+))?`, 'g')
+  for (const m of output.replace(/\r/g, '').matchAll(re)) {
+    const status = m[2] as BackgroundStatus['status']
+    out.set(m[1], status === 'finished' && m[3] !== undefined
+      ? { status, exitCode: Number(m[3]) }
+      : { status })
+  }
+  return out
+}
+
+/**
+ * 停掉一个后台任务：先 TERM，5 秒内没退再 KILL。
+ * 只用 pid 文件里的号，且先确认它还活着（进程早没了就什么也不做 —— pid 可能已被复用）。
+ */
+export function buildStopBackgroundCommand(jobId: string): string {
+  if (!isJobId(jobId)) throw new Error(tr('非法 job_id：{id}', { id: jobId }))
+  const b = `${JOB_DIR}/${jobId}`
+  return `( p=$(cat ${b}.pid 2>/dev/null);`
+    + ` if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then`
+    + ` kill "$p" 2>/dev/null; i=0; while kill -0 "$p" 2>/dev/null && [ $i -lt 10 ]; do sleep 0.5; i=$((i+1)); done;`
+    + ` kill -9 "$p" 2>/dev/null; echo "${JOBS_MARK} ${jobId} cancelled";`
+    + ` else echo "${JOBS_MARK} ${jobId} gone"; fi )`
+}
+
 export function parseCheckBackgroundOutput(jobId: string, output: string): BackgroundStatus {
   const text = output.replace(/\r/g, '')
   const m = new RegExp(`${STATUS_MARK} (running|finished|unknown)(?: (\\d+))?[^\\n]*\\n?`).exec(text)
@@ -596,7 +671,7 @@ function decideMulti(deps: TerminalToolDeps, sessionId: string, args: unknown): 
 
 /**
  * 一次工具调用「用到」了哪些主机（hostKey）：终端类工具 = 终端所在主机（未知终端不算）；
- * create_terminal = 要开的主机；run_on_hosts = 目标主机。知识库注入据此判断会话涉及哪些主机
+ * create_terminal = 要开的主机；run_on_hosts = 目标主机。记忆库注入据此判断会话涉及哪些主机
  */
 export function hostsTouchedBy(deps: Pick<TerminalToolDeps, 'terminals' | 'resolveHostKey' | 'fleetHosts'>, toolName: string, args: unknown): string[] {
   if (toolName === 'run_on_hosts') return fleetTargetsOf(deps, args).map((h) => h.id)
@@ -897,7 +972,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
   const defs = [
     {
       name: 'list_terminals',
-      description: '列出当前所有终端（id/标题/类型/状态）。该主机在知识库里有知识卡会带 knowledge（卡片标题；用到该主机后全文出现在系统提示「主机知识库」段），'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      description: '列出当前所有终端（id/标题/类型/状态）。该主机在记忆库里有记忆卡会带 memory（卡片标题；用到该主机后全文出现在系统提示「主机记忆库」段），'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '标了分级会带 env（prod=生产，写操作逐条确认），最近知道目录的会带 cwd（提示符上报 / 上次探测的缓存，可能不是最新；要精确再用 pwd）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + 'manualOnly=true 的是用户的仅手动终端（PowerShell / cmd 等），不能在里面执行命令。无需授权。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {},
@@ -1111,7 +1186,8 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       name: 'start_background',
       description: '在指定终端把一条命令放到后台运行并立即返回 job_id（输出写入日志文件）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + 'exec_in_terminal 有执行超时上限，凡是可能超时的任务（编译/安装/迁移/大文件下载/长时间脚本）都用本工具启动，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        + '然后用 check_background 按合理间隔（如每 15~60 秒，视任务时长）轮询状态与日志末尾，直到 finished；'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + '结果用 check_background 查（状态 + 日志末尾 80 行）；'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + '**起好就不用守着**：想给它一个镜头就调一次 check_background（wait_seconds ≤ 60）；还没结束就结束这一轮，如实说「在后台跑，完成会自动通知」——任务结束时会有人把结果推给你，不必自己 wait + check 循环。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '不要用 sleep 循环空等，也不要自己在 exec_in_terminal 里用 nohup / & / setsid 放后台。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '任务在独立通道里启动（不显示在用户终端里），工作目录同该终端的当前目录，但不继承终端里临时 export 的变量 / 激活的虚拟环境，需要时写进命令（如 source venv/bin/activate && …）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '需该主机的写入授权；危险命令会二次确认。务必填 explain（给用户看的命令说明）。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1132,6 +1208,8 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           decision: edited ? 'background_started:edited' : 'background_started', exitCode: r.exitCode, ...ruleOf(o?.rule),
         })
         if (pid === undefined) throw new Error(tr('后台任务启动失败（exit {code}）：{output}', { code: r.exitCode, output: r.output }))
+        // 交给宿主侧观察者：跑完由它叫醒模型，模型不用自己轮询（见 bgWatch.ts）
+        deps.onBgStarted?.({ jobId, sessionId: sidOf(exec), terminalId: args.terminal_id, command })
         return JSON.stringify({
           ...(edited ? { note: '用户在授权时修改了命令，实际执行的是 executed_command', executed_command: edited } : {}),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
           job_id: jobId, pid, log_file: `${JOB_DIR}/${jobId}.log`,
@@ -1142,7 +1220,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       name: 'check_background',
       description: '查询 start_background 启动的后台任务：status=running/finished/unknown，finished 时带 exit_code，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '并返回日志末尾 80 行。会先在远端等任务结束最多 wait_seconds 秒（默认 30，任务结束立即返回），'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        + '所以直接连续调用即可，无需自己间隔；预计很久的任务可把 wait_seconds 调大。需该主机的读取授权。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + '**只等一次**：没等到就别连珠炮式轮询（每次都是完整请求，历史里全是没有信息量的记录），结束这一轮说明「在后台跑，完成会自动通知」即可。需该主机的读取授权。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '须在启动该任务的同一主机的终端上查询。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
         terminal_id: str(`${TID_DESC}；要与启动时同一主机`), job_id: str('start_background 返回的 job_id'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1158,6 +1236,8 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const waitSec = Math.min(Number.isFinite(Number(args.wait_seconds)) ? Number(args.wait_seconds) : 30, cap)
         const r = await bgRun(args.terminal_id, buildCheckBackgroundCommand(args.job_id, 80, waitSec), exec?.signal, timeoutMs)
         deps.audit({ sessionId: sidOf(exec), terminalId: args.terminal_id, command: `check_background ${args.job_id}`, decision: 'read_allowed' })
+        // 记下「模型刚自己查过」：观察者据此去重，避免同一条结果再通知一遍
+        deps.onBgChecked?.({ jobId: args.job_id, sessionId: sidOf(exec) })
         return JSON.stringify(parseCheckBackgroundOutput(args.job_id, r.output))
       },
     },
@@ -1199,25 +1279,25 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
       },
     },
     {
-      name: 'propose_host_knowledge',
-      description: '提议把一条【长期有效】的知识保存到知识库（新增一张知识卡，或带 card_id 更新已有卡片）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      name: 'propose_host_memory',
+      description: '提议把一条【长期有效】的知识保存到记忆库（新增一张记忆卡，或带 card_id 更新已有卡片）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '排障中发现服务部署路径、配置/日志位置、启停/重启方式、踩过的坑时主动调用。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '不会直接写入：用户在对话里看到卡片预览、可修改，点「保存」才写入。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        + '一事一卡，标题简短；只记稳定、可复用、非敏感的事实，绝不包含密码、密钥、token、连接串；系统提示「主机知识库」里已有的不要重复新建，要更正就带 card_id 更新。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        + '一事一卡，标题简短；只记稳定、可复用、非敏感的事实，绝不包含密码、密钥、token、连接串；系统提示「主机记忆库」里已有的不要重复新建，要更正就带 card_id 更新。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + 'scope=host（缺省）时用 terminal_id（该终端所在主机）或 host_id 指定主机；scope=group 给 group（分组名）；scope=global 对所有主机通用。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       parameters: {
         scope: optStr('host（缺省）/ group / global'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         terminal_id: optStr('scope=host：终端 id（取其所在主机），与 host_id 二选一'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         host_id: optStr('scope=host：已保存主机 id（本机为 local），与 terminal_id 二选一'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         group: optStr('scope=group：分组名'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        card_id: optStr('更新已有卡片时填它的 id（系统提示「主机知识库」里方括号中的那个）；新建不填'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        card_id: optStr('更新已有卡片时填它的 id（系统提示「主机记忆库」里方括号中的那个）；新建不填'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         title: str('卡片标题，简短（如「nginx 日志位置」）'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         content: str('卡片内容（Markdown），简洁、可直接照做'),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-        category: optStr(`分类：${KNOWLEDGE_CATEGORIES.map((c) => `${c.id}=${c.label}`).join(' / ')}（缺省 other）`),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+        category: optStr(`分类：${MEMORY_CATEGORIES.map((c) => `${c.id}=${c.label}`).join(' / ')}（缺省 other）`),   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
       output: textOut,
       async execute(args: any, exec: any) {
-        if (!deps.proposeKnowledge) throw new Error(tr('知识库不可用'))
+        if (!deps.proposeMemory) throw new Error(tr('记忆库不可用'))
         const title = String(args.title ?? '').trim()
         const content = String(args.content ?? '').trim()
         if (!title || !content) throw new Error(tr('title 与 content 不能为空'))
@@ -1236,13 +1316,13 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         }
         const cardId = typeof args.card_id === 'string' && args.card_id.trim() ? args.card_id.trim() : undefined
         if (!scope && !cardId) throw new Error(tr('需指定归属：terminal_id / host_id（主机）、scope=group + group、或 scope=global'))
-        const { targetLabel } = deps.proposeKnowledge(sidOf(exec), {
+        const { targetLabel } = deps.proposeMemory(sidOf(exec), {
           ...(cardId ? { cardId } : {}), ...(scope ? { scope, target: target ?? '' } : {}), title, content, category: args.category,
         })
         return JSON.stringify({ ok: true, target: targetLabel, status: '已提交给用户确认，保存与否由用户决定，无需等待或重复提议' })   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       },
     },
-    // 快速命令 / 运维手册提议：只校验规整、不落盘。对话里按工具入参出可编辑预览卡，用户点「保存」才写入（同知识卡）
+    // 快速命令 / 运维手册提议：只校验规整、不落盘。对话里按工具入参出可编辑预览卡，用户点「保存」才写入（同记忆卡）
     {
       name: 'propose_quick_commands',
       description: '提议把一组命令存成终端底部的「快速命令」（一个命令组 + 若干条按钮）。用户说「把刚才这套检查存成快速命令」时调用。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -1633,5 +1713,8 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
   // 每个工具体外包一层脱敏：返回值就是进模型的内容；拒绝时取走网关记下的 override
   // 密钥保险箱的明文回写不受「发给 AI 前脱敏」开关影响，始终做
   const mask = deps.secretVault ? (s: string) => deps.secretVault!.mask(s) : undefined
-  return defs.map((d) => withRedaction(d, () => deps.aiSecrets?.(), (exec) => deps.takeUserOverride?.(String(exec?.callId ?? '')), mask))
+  // 可并发的工具在这里统一声明（见 CONCURRENT_OK）；包装层是 {...def}，字段不会丢
+  return defs.map((d) => withRedaction(
+    CONCURRENT_OK.has(d.name) ? { ...d, isConcurrencySafe: concurrencySafeOf(d.name) } : d,
+    () => deps.aiSecrets?.(), (exec) => deps.takeUserOverride?.(String(exec?.callId ?? '')), mask))
 }

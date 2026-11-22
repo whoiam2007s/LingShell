@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { Download, X } from 'lucide-react'
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { buildSessionFlow, tr, type FlowEdgeKind, type FlowInput, type FlowNode, type FlowNodeKind, type SubagentView } from '@lingshell/shared'
+import { buildSessionFlow, tr, type FlowInput, type FlowNode, type FlowNodeKind, type SubagentView } from '@lingshell/shared'
+// 尺寸 / 配色 / 图标与「导出图片」共用一份（见 flowExport.ts），避免界面和导出各写一套走样
+import { EDGE_COLOR, FLOW_ICON as ICON, NODE_H as H, NODE_W as W, buildFlowSvg, downloadPng, downloadSvg, type ExportEdge, type ExportNode } from './flowExport.js'
 
 // 会话流程图：每轮三段（提问+chips → 工具/文字 → 产物），横向按轮推进，阶段内竖向多节点。
 // 节点只放「图标 + 短名」，完整信息在悬停与点击详情里；连线不放文字，只用颜色。
@@ -10,18 +12,7 @@ import { buildSessionFlow, tr, type FlowEdgeKind, type FlowInput, type FlowNode,
 const WINDOW = 8
 const STAGE_X = [0, 176, 392]
 const TURN_GAP = 540
-const W: Record<FlowNodeKind, number> = { ask: 148, chip: 148, tool: 118, text: 104, file: 124, auth: 96 }
-const H: Record<FlowNodeKind, number> = { ask: 30, chip: 22, tool: 26, text: 26, file: 24, auth: 24 }
 const VGAP = 14
-
-const EDGE_COLOR: Record<FlowEdgeKind, string> = {
-  ask: '#1f6feb',
-  write: '#d29922',
-  weak: '#484f58',
-  chip: '#a371f7',
-  next: '#3fb950',
-}
-const ICON: Record<FlowNodeKind, string> = { ask: '🧑', chip: '🔖', tool: '⚡', text: '💬', file: '📄', auth: '🛡' }
 
 type D = FlowNode & { dim?: boolean; sel?: boolean }
 
@@ -65,6 +56,9 @@ export function SessionFlowDrawer({ items, subagents, title, onClose }: { items:
   const [from, setFrom] = useState<number | undefined>(undefined)   // undefined = 贴到最后几轮
   const flow = useMemo(() => buildSessionFlow(items, { size: WINDOW, from }), [items, from])
   const selNode = flow.nodes.find((n) => n.id === sel)
+  // 导出文件名：会话标题（去非法字符）+ 当前这一组的轮次范围
+  const exportName = `会话流程图-${(title ?? 'session').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40)}-${flow.from + 1}-${flow.from + flow.turns}`   // i18n-ignore 导出文件名，不进字典
+  const svgOf = () => buildFlowSvg(graph.nodes as unknown as ExportNode[], graph.edges as unknown as ExportEdge[])
   // 点中的是子代理节点时，按 task / 标题匹配到它的执行轨迹（数据源与「导出会话」里的子代理段一致）
   const sub = useMemo(() => {
     if (!selNode || selNode.label !== 'agent' || !subagents?.length) return undefined
@@ -134,7 +128,18 @@ export function SessionFlowDrawer({ items, subagents, title, onClose }: { items:
           <span className="truncate text-[10.5px] text-[var(--color-text-muted)]">
             {title ?? ''} · {tr('共 {n} 轮 · 每屏 {m} 轮', { n: flow.totalTurns, m: WINDOW })}{flow.folded ? tr(' · 折叠 {n} 个', { n: flow.folded }) : ''}
           </span>
-          <button onClick={onClose} title={tr('关闭')} className="ml-auto flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]">
+          {/* 导出：给一张能贴工单 / 发同事的图（当前这一组轮次） */}
+          <button data-flow-export="svg" onClick={() => downloadSvg(`${exportName}.svg`, svgOf())}
+            title={tr('导出为 SVG（矢量，文字可选中）')}
+            className="ml-auto flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">
+            <Download className="h-3 w-3" />SVG
+          </button>
+          <button data-flow-export="png" onClick={() => { void downloadPng(`${exportName}.png`, svgOf()).catch(() => {}) }}
+            title={tr('导出为 PNG（2 倍分辨率）')}
+            className="flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]">
+            <Download className="h-3 w-3" />PNG
+          </button>
+          <button onClick={onClose} title={tr('关闭')} className="flex h-5 w-5 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>

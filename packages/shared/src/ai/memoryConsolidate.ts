@@ -1,8 +1,8 @@
 // i18n-ignore-file 本文件的中文都是给模型看的提示词与校验说明，不进界面翻译
-import { KNOWLEDGE_CONTENT_MAX, KNOWLEDGE_TITLE_MAX, type KnowledgeCard, type KnowledgeCategory, type KnowledgeScope } from './knowledge.js'
+import { MEMORY_CONTENT_MAX, MEMORY_TITLE_MAX, type MemoryCard, type MemoryCategory, type MemoryScope } from './memory.js'
 
 /**
- * 知识库梳理：让模型对现有卡片做合并 / 更新 / 删除，产出**变更清单**交给用户勾选。
+ * 记忆库梳理：让模型对现有卡片做合并 / 更新 / 删除，产出**变更清单**交给用户勾选。
  *
  * 明确不允许「凭空创造」：只有 merge（多张旧卡合成一张）/ update（改写一张）/ drop（删一张）。
  * merge 产生的新内容必须来自被合并的旧卡，不会引入模型自己编的知识。
@@ -17,8 +17,8 @@ export interface ConsolidateAction {
   title?: string
   /** merge / update 的新内容（drop 不用） */
   content?: string
-  category?: KnowledgeCategory
-  scope?: KnowledgeScope
+  category?: MemoryCategory
+  scope?: MemoryScope
   target?: string
   /** 这条改了什么（给用户看的一句话） */
   reason: string
@@ -34,8 +34,8 @@ export interface ConsolidatePlan {
   actions: ConsolidateAction[]
 }
 
-const SCOPES: readonly KnowledgeScope[] = ['host', 'group', 'global']
-const CATEGORIES: readonly KnowledgeCategory[] = ['deploy', 'logs', 'ops', 'issue', 'other']
+const SCOPES: readonly MemoryScope[] = ['host', 'group', 'global']
+const CATEGORIES: readonly MemoryCategory[] = ['deploy', 'logs', 'ops', 'issue', 'other']
 
 /** 从模型回复里抠出 JSON（容忍 ```json 包裹和前后废话） */
 export function extractJson(text: string): unknown {
@@ -70,8 +70,8 @@ export function parseConsolidateReply(text: string): { actions?: ConsolidateActi
       ids,
       ...(typeof a.title === 'string' ? { title: a.title } : {}),
       ...(typeof a.content === 'string' ? { content: a.content } : {}),
-      ...(typeof a.category === 'string' && CATEGORIES.includes(a.category as KnowledgeCategory) ? { category: a.category as KnowledgeCategory } : {}),
-      ...(typeof a.scope === 'string' && SCOPES.includes(a.scope as KnowledgeScope) ? { scope: a.scope as KnowledgeScope } : {}),
+      ...(typeof a.category === 'string' && CATEGORIES.includes(a.category as MemoryCategory) ? { category: a.category as MemoryCategory } : {}),
+      ...(typeof a.scope === 'string' && SCOPES.includes(a.scope as MemoryScope) ? { scope: a.scope as MemoryScope } : {}),
       ...(typeof a.target === 'string' ? { target: a.target } : {}),
       reason: typeof a.reason === 'string' ? a.reason.slice(0, 300) : '',
     })
@@ -82,7 +82,7 @@ export function parseConsolidateReply(text: string): { actions?: ConsolidateActi
 }
 
 /** 校验动作清单：id 存在、类型匹配、长度不超限；返回错误列表（空=全部合法） */
-export function validateConsolidateActions(actions: ConsolidateAction[], cards: KnowledgeCard[]): string[] {
+export function validateConsolidateActions(actions: ConsolidateAction[], cards: MemoryCard[]): string[] {
   const byId = new Map(cards.map((c) => [c.id, c]))
   const errs: string[] = []
   const used = new Set<string>()
@@ -97,9 +97,9 @@ export function validateConsolidateActions(actions: ConsolidateAction[], cards: 
     }
     if (a.kind !== 'drop') {
       if (!a.title?.trim()) errs.push(`${label}：缺标题`)
-      else if (a.title.length > KNOWLEDGE_TITLE_MAX) errs.push(`${label}：标题超过 ${KNOWLEDGE_TITLE_MAX} 字`)
+      else if (a.title.length > MEMORY_TITLE_MAX) errs.push(`${label}：标题超过 ${MEMORY_TITLE_MAX} 字`)
       if (!a.content?.trim()) errs.push(`${label}：缺内容`)
-      else if (a.content.length > KNOWLEDGE_CONTENT_MAX) errs.push(`${label}：内容超过 ${KNOWLEDGE_CONTENT_MAX} 字`)
+      else if (a.content.length > MEMORY_CONTENT_MAX) errs.push(`${label}：内容超过 ${MEMORY_CONTENT_MAX} 字`)
       if (a.scope && !SCOPES.includes(a.scope)) errs.push(`${label}：scope 不合法`)
       if (a.category && !CATEGORIES.includes(a.category)) errs.push(`${label}：category 不合法`)
     }
@@ -115,9 +115,9 @@ export function countAfter(actions: ConsolidateAction[], before: number): number
 }
 
 /** 给模型看的梳理提示词（要求结构化 JSON） */
-export function buildConsolidatePrompt(cards: KnowledgeCard[], hostLabel: (key: string) => string): { system: string; user: string } {
+export function buildConsolidatePrompt(cards: MemoryCard[], hostLabel: (key: string) => string): { system: string; user: string } {
   const system = [
-    '你是知识库整理助手。用户有一批运维知识卡（主机部署、日志位置、启停方式、已知问题）。',
+    '你是记忆库整理助手。用户有一批运维记忆卡（主机部署、日志位置、启停方式、已知问题）。',
     '你的任务：找出重复、重叠、过时、可以合并的卡片，输出**变更清单**。',
     '',
     '硬规则：',
@@ -125,7 +125,7 @@ export function buildConsolidatePrompt(cards: KnowledgeCard[], hostLabel: (key: 
     '2. **绝不能凭空新增知识**——合并后的内容必须来自被合并的卡片，不能编造原文没有的事实；',
     '3. 宁可少整理，不要把不同主题的卡硬合到一起；',
     '4. 每张卡最多被一个动作引用；',
-    `5. 标题不超过 ${KNOWLEDGE_TITLE_MAX} 字，内容不超过 ${KNOWLEDGE_CONTENT_MAX} 字。`,
+    `5. 标题不超过 ${MEMORY_TITLE_MAX} 字，内容不超过 ${MEMORY_CONTENT_MAX} 字。`,
     '',
     '只输出 JSON，不要解释：',
     '{"actions":[{"kind":"merge","ids":["id1","id2"],"title":"...","content":"...","category":"ops","scope":"host","target":"hostKey","reason":"两张卡都在讲 nginx 日志位置，合并"}]}',

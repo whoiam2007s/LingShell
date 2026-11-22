@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ClipboardList, Settings2, ArrowLeft } from 'lucide-react'
 import { templateVars, fillTemplate, tr, type PromptTemplate } from '@lingshell/shared'
 import { client } from '../../client/index.js'
+import { Select } from '../../components/ui/Select.js'
 
 // 输入框旁的「常用任务」：选模板 → 有占位符先填 → 填进输入框（不自动发送，留给用户确认/补充）
 // preset：命令面板选中的模板（n 每次递增，同一模板再选也会触发）→ 无占位符直接填入，有则打开填参数
@@ -11,7 +12,25 @@ export function TemplatePicker({ disabled, onPick, onManage, preset, hideTrigger
   const [list, setList] = useState<PromptTemplate[]>([])
   const [cur, setCur] = useState<PromptTemplate | null>(null)
   const [values, setValues] = useState<Record<string, string>>({})
+  // 主机类型参数要下拉选：hosts = 已保存主机；terms = 已打开终端（有终端就带 term_xxx，模型能直接用）
+  const [hosts, setHosts] = useState<{ id: string; name: string; group?: string; env?: string }[] | null>(null)
+  const [terms, setTerms] = useState<{ id: string; hostId?: string }[]>([])
   const ref = useRef<HTMLDivElement>(null)
+
+  // 参数类型：模板里显式声明优先；老模板（没有 params）按变量名兜底认「主机 / host」
+  const typeOf = (t: PromptTemplate, v: string): 'text' | 'host' =>
+    t.params?.find((p) => p.name === v)?.type ?? (/^(主机|host|服务器)$/i.test(v.trim()) ? 'host' : 'text')
+  // 选中主机后填「名称（term_xxx）」：模型能直接操作，不用猜是哪台；没开终端就带 hostId
+  const hostValue = (h: { id: string; name: string }) => {
+    const term = terms.find((x) => x.hostId === h.id)
+    return `${h.name}（${term ? term.id : `hostId: ${h.id}`}）`   // i18n-ignore 全角括号是提示词排版，不是界面文案
+  }
+  const needHost = !!cur && templateVars(cur.prompt).some((v) => typeOf(cur, v) === 'host')
+  useEffect(() => {
+    if (!needHost) return
+    client.hosts.list().then((l) => setHosts(l as never)).catch(() => setHosts([]))
+    client.terminal.list().then((l) => setTerms(l as never)).catch(() => setTerms([]))
+  }, [needHost, cur?.id])
 
   useEffect(() => {
     if (!open) return
@@ -47,12 +66,26 @@ export function TemplatePicker({ disabled, onPick, onManage, preset, hideTrigger
           {cur ? (
             <form className="space-y-2 p-1.5" onSubmit={(e) => { e.preventDefault(); done(fillTemplate(cur.prompt, values)) }}>
               <button type="button" onClick={() => setCur(null)} className="flex items-center gap-1 text-[11.5px] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]"><ArrowLeft className="h-3 w-3" />{cur.name}</button>
-              {vars.map((v, i) => (
-                <label key={v} className="block text-[11.5px] text-[var(--color-text-secondary)]">{v}
-                  <input autoFocus={i === 0} value={values[v] ?? ''} onChange={(e) => setValues({ ...values, [v]: e.target.value })}
-                    className="mt-1 w-full rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-2 py-1 text-[12.5px] text-[var(--color-text-primary)] outline-none focus:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]" />
-                </label>
-              ))}
+              {vars.map((v, i) => {
+                const isHost = cur ? typeOf(cur, v) === 'host' : false
+                const cls = 'mt-1 w-full rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-2 py-1 text-[12.5px] text-[var(--color-text-primary)] outline-none focus:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'
+                return (
+                  <label key={v} className="block text-[11.5px] text-[var(--color-text-secondary)]">{v}
+                    {isHost ? (
+                      <Select value={values[v] ?? ''} onValueChange={(val) => setValues({ ...values, [v]: val })} className="mt-1 w-full">
+                        <option value="">{hosts === null ? tr('加载中…') : hosts.length === 0 ? tr('还没有保存的主机（可直接手填）') : tr('选择主机…')}</option>
+                        {hosts?.map((h) => (
+                          <option key={h.id} value={hostValue(h)}>
+                            {h.name}{h.group ? ` · ${h.group}` : ''}{h.env === 'prod' ? tr(' · 生产') : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <input autoFocus={i === 0} value={values[v] ?? ''} onChange={(e) => setValues({ ...values, [v]: e.target.value })} className={cls} />
+                    )}
+                  </label>
+                )
+              })}
               <button type="submit" className="w-full rounded-md bg-[var(--color-accent)] py-1 text-[12px] font-medium text-[var(--color-bg-base)] hover:bg-[var(--color-accent-dim)]">{tr('填入输入框')}</button>
             </form>
           ) : (

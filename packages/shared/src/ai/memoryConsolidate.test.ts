@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { buildConsolidatePrompt, countAfter, parseConsolidateReply, shouldConsolidate, validateConsolidateActions, type ConsolidateAction } from './knowledgeConsolidate.js'
-import type { KnowledgeCard } from './knowledge.js'
+import { buildConsolidatePrompt, countAfter, parseConsolidateReply, shouldConsolidate, validateConsolidateActions, type ConsolidateAction } from './memoryConsolidate.js'
+import type { MemoryCard } from './memory.js'
 
-const card = (id: string, title = id): KnowledgeCard => ({
+const card = (id: string, title = id): MemoryCard => ({
   id, scope: 'host', target: 'h1', category: 'ops', source: 'ai', title, content: `${id} 的内容`, updatedAt: '2026-11-01T00:00:00.000Z',
 })
 
 const cards = [card('a'), card('b'), card('c')]
 
-describe('知识库梳理', () => {
+describe('记忆库梳理', () => {
   it('解析模型回复：容忍 ```json 包裹与前后废话', () => {
     const r1 = parseConsolidateReply('好的，结果如下：\n{"actions":[{"kind":"merge","ids":["a","b"],"title":"合并","content":"内容","reason":"重复"}]}')
     expect(r1.actions?.length).toBe(1)

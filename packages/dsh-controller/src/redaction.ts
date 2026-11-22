@@ -11,7 +11,7 @@ export const REDACT_GUIDANCE = `脱敏：工具结果里的密码、私钥、API
   + '排查认证失败这类问题时说明你看不到密码，让用户自行核对。'   // i18n-ignore 模型提示词
 
 // 入参会落到文件/命令里的工具：带占位符就拒（防止把配置里的密码改成 [已脱敏]）
-export const GUARDED_TOOLS = new Set(['exec_in_terminal', 'exec_on_terminals', 'start_background', 'write_file', 'propose_plan', 'propose_host_knowledge', 'run_on_hosts', 'propose_quick_commands', 'propose_runbook'])
+export const GUARDED_TOOLS = new Set(['exec_in_terminal', 'exec_on_terminals', 'start_background', 'write_file', 'propose_plan', 'propose_host_memory', 'run_on_hosts', 'propose_quick_commands', 'propose_runbook'])
 
 export function placeholderError(toolName: string, args: unknown): string | undefined {
   if (!GUARDED_TOOLS.has(toolName)) return undefined

@@ -20,5 +20,5 @@ export { AutoReplyStore, DEFAULT_AUTO_REPLIES, type ResolvedAutoReply } from './
 export { UsageStore } from './UsageStore.js'
 export { loadSessions, previewSessions, importSessions, SOURCE_LABEL, type SessionLoad } from './sessionImport/index.js'
 export { atomicWrite, readJson, writeJson } from './jsonFile.js'
-export { KnowledgeStore, legacyCardId } from './KnowledgeStore.js'
+export { MemoryStore, legacyCardId } from './MemoryStore.js'
 export { SecretStore, type PersistedSecret } from './SecretStore.js'

@@ -5,7 +5,7 @@ import { tk } from '@lingshell/shared'
 import type { DshEvent } from './relay.js'
 
 // ── 分层规则：按会话现求值（本会话用到过的主机 + 会话工作目录），没有规则时段落消失 ──
-// 规则是用户内容，可能含 `{{`，关掉变量插值原样输出。order 898：紧挨知识库段之前
+// 规则是用户内容，可能含 `{{`，关掉变量插值原样输出。order 898：紧挨记忆库段之前
 export const RULES_SECTION = 'lingshell:rules'
 export function installRulesSection(ctx: any, textFor: (agentId: string) => string): () => void {
   return ctx.systemPrompt.section({ name: RULES_SECTION, order: 898, interpolate: false, text: (c: any) => textFor(String(c?.agent?.id ?? '')) })

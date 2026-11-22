@@ -3,8 +3,10 @@
 // 提示词模板。prompt 里可含占位符 {{名字}}，发送前由用户填写
 import { tk, tr } from '../i18n/i18n.js'
 
-export interface PromptTemplate { id: string; name: string; prompt: string }
-export interface TemplateInput { id?: string; name: string; prompt: string }
+/** 模板参数的渲染类型：host = 从已保存主机里下拉选（别再让人手填主机名 / IP） */
+export interface TemplateParam { name: string; type: 'text' | 'host' }
+export interface PromptTemplate { id: string; name: string; prompt: string; params?: TemplateParam[] }
+export interface TemplateInput { id?: string; name: string; prompt: string; params?: TemplateParam[] }
 
 // 巡检时间：每 N 小时 / 每天 HH:mm（本地时间）
 export type ScheduleWhen = { kind: 'interval'; hours: number } | { kind: 'daily'; time: string }

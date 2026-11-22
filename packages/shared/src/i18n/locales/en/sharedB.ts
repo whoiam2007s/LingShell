@@ -68,7 +68,7 @@ export const sharedB: Record<string, string> = {
   '搜主机 / 会话 / 手册 / 快速命令 / 模板 / 设置 / 动作。前缀 > 动作、@ 主机、# 会话、? 帮助。': 'Search hosts / sessions / runbooks / quick commands / templates / settings / actions. Prefixes: > actions, @ hosts, # sessions, ? help.',
   '命令面板（备用）': 'Command palette (alternate)',
   '同命令面板。终端里 Ctrl+K 留给 shell 删到行尾，所以只在焦点不在终端时生效。': 'Same as Command palette. In the terminal Ctrl+K is left to the shell (delete to end of line), so it only works when the terminal does not have focus.',
-  '使用帮助': 'Help',
+
   '打开使用帮助（标题栏 ? 按钮同效）。终端里 F1 留给 mc / htop 等程序。': 'Open Help (same as the ? button in the title bar). In the terminal F1 is left to programs like mc / htop.',
   '设置': 'Settings',
   '打开设置。同 VS Code。': 'Open Settings. Same as VS Code.',
@@ -94,7 +94,7 @@ export const sharedB: Record<string, string> = {
   '对话区里跳到下一条「我的提问」。': 'Jump to your next question in the chat.',
   '会话内搜索': 'Find in chat',
   '焦点在对话区时打开会话内搜索条：高亮命中，Enter / Shift+Enter 下一个 / 上一个，Esc 关闭。终端里 Ctrl+F 照常给 shell。': 'Open the find bar when the chat has focus: highlights matches, Enter / Shift+Enter for next / previous, Esc to close. In the terminal Ctrl+F goes to the shell as usual.',
-  '未设置': 'Not set',
+
   '无法识别的按键': 'Unrecognized key',
   '需要带 Ctrl / Alt 等修饰键，或使用 F1–F12': 'Needs a modifier such as Ctrl / Alt, or use F1–F12',
   // localShell.ts
@@ -142,7 +142,7 @@ export const sharedB: Record<string, string> = {
   '未设置单价': 'No price set',
   // palette.ts（命令面板分组）
   '动作': 'Actions',
-  '主机': 'Host',
+
   '历史会话': 'Past sessions',
   '运维手册': 'Runbooks',
   '快速命令': 'Quick commands',
@@ -250,7 +250,7 @@ export const sharedB: Record<string, string> = {
   '你拒绝': 'Denied by you',
   '删除文件': 'Delete file',
   '重命名': 'Rename',
-  '更多': 'More',
+
   '查看': 'View',
   '会话流程图': 'Session flow',
   '{n} 轮 · {m} 个节点': '{n} turns · {m} nodes',
@@ -282,7 +282,7 @@ export const sharedB: Record<string, string> = {
   '点击放大（可缩放 / 拖拽）': 'Click to enlarge (zoom / drag)',
   '这是目录，用资源管理器打开：{p}': 'This is a folder — open it in the explorer: {p}',
   '本地没有这个文件（远端主机上的文件请在终端里查看）：{p}': 'No such local file (files on remote hosts: open them in the terminal): {p}',
-  '编辑': 'Edit',
+
   '查看文件': 'View file',
   '编辑文件': 'Edit file',
   '点击查看文件': 'Click to view the file',
@@ -292,7 +292,7 @@ export const sharedB: Record<string, string> = {
   '切回查看前，本次编辑的内容需要处理。': 'Before switching back to view, deal with the edits you made.',
   '不保存': "Don't save",
   '保存并继续': 'Save and continue',
-  '取消': 'Cancel',
+
   '刷新同步：重置为当前版本内置的内容（会覆盖你的修改）': 'Refresh: reset to the built-in version (overwrites your edits)',
   '把「{name}」重置为随应用内置的版本？你改过的内容会丢失。': 'Reset "{name}" to the version bundled with the app? Your edits will be lost.',
   '刷新同步': 'Refresh sync',
@@ -334,8 +334,8 @@ export const sharedB: Record<string, string> = {
   '导出于 {time}': 'Exported at {time}',
   '首次访问': 'First access',
   '危险命令': 'Dangerous command',
-  '允许': 'Allow',
-  '拒绝': 'Deny',
+
+
   '超时': 'Timed out',
   '未处理': 'Not handled',
   'AI 写入': 'AI write',
@@ -422,7 +422,7 @@ export const sharedB: Record<string, string> = {
   '只读查询不支持 $out / $merge': 'Read-only queries do not support $out / $merge',
   '只能 EXPLAIN find / aggregate': 'EXPLAIN only supports find / aggregate',
   'distinct 的第一个参数是字段名（字符串）': 'The first argument of distinct is a field name (string)',
-  '执行计划': 'Plan',
+
   '（无）': '(none)',
   '返回文档': 'Docs returned',
   '扫描文档': 'Docs examined',
@@ -474,7 +474,7 @@ export const sharedB: Record<string, string> = {
   '检查超时': 'Check timed out',
   '检查失败（退出码 {code}）': 'Check failed (exit code {code})',
   'wd|无': 'none',
-  '名称不能为空': 'Name cannot be empty',
+
   '条件不能为空': 'Condition cannot be empty',
   '请先生成或填写检查脚本': 'Generate or enter a check script first',
   '至少选一台主机或一个分组': 'Select at least one host or group',
@@ -512,8 +512,8 @@ export const sharedB: Record<string, string> = {
   '没有权限（需要 root）。': 'Permission denied (root required).',
   '退出码 {rc}': 'Exit code {rc}',
   // secretVault.ts
-  '全部主机（含本地）': 'All hosts (including local)',
-  '仅本地终端': 'Local terminals only',
+
+
   '分组：{list}': 'Groups: {list}',
   '主机：{list}': 'Hosts: {list}',
   '（未选）': '(none selected)',
@@ -523,9 +523,9 @@ export const sharedB: Record<string, string> = {
   '链接数': 'Links',
   '所有者': 'Owner',
   'ls|组': 'Group',
-  '大小': 'Size',
+
   '日期': 'Date',
-  '时间': 'Time',
+
   'ls|名称': 'Name',
   'ls|月': 'Month',
   'ls|日': 'Day',
@@ -540,12 +540,12 @@ export const sharedB: Record<string, string> = {
   '粘贴内容含隐藏字符': 'Pasted text contains hidden characters',
   '粘贴内容含危险命令': 'Pasted text contains dangerous commands',
   '粘贴到生产终端': 'Paste into production terminal',
-  // knowledge.ts
+  // memory.ts
   '部署': 'Deployment',
   '日志位置': 'Log locations',
   '启停方式': 'Start / stop',
   '已知问题': 'Known issues',
-  '其他': 'Other',
+
   '请选择主机': 'Select a host',
   '请选择分组': 'Select a group',
   '标题不能为空': 'Title cannot be empty',
@@ -620,5 +620,5 @@ export const sharedB: Record<string, string> = {
   '分批执行 · 第 {n} 批健康检查': 'Rollout · Batch {n} health check',
   '手动下载': 'Download manually',
   '打开发布页，自己下载安装包手动安装': 'Open the release page and install the package yourself',
-  '重试': 'Retry',
+
 }

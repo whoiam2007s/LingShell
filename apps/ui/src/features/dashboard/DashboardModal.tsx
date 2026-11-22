@@ -19,7 +19,7 @@ import { Select } from '../../components/ui/Select.js'
 import { Switch } from '../../components/ui/Switch.js'
 import { HelpTip } from '../../components/ui/form.js'
 import { ProdBadge } from '../../components/sshParts.js'
-import { openKnowledge } from '../knowledge/index.js'
+import { openMemory } from '../memory/index.js'
 import { recordRecentHost } from '../hosts/index.js'
 import { DASHBOARD_CLOSE_EVENT, DASHBOARD_OPEN_EVENT, useTermAlerts } from './dashboardBus.js'
 import { basisText, diskForecastText, forecastFromSamples, fullShort, trendLevel, type DiskForecast, type HostTrend } from '@lingshell/shared'
@@ -263,7 +263,7 @@ function DashboardBody({ onClose }: { onClose: () => void }) {
           <button onClick={act(() => paletteSend({ type: 'hostDrawer', hostId: menu.card.h.id, drawer: 'systemd' }))} className={ITEM}><Cog className="h-3.5 w-3.5 text-[var(--color-accent)]" />{tr('服务')}</button>
           <button onClick={act(() => paletteSend({ type: 'hostDrawer', hostId: menu.card.h.id, drawer: 'ports' }))} className={ITEM}><EthernetPort className="h-3.5 w-3.5 text-[var(--color-accent)]" />{tr('端口')}</button>
           <div className="my-1 h-px bg-[var(--color-border-subtle)]" />
-          <button onClick={act(() => openKnowledge({ scope: 'host', target: menu.card.h.id }))} className={ITEM}><BookMarked className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('知识库')}</button>
+          <button onClick={act(() => openMemory({ scope: 'host', target: menu.card.h.id }))} className={ITEM}><BookMarked className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('记忆库')}</button>
           <button onClick={act(() => quoteToChat(menu.card.h.group ? tr('在 {group} 所有主机上检查：', { group: menu.card.h.group }) : tr('在所有主机上检查：')))} className={ITEM}>
             <Network className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{menu.card.h.group ? tr('跨主机提问（{group}）', { group: menu.card.h.group }) : tr('跨主机提问')}
           </button>

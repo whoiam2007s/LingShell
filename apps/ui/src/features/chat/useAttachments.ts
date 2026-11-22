@@ -26,8 +26,17 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
   // 异步读取（主进程判断文件类型 / 图片光栅化）期间切了会话：结果不能落到新会话的草稿里
   const sidRef = useRef(sessionId); sidRef.current = sessionId
   useEffect(() => { if (!hint) return; const t = setTimeout(() => setHint(''), 5000); return () => clearTimeout(t) }, [hint])
-  // 切会话：草稿附件不带过去
-  useEffect(() => { setItemsBoth([]); setHint('') }, [sessionId])
+  // 切会话：草稿附件**按会话保留**（和输入框文本草稿一致，见 ChatPanel 的 draftRef）。
+  // 以前这里直接 setItemsBoth([])：切走再切回来，文字还在、图片和文件没了，用户得重新拖一遍。
+  const bySid = useRef<Map<string, DraftAtt[]>>(new Map())
+  const prevSid = useRef(sessionId)
+  useEffect(() => {
+    if (prevSid.current === sessionId) return
+    bySid.current.set(prevSid.current, itemsRef.current)   // 离开的那个会话存下当前草稿
+    prevSid.current = sessionId
+    setItemsBoth(bySid.current.get(sessionId) ?? [])       // 回来的那个会话恢复（含截图这类无路径位图）
+    setHint('')
+  }, [sessionId])
 
   const add = (next: DraftAtt[]) => {
     const cur = itemsRef.current
@@ -172,7 +181,7 @@ export function useAttachments(multimodal: boolean, sessionId: string) {
     addContext,
     items: items.map((a) => ({ ...toChip(a), key: a.key })), hint, setHint, blocks,
     remove: (i: number) => setItemsBoth((cur) => cur.filter((_, j) => j !== i)),
-    clear: () => setItemsBoth([]),
+    clear: () => { bySid.current.delete(sessionId); setItemsBoth([]) },
     pickFiles, pickDirs, pickImages, onPaste, dropProps, outgoing,
   }
 }

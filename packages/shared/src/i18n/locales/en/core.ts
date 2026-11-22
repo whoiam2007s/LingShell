@@ -60,7 +60,7 @@ export const core: Record<string, string> = {
   'type=ssh 需提供 hostId（已保存的 SSH 主机 id）': 'type=ssh needs hostId (a saved SSH host id)',
   'SSH 终端创建不可用': 'Creating SSH terminals isn\'t available',
   '本地终端创建不可用': 'Creating local terminals isn\'t available',
-  '知识库不可用': 'Knowledge base isn\'t available',
+  '记忆库不可用': 'Memory isn\'t available',
   'title 与 content 不能为空': 'title and content can\'t be empty',
   '终端不存在：{id}': 'Terminal not found: {id}',
   'scope=host 需提供 terminal_id 或 host_id': 'scope=host needs terminal_id or host_id',
@@ -264,7 +264,7 @@ export const core: Record<string, string> = {
   '凭据无法解密（系统密钥变化？），请重新编辑该主机填写': 'The credential can\'t be decrypted (did the system key change?); edit the host and enter it again',
   '{name} 副本': '{name} copy',
   '应用密钥不可用': 'App key unavailable',
-  // config/KnowledgeStore.ts
+  // config/MemoryStore.ts
   '主机备注': 'Host notes',
   // config/McpStore.ts
   'MCP 服务名称不能为空': 'MCP server name can\'t be empty',

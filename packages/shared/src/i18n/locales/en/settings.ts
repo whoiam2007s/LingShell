@@ -85,7 +85,7 @@ export const settings: Record<string, string> = {
   '至少保留一套配置': 'Keep at least one profile',
   '删除模型配置': 'Delete model profile',
   '确定删除「{name}」？正在用它的会话会改用默认配置。': 'Delete "{name}"? Sessions using it will switch to the default profile.',
-  '{name} 副本': '{name} copy',
+
   '离开输入框后自动保存': 'Saved automatically when you leave the field',
   '沿用「{name}」的 Key，留空则不修改': 'Uses the key from "{name}"; leave empty to keep it',
   '已配置，留空则不修改': 'Set; leave empty to keep it',
@@ -263,7 +263,7 @@ export const settings: Record<string, string> = {
   '维护': 'Maintenance',
   // AiReviewSettings.tsx
   'AI 复核': 'AI review',
-  '参考 VS Code 的辅助授权与运维的双人复核：命中范围的命令在弹授权卡前，先把命令、主机、会话最近的上下文、该主机的规则与知识卡标题交给复核模型， 它回答「安全 / 风险 / 建议拦截」和一句理由，显示在授权卡上（「AI 复核：风险 · 理由」），也记进执行记录。写文件的改动还会把 diff 一并发给复核模型。 这些内容先按「发给 AI 前脱敏」处理，密钥保险箱里的值会换成占位符，复核模型同样看不到明文。{br}复核限时 15 秒，超时或出错按「未复核」照常弹卡。 「安全」不会自动放行（生产主机始终要你确认）。': 'Inspired by VS Code\'s assisted approval and the four-eyes review used in operations: before showing a permission card for a command in scope, the command, host, recent session context and the host\'s rule and knowledge card titles go to a review model. It answers "Safe / Risky / Block recommended" with a one-line reason, shown on the permission card ("AI review: Risky · reason") and logged in the execution record. File writes also send the diff. All of this is redacted as for "Redact before sending to AI", and secret vault values are replaced with placeholders, so the review model never sees them in plain text.{br}Reviews time out after 15 seconds; on timeout or error the card is shown as "Not reviewed". "Safe" never approves automatically (production hosts always need your confirmation).',
+  '参考 VS Code 的辅助授权与运维的双人复核：命中范围的命令在弹授权卡前，先把命令、主机、会话最近的上下文、该主机的规则与记忆卡标题交给复核模型， 它回答「安全 / 风险 / 建议拦截」和一句理由，显示在授权卡上（「AI 复核：风险 · 理由」），也记进执行记录。写文件的改动还会把 diff 一并发给复核模型。 这些内容先按「发给 AI 前脱敏」处理，密钥保险箱里的值会换成占位符，复核模型同样看不到明文。{br}复核限时 15 秒，超时或出错按「未复核」照常弹卡。 「安全」不会自动放行（生产主机始终要你确认）。': 'Inspired by VS Code\'s assisted approval and the four-eyes review used in operations: before showing a permission card for a command in scope, the command, host, recent session context and the host\'s rule and memory card titles go to a review model. It answers "Safe / Risky / Block recommended" with a one-line reason, shown on the permission card ("AI review: Risky · reason") and logged in the execution record. File writes also send the diff. All of this is redacted as for "Redact before sending to AI", and secret vault values are replaced with placeholders, so the review model never sees them in plain text.{br}Reviews time out after 15 seconds; on timeout or error the card is shown as "Not reviewed". "Safe" never approves automatically (production hosts always need your confirmation).',
   '启用 AI 复核': 'Enable AI review',
   '默认关；每次复核会多一次模型调用': 'Off by default; each review is one extra model call',
   '复核用的模型': 'Review model',
@@ -363,7 +363,7 @@ export const settings: Record<string, string> = {
   '遇到问题时导出发给开发者。{br}包含：应用 / 系统版本与环境探测、最近 3 次运行日志（每个末尾约 2MB）、脱敏后的设置 / 主机列表（地址、用户名、备注保留）/ 布局 / 巡检计划、会话与记录的数量统计。{br}不包含：API Key 与主机密码 / 私钥（已替换为「{mark}」）、会话对话内容、AI 执行过的命令、命令历史、本地 API token。{br}主机备注、本机备注、自定义规则按原文导出，分享前请自行检查。': 'Export this and send it to the developers when something goes wrong.{br}Includes: app / OS versions and environment checks, the last 3 run logs (about the last 2 MB of each), redacted settings / host list (addresses, usernames and notes kept) / layout / inspection schedules, and counts of sessions and records.{br}Excludes: API keys and host passwords / private keys (replaced with "{mark}"), chat contents, commands run by AI, command history, the local API token.{br}Host notes, local notes and custom rules are exported as is; check them before sharing.',
   '已导出：{path}': 'Exported: {path}',
   '导出失败：{error}': 'Export failed: {error}',
-  '诊断包': 'Diagnostics bundle',
+
   '日志与环境信息': 'Logs and environment info',
   '已脱敏，不含密钥、密码和对话内容': 'Redacted; no keys, passwords or chat contents',
   '导出中…': 'Exporting…',
@@ -538,7 +538,7 @@ export const settings: Record<string, string> = {
   '正常': 'OK',
   '异常': 'Abnormal',
   '无结论': 'Inconclusive',
-  '失败': 'Failed',
+
   '巡检只在本应用运行时执行；应用关闭期间错过的，下次启动后只补跑一次。每次巡检新建一个会话，在后台终端里运行（不占用你的终端标签），AI 只能对所选目标执行白名单内的只读命令，修改类命令自动拒绝、不会弹授权。结果为异常、失败或超时时弹系统通知，并推送到配置的群机器人。':
     'Inspections run only while the app is running; runs missed while it was closed are made up once at next launch. Each inspection creates a new session and runs in a background terminal (not in your terminal tabs). AI can only run allowlisted read-only commands on the selected targets; modifying commands are rejected automatically without a permission prompt. Abnormal, failed or timed-out results trigger a system notification and are pushed to the configured chat bots.',
   '每天 {time}': 'Daily at {time}',
@@ -690,8 +690,8 @@ export const settings: Record<string, string> = {
   '下一次模型请求即生效。规则分四层叠加，越具体的优先：{br}① 全局：这里写的，对所有会话生效；{br}② 分组：主机面板里右键分组 →「分组规则…」；{br}③ 主机：主机面板里右键主机 →「规则…」，或 设置 → 主机与连接 → 编辑主机 →「规则」；{br}④ 工作目录：会话绑定的工作目录里的 {agents} 或 {rules}。{br}分组 / 主机规则只在 AI 用到过该主机后才注入；总长有上限，超出时优先保留更具体的层。例：数据库组写「禁止重启 mysqld，变更前先 mysqldump」。': 'Takes effect on the next model request. Rules stack in four layers; more specific ones win:{br}① Global: written here, applies to all sessions;{br}② Group: right-click a group in the host panel → "Group rules…";{br}③ Host: right-click a host in the host panel → "Rules…", or Settings → Hosts & connections → Edit host → "Rules";{br}④ Working directory: {agents} or {rules} in the session\'s working directory.{br}Group / host rules are injected only after the AI has used that host. Total length is capped; when over, more specific layers are kept first. Example: for a database group, "Never restart mysqld; run mysqldump before changes".',
   '如：回复用中文；改配置前先备份；重启服务前先问我': 'e.g. Reply in English; back up config before editing; ask me before restarting services',
   '本机备注': 'Local machine notes',
-  '同步成知识库里「本机」的一张卡': 'Synced as the "Local machine" card in the knowledge base',
-  'AI 用到本地终端时会读到。写本机用途、常用目录、注意事项等，不要写密码等机密。分条记录请用知识库（左侧活动栏「知识库」）。': 'The AI reads this when it uses a local terminal. Describe what this machine is for, common directories, caveats, etc. Do not include passwords or other secrets. For separate entries, use the knowledge base (Knowledge base in the left activity bar).',
+  '同步成记忆库里「本机」的一张卡': 'Synced as the "Local machine" card in Memory',
+  'AI 用到本地终端时会读到。写本机用途、常用目录、注意事项等，不要写密码等机密。分条记录请用记忆库（左侧活动栏「记忆库」）。': 'The AI reads this when it uses a local terminal. Describe what this machine is for, common directories, caveats, etc. Do not include passwords or other secrets. For separate entries, use Memory (left activity bar).',
   '本机用途、常用目录、注意事项…（不要写密码等机密）': 'Purpose, common directories, caveats… (no passwords or secrets)',
   '命令规则': 'Command rules',
   'AI 执行终端命令前先按这里的规则判定（从上到下，先匹配先生效）。复合命令（{semi} {and} {or} {pipe} 换行、{sub}、反引号）拆成段逐段匹配： 任一段命中「总是禁止」→ 直接拒绝；所有段都命中「总是放行」→ 不弹授权卡；有段命中「总是询问」→ 弹卡；其余照会话信任档。 「只读」信任档不会被放行规则突破；生产主机上的危险命令仍要确认。按规则放行 / 禁止的会在执行记录和授权卡里注明「按规则：…」。': 'Before the AI runs a terminal command, it is checked against these rules (top to bottom; first match wins). Compound commands ({semi} {and} {or} {pipe}, newlines, {sub}, backticks) are split into segments and each is matched: any segment hits "Always deny" → rejected; every segment hits "Always allow" → no permission card; any segment hits "Always ask" → card shown; otherwise the session trust level applies. Allow rules never override the "Read-only" trust level, and dangerous commands on production hosts still need confirmation. Commands allowed or denied by a rule are marked "By rule: …" in the execution log and permission card.',

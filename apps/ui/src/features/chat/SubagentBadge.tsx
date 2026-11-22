@@ -27,18 +27,23 @@ const BELOW_CENTER = 'absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2'
 
 export function SubagentBadge({ sessionId, live = false }: { sessionId: string; live?: boolean }) {
   const [list, setList] = useState<SubagentView[]>([])
+  // 后台任务（start_background 起的）：只显示还在跑的，跑完自动消失（不持久化）
+  const [bg, setBg] = useState<{ jobId: string; command: string; startedAt: number }[]>([])
   const [open, setOpen] = useState(false)
   const [hover, setHover] = useState(false)
   const [detail, setDetail] = useState<string | undefined>()
   const rootRef = useRef<HTMLDivElement>(null)
 
-  // live（回合进行中）时轮询几次：子代理跑起来/结束时状态要跟着变
+  // live（回合进行中）时轮询几次：子代理跑起来/结束时状态要跟着变。
+  // 后台任务在会话空闲时也可能在跑，所以这里一直按 3 秒轮询（只是读内存表，代价很小）。
   useEffect(() => {
     let alive = true
-    const load = () => client.subagent.list(sessionId).then((l: SubagentView[]) => { if (alive) setList(l) }).catch(() => {})
-    void load()
-    if (!live) return () => { alive = false }
-    const t = setInterval(load, 3000)
+    const load = () => {
+      void client.subagent.list(sessionId).then((l: SubagentView[]) => { if (alive) setList(l) }).catch(() => {})
+      void client.bg.list(sessionId).then((l) => { if (alive) setBg(l) }).catch(() => {})
+    }
+    load()
+    const t = setInterval(load, live ? 3000 : 5000)
     return () => { alive = false; clearInterval(t) }
   }, [sessionId, live])
 
@@ -50,7 +55,7 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
     return () => window.removeEventListener('mousedown', onDown)
   }, [open])
 
-  if (!list.length) return null
+  if (!list.length && !bg.length) return null
   const running = list.filter((x) => x.status === 'running').length
   const tip = tr('这个会话派过的子代理（{n} 个）', { n: list.length })
 
@@ -62,7 +67,8 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
         className={cn('flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] transition-colors hover:bg-[var(--color-bg-hover)]',
           running ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]')}>
         {running ? <Loader2 className="h-3 w-3 animate-spin-slow" /> : <Bot className="h-3 w-3" />}
-        <span>{tr('子代理 {n}', { n: list.length })}</span>
+        {!!list.length && <span>{tr('子代理 {n}', { n: list.length })}</span>}
+        {!!bg.length && <span className="text-[var(--color-accent)]">{tr('后台 {n}', { n: bg.length })}</span>}
         <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
       </button>
       {hover && !open && (
@@ -72,6 +78,16 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
       )}
       {open && (
         <div className={`${BELOW_CENTER} max-h-[min(420px,60vh)] w-[min(500px,calc(100vw-24px))] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-xl`}>
+          {/* 后台任务：只列还在跑的，跑完自动从列表消失（内存态，不落盘） */}
+          {bg.map((t) => (
+            <div key={t.jobId} data-bg-task className="flex items-center gap-2 rounded-md border-b border-[var(--color-border-subtle)] px-2 py-1.5 last:border-b-0">
+              <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-warn)]"><Loader2 className="h-3 w-3 animate-spin-slow" />{tr('后台')}</span>
+              <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]" title={t.command}>{t.command}</span>
+              <span className="shrink-0 font-mono text-[10.5px] text-[var(--color-text-muted)]">{fmtMs(Date.now() - t.startedAt)}</span>
+              <button onClick={() => void client.bg.cancel(sessionId).catch(() => {})} title={tr('停止这个会话的后台任务（进程真的会被杀掉）')}
+                className="shrink-0 rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"><X className="h-3 w-3" /></button>
+            </div>
+          ))}
           {list.map((x) => (
             <div key={x.subagentId} className="rounded-md border-b border-[var(--color-border-subtle)] px-2 py-1.5 last:border-b-0">
               <button onClick={() => setDetail(detail === x.subagentId ? undefined : x.subagentId)}

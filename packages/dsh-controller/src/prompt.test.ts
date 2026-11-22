@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { buildTodayContext } from './prompt.js'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { setLocale } from '@lingshell/shared'
-import { installPromptSection, buildPromptSection, installTerminalsSection, buildTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, buildFleetSection, installLanguageSection, buildLanguageSection } from './prompt.js'
+import { installPromptSection, buildPromptSection, installTerminalsSection, buildTerminalsSection, installWorkDirSection, installMemorySection, installFleetSection, buildFleetSection, installLanguageSection, buildLanguageSection } from './prompt.js'
 
 describe('系统提示词段', () => {
   it('经真实 dsh SystemPrompt 组装：规则每次组装现读，含 {{ 也不炸', async () => {
@@ -13,8 +14,8 @@ describe('系统提示词段', () => {
     const render = async () => renderPrompt(await (ctx as any).systemPrompt.assemble())
 
     const p1 = await render()
-    expect(p1).toContain('propose_host_knowledge')
-    expect(p1).toContain('主机知识库')
+    expect(p1).toContain('propose_host_memory')
+    expect(p1).toContain('主机记忆库')
     expect(p1).not.toContain('用户自定义规则')
 
     rules = '回复用中文\n不要重启 nginx，用 reload；模板形如 {{ .Name }}'
@@ -90,16 +91,16 @@ describe('会话工作目录段', () => {
   })
 })
 
-describe('主机知识库段 / 跨主机提问段', () => {
-  it('知识库按 agent 现求值：没用到主机为空（段落消失），卡片里的 {{ 原样输出不炸', async () => {
+describe('主机记忆库段 / 跨主机提问段', () => {
+  it('记忆库按 agent 现求值：没用到主机为空（段落消失），卡片里的 {{ 原样输出不炸', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
-    const texts: Record<string, string> = { a1: '## 主机知识库\n模板 {{ .Name }}' }
-    installKnowledgeSection(ctx, (id) => texts[id] ?? '')
+    const texts: Record<string, string> = { a1: '## 主机记忆库\n模板 {{ .Name }}' }
+    installMemorySection(ctx, (id) => texts[id] ?? '')
     const render = async (agent?: { id: string }) => renderPrompt(await (ctx as any).systemPrompt.assemble(agent ? { agent } : {}))
     expect(await render({ id: 'a1' })).toContain('模板 {{ .Name }}')
-    expect(await render({ id: 'a2' })).not.toContain('主机知识库')
-    expect(await render()).not.toContain('主机知识库')
+    expect(await render({ id: 'a2' })).not.toContain('主机记忆库')
+    expect(await render()).not.toContain('主机记忆库')
   })
   it('跨主机提问：列主机与分组、引导表格对比；没有主机整段不出', async () => {
     const ctx = new Context()
@@ -135,6 +136,23 @@ describe('界面语言段', () => {
     const en = await render()
     expect(en).toContain('## Interface language')
     expect(en).toContain('Reply in English')
-    expect(en.indexOf('## Interface language')).toBeLessThan(en.indexOf('## 主机知识库与规则'))
+    expect(en.indexOf('## Interface language')).toBeLessThan(en.indexOf('## 主机记忆库与规则'))
+  })
+})
+
+describe('当前日期上下文', () => {
+  it('只给日期 + 星期，不给时刻', () => {
+    const s = buildTodayContext(new Date(2026, 10, 22, 15, 30))
+    expect(s).toContain('2026-11-22')
+    expect(s).toContain('星期日')
+    expect(s).not.toContain('15:30')
+    // 具体时刻让模型到目标主机上取：主机时钟比本机更符合被操作对象
+    expect(s).toContain('date')
+  })
+  it('同一天内容稳定（靠引擎去重，一次会话通常只追加一条）', () => {
+    const a = buildTodayContext(new Date(2026, 0, 5, 1, 0))
+    const b = buildTodayContext(new Date(2026, 0, 5, 23, 59))
+    expect(a).toBe(b)
+    expect(buildTodayContext(new Date(2026, 0, 6, 0, 1))).not.toBe(a)
   })
 })

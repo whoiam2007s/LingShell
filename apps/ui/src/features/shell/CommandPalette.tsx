@@ -22,7 +22,7 @@ import { isAction, keyLabel } from '../../lib/keybindings.js'
 import { sessionTime } from '@lingshell/shared'
 import { useNow } from '../../lib/useNow.js'
 import { BookMarked, Network } from 'lucide-react'
-import { openKnowledge } from '../knowledge/index.js'
+import { openMemory } from '../memory/index.js'
 import { quoteToChat } from '../../lib/quoteToChat.js'
 import { LayoutDashboard, CalendarClock } from 'lucide-react'
 import { openDashboard } from '../dashboard/index.js'
@@ -206,8 +206,8 @@ export function CommandPalette({ sessions, activeSessionId, onSelectSession, onO
   entries.push({ id: 'act:saveWorkspace', kind: 'action', title: tk('保存当前布局为工作区…'), subtitle: tk('当前终端 + 分屏'), keywords: 'workspace save layout 工作区 保存', icon: LayoutGrid, run: () => onOpenHosts('workspaces', true) })   // i18n-ignore 搜索关键词
   entries.push({ id: 'act:workspaces', kind: 'action', title: tk('管理工作区'), keywords: 'workspace 工作区 重命名 删除', icon: LayoutGrid, run: () => onOpenHosts('workspaces') })   // i18n-ignore 搜索关键词
   for (const w of workspaces) entries.push({ id: `workspace:${w.id}`, kind: 'workspace', title: tr('打开工作区：{name}', { name: w.name }), subtitle: workspaceSummary(w), keywords: 'workspace 工作区', run: () => openWorkspace(w) })   // i18n-ignore 搜索关键词
-  // 知识库 / 跨主机提问（预填对话输入框，由用户补完问题再发；AI 用 run_on_hosts 在整组主机上并行跑只读命令）
-  entries.push({ id: 'act:knowledge', kind: 'action', title: tk('打开知识库'), subtitle: tk('主机 / 分组 / 全局知识卡：部署、日志位置、启停方式、已知问题'), keywords: 'knowledge 知识库 备注 主机备注 笔记 文档', icon: BookMarked, common: true, run: () => openKnowledge() })   // i18n-ignore 搜索关键词
+  // 记忆库 / 跨主机提问（预填对话输入框，由用户补完问题再发；AI 用 run_on_hosts 在整组主机上并行跑只读命令）
+  entries.push({ id: 'act:memory', kind: 'action', title: tk('打开记忆库'), subtitle: tk('主机 / 分组 / 全局记忆卡：部署、日志位置、启停方式、已知问题'), keywords: 'memory 记忆库 备注 主机备注 笔记 文档', icon: BookMarked, common: true, run: () => openMemory() })   // i18n-ignore 搜索关键词
   const fleetGroups = [...new Set(hosts.flatMap((h) => (h.group ? [h.group] : [])))]
   if (hosts.length) entries.push({ id: 'act:fleetAsk', kind: 'action', title: tk('跨主机提问：所有主机'), subtitle: tr('预填「{text}」，AI 并行跑只读命令后汇总对比', { text: tr('在所有主机上检查：') }), keywords: 'fleet 跨主机 多台 所有机器 对比 舰队 run_on_hosts', icon: Network, disabled: notReady, run: () => quoteToChat(tr('在所有主机上检查：')) })   // i18n-ignore 搜索关键词
   entries.push({ id: 'act:postmortem', kind: 'action', title: tk('生成故障复盘'), subtitle: tk('让 AI 把当前会话整理成复盘报告（时间线取自执行记录），回复下方可保存为 .md'), keywords: 'postmortem 复盘 故障 事故 报告 时间线 根因 incident', icon: ClipboardList, disabled: notReady ?? paletteCtx.postmortemOff, run: () => paletteSend({ type: 'postmortem' }) })   // i18n-ignore 搜索关键词

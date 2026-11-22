@@ -1,12 +1,12 @@
-// 「知识库」视图：左侧按归属（全部 / 全局 / 分组 / 主机）筛选，右侧卡片列表 + 分类筛选 + 全文搜索，手动新增 / 编辑 / 删除。
-// 自挂载：App 里常驻 <KnowledgeModal />，任何地方 openKnowledge(filter) 打开。不能点遮罩关闭（按钮 / Esc）
+// 「记忆库」视图：左侧按归属（全部 / 全局 / 分组 / 主机）筛选，右侧卡片列表 + 分类筛选 + 全文搜索，手动新增 / 编辑 / 删除。
+// 自挂载：App 里常驻 <MemoryModal />，任何地方 openMemory(filter) 打开。不能点遮罩关闭（按钮 / Esc）
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { X, Plus, Pencil, Trash2, BookMarked, Globe, Folder, Server, Library, Sparkles, Search } from 'lucide-react'
 import {
-  KNOWLEDGE_CATEGORIES, filterKnowledge, knowledgeCategoryLabel, knowledgeScopeText, tr,
-  type HostSummary, type KnowledgeCard, type KnowledgeCategory, type KnowledgeFilter, type KnowledgeInput, type ConsolidatePlan,
+  MEMORY_CATEGORIES, filterMemory, memoryCategoryLabel, memoryScopeText, tr,
+  type HostSummary, type MemoryCard, type MemoryCategory, type MemoryFilter, type MemoryInput, type ConsolidatePlan,
 } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
@@ -15,42 +15,42 @@ import { Input, Textarea } from '../../components/ui/Input.js'
 import { Select } from '../../components/ui/Select.js'
 import { ConfirmDialog } from '../common/index.js'
 import { ConsolidateDialog } from './ConsolidateDialog.js'
-import { KNOWLEDGE_OPEN_EVENT, scopeValue, parseScopeValue } from './knowledgeBus.js'
+import { MEMORY_OPEN_EVENT, scopeValue, parseScopeValue } from './memoryBus.js'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const localTime = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}` }
 const errText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
-export function KnowledgeModal() {
-  const [open, setOpen] = useState<{ filter: KnowledgeFilter; n: number } | null>(null)
+export function MemoryModal() {
+  const [open, setOpen] = useState<{ filter: MemoryFilter; n: number } | null>(null)
   useEffect(() => {
-    const f = (e: Event) => setOpen((o) => ({ filter: (e as CustomEvent<KnowledgeFilter>).detail ?? {}, n: (o?.n ?? 0) + 1 }))
-    window.addEventListener(KNOWLEDGE_OPEN_EVENT, f)
-    return () => window.removeEventListener(KNOWLEDGE_OPEN_EVENT, f)
+    const f = (e: Event) => setOpen((o) => ({ filter: (e as CustomEvent<MemoryFilter>).detail ?? {}, n: (o?.n ?? 0) + 1 }))
+    window.addEventListener(MEMORY_OPEN_EVENT, f)
+    return () => window.removeEventListener(MEMORY_OPEN_EVENT, f)
   }, [])
   if (!open) return null
-  return <KnowledgeBody key={open.n} initial={open.filter} onClose={() => setOpen(null)} />
+  return <MemoryBody key={open.n} initial={open.filter} onClose={() => setOpen(null)} />
 }
 
-type Draft = KnowledgeInput & { scopeKey: string }
+type Draft = MemoryInput & { scopeKey: string }
 
-function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose: () => void }) {
-  const [cards, setCards] = useState<KnowledgeCard[]>([])
+function MemoryBody({ initial, onClose }: { initial: MemoryFilter; onClose: () => void }) {
+  const [cards, setCards] = useState<MemoryCard[]>([])
   const [hosts, setHosts] = useState<HostSummary[]>([])
   const [where, setWhere] = useState(initial.scope ? scopeValue(initial.scope, initial.target ?? '') : 'all')
   const [category, setCategory] = useState<string>(initial.category ?? '')
   const [q, setQ] = useState(initial.q ?? '')
   const [edit, setEdit] = useState<Draft | null>(null)
-  const [del, setDel] = useState<KnowledgeCard | null>(null)
+  const [del, setDel] = useState<MemoryCard | null>(null)
   const [consolidating, setConsolidating] = useState(false)
-  // 后台自动梳理攒下的建议（打开知识库时查一次）：按钮上显示条数，点开直接用这份清单
+  // 后台自动梳理攒下的建议（打开记忆库时查一次）：按钮上显示条数，点开直接用这份清单
   const [pendingConsolidate, setPendingConsolidate] = useState<{ at: string; plan: ConsolidatePlan } | null>(null)
   const [err, setErr] = useState('')
-  const load = () => client.knowledge.list().then(setCards).catch((e) => setErr(errText(e)))
+  const load = () => client.memory.list().then(setCards).catch((e) => setErr(errText(e)))
   useEffect(() => {
     void load(); client.hosts.list().then(setHosts).catch(() => {})
     // 后台自动梳理攒下的建议：有就显示在「梳理」按钮上（不打扰、不自动改数据）
-    client.knowledge.consolidatePending().then(setPendingConsolidate).catch(() => {})
+    client.memory.consolidatePending().then(setPendingConsolidate).catch(() => {})
   }, [])
 
   const hostLabel = (k: string) => (k === 'local' ? tr('host|本机') : hosts.find((h) => h.id === k)?.label)
@@ -59,8 +59,8 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
   const hostKeys = useMemo(() => [...new Set(['local', ...hosts.map((h) => h.id), ...cards.filter((c) => c.scope === 'host').map((c) => c.target)])], [hosts, cards])
   const count = (scope: string, target = '') => cards.filter((c) => c.scope === scope && (scope === 'global' || c.target === target)).length
 
-  const filter: KnowledgeFilter = { ...(where === 'all' ? {} : parseScopeValue(where)), ...(category ? { category: category as KnowledgeCategory } : {}), q }
-  const shown = filterKnowledge(cards, filter)
+  const filter: MemoryFilter = { ...(where === 'all' ? {} : parseScopeValue(where)), ...(category ? { category: category as MemoryCategory } : {}), q }
+  const shown = filterMemory(cards, filter)
 
   // Esc：编辑中先退出编辑；上面还盖着别的弹层（确认框 / 下拉）时不关
   const rootRef = useRef<HTMLDivElement>(null)
@@ -79,19 +79,19 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
   const startNew = () => {
     const scopeKey = where === 'all' ? 'global' : where
     setErr('')
-    setEdit({ scopeKey, ...parseScopeValue(scopeKey), title: '', content: '', category: (category || 'other') as KnowledgeCategory, source: 'manual' })
+    setEdit({ scopeKey, ...parseScopeValue(scopeKey), title: '', content: '', category: (category || 'other') as MemoryCategory, source: 'manual' })
   }
   const save = async () => {
     if (!edit) return
     try {
       const { scopeKey, ...rest } = edit
-      await client.knowledge.save({ ...rest, ...parseScopeValue(scopeKey), source: 'manual' })
+      await client.memory.save({ ...rest, ...parseScopeValue(scopeKey), source: 'manual' })
       setEdit(null); setErr(''); void load()
     } catch (e) { setErr(errText(e)) }
   }
   const remove = async () => {
     if (!del) return
-    await client.knowledge.remove(del.id).catch((e) => setErr(errText(e)))
+    await client.memory.remove(del.id).catch((e) => setErr(errText(e)))
     setDel(null); void load()
   }
 
@@ -110,10 +110,10 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
   )
 
   return (
-    <div ref={rootRef} data-knowledge-modal className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+    <div ref={rootRef} data-memory-modal className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
       <div className="flex h-[min(760px,88vh)] w-[min(1080px,92vw)] overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] shadow-2xl">
         <nav className="flex w-[200px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] p-2.5">
-          <div className="px-2.5 pb-2 pt-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">{tr('知识库')}</div>
+          <div className="px-2.5 pb-2 pt-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">{tr('记忆库')}</div>
           <NavBtn value="all" icon={Library} label={tr('全部')} n={cards.length} />
           <NavBtn value="global" icon={Globe} label={tr('全局')} n={count('global')} />
           {groups.length > 0 && <div className="px-2.5 pb-0.5 pt-2.5 text-[10.5px] text-[var(--color-text-muted)]">{tr('分组')}</div>}
@@ -124,13 +124,13 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-4">
             <BookMarked className="h-4 w-4 text-[var(--color-accent)]" />
-            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{edit ? (edit.id ? tr('编辑知识卡') : tr('新建知识卡')) : tr('知识卡')}</span>
+            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{edit ? (edit.id ? tr('编辑记忆卡') : tr('新建记忆卡')) : tr('记忆卡')}</span>
             <HelpTip>
-              {tr('给主机、分组或全局记下部署方式、日志位置、启停方式、已知问题等长期知识。AI 用到某台主机后，会自动读到该主机、所属分组与全局的知识卡（按更新时间，总长约 4000 字）；')}
+              {tr('给主机、分组或全局记下部署方式、日志位置、启停方式、已知问题等长期知识。AI 用到某台主机后，会自动读到该主机、所属分组与全局的记忆卡（按更新时间，总长约 4000 字）；')}
               {' '}{tr('排障中发现值得记住的事，AI 会在对话里提议保存，你点「保存」才写入。旧的「主机备注」已自动迁移成该主机的一张「主机备注」卡。')}
             </HelpTip>
             {!edit && (
-              <button onClick={() => setConsolidating(true)} title={tr('让 AI 把重复 / 过时的知识卡整理一遍（清单由你勾选后才生效）')}
+              <button onClick={() => setConsolidating(true)} title={tr('让 AI 把重复 / 过时的记忆卡整理一遍（清单由你勾选后才生效）')}
                 className={cn('relative ml-auto flex items-center gap-1 py-1', BTN2)}>
                 <Sparkles className="h-3.5 w-3.5" />{tr('梳理')}
                 {/* 后台自动梳理攒了建议：显示条数；卡片满 50 张也点个圆点提醒该整理了 */}
@@ -150,8 +150,8 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
                     <Select value={edit.scopeKey} onValueChange={(v) => setEdit({ ...edit, scopeKey: v })} options={scopeOptions} aria-label={tr('归属')} />
                   </label>
                   <label className="w-40 space-y-1"><span className="text-[var(--color-text-secondary)]">{tr('分类')}</span>
-                    <Select value={edit.category} onValueChange={(v) => setEdit({ ...edit, category: v as KnowledgeCategory })} aria-label={tr('分类')}
-                      options={KNOWLEDGE_CATEGORIES.map((c) => ({ value: c.id, label: tr(c.label) }))} />
+                    <Select value={edit.category} onValueChange={(v) => setEdit({ ...edit, category: v as MemoryCategory })} aria-label={tr('分类')}
+                      options={MEMORY_CATEGORIES.map((c) => ({ value: c.id, label: tr(c.label) }))} />
                   </label>
                 </div>
                 <label className="block space-y-1"><span className="text-[var(--color-text-secondary)]">{tr('标题')}</span>
@@ -174,25 +174,25 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
               <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-4 py-2">
                 <div className="relative flex-1">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-muted)]" />
-                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr('搜索标题 / 内容（空格分隔多个词）')} className="pl-8" aria-label={tr('搜索知识卡')} />
+                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr('搜索标题 / 内容（空格分隔多个词）')} className="pl-8" aria-label={tr('搜索记忆卡')} />
                 </div>
                 <Select value={category} onValueChange={setCategory} className="w-36" aria-label={tr('分类筛选')}
-                  options={[{ value: '', label: tr('全部分类') }, ...KNOWLEDGE_CATEGORIES.map((c) => ({ value: c.id, label: tr(c.label) }))]} />
+                  options={[{ value: '', label: tr('全部分类') }, ...MEMORY_CATEGORIES.map((c) => ({ value: c.id, label: tr(c.label) }))]} />
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 <div className="mx-auto max-w-[820px] space-y-2.5">
                   {err && <div className="text-[12px] text-[var(--color-danger)]">{err}</div>}
                   {!shown.length && (
                     <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">
-                      {cards.length ? tr('没有匹配的知识卡') : tr('还没有知识卡。点右上角「新建卡片」，或在排障对话里让 AI 提议保存。')}
+                      {cards.length ? tr('没有匹配的记忆卡') : tr('还没有记忆卡。点右上角「新建卡片」，或在排障对话里让 AI 提议保存。')}
                     </div>
                   )}
                   {shown.map((c) => (
                     <article key={c.id} data-kb-card={c.id} className="group rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3.5 py-2.5">
                       <div className="flex items-center gap-2">
                         <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--color-text-primary)]">{tr(c.title)}</span>
-                        <span className="shrink-0 rounded bg-[color:color-mix(in_srgb,var(--color-accent)_14%,transparent)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-accent)]">{tr(knowledgeCategoryLabel(c.category))}</span>
-                        <span className="shrink-0 truncate text-[11px] text-[var(--color-text-muted)]">{knowledgeScopeText(c, hostLabel)}</span>
+                        <span className="shrink-0 rounded bg-[color:color-mix(in_srgb,var(--color-accent)_14%,transparent)] px-1.5 py-0.5 text-[10.5px] text-[var(--color-accent)]">{tr(memoryCategoryLabel(c.category))}</span>
+                        <span className="shrink-0 truncate text-[11px] text-[var(--color-text-muted)]">{memoryScopeText(c, hostLabel)}</span>
                         <span className="ml-auto flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-text-muted)]" title={c.source === 'ai' ? tr('AI 提议、你确认保存的') : tr('手动添加 / 编辑的')}>
                           {c.source === 'ai' && <Sparkles className="h-3 w-3" />}{c.source === 'ai' ? tr('AI 提议') : tr('手动')} · {localTime(c.updatedAt)}
                         </span>
@@ -212,7 +212,7 @@ function KnowledgeBody({ initial, onClose }: { initial: KnowledgeFilter; onClose
           )}
         </div>
       </div>
-      <ConfirmDialog open={!!del} title={tr('删除知识卡')} message={tr('确定删除「{title}」？删除后 AI 不再读到这条知识。', { title: tr(del?.title ?? '') })} onConfirm={remove} onCancel={() => setDel(null)} />
+      <ConfirmDialog open={!!del} title={tr('删除记忆卡')} message={tr('确定删除「{title}」？删除后 AI 不再读到这条知识。', { title: tr(del?.title ?? '') })} onConfirm={remove} onCancel={() => setDel(null)} />
       <ConsolidateDialog open={consolidating} cards={cards} pending={pendingConsolidate}
         onClose={() => setConsolidating(false)} onApplied={() => { setPendingConsolidate(null); void load() }} />
     </div>

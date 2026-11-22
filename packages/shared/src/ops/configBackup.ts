@@ -2,7 +2,7 @@
 // 文件 .lingshell-config.json；格式与加解密见 packages/config/src/configBundle.ts
 import { tk } from '../i18n/i18n.js'
 
-export type ConfigSection = 'hosts' | 'knownHosts' | 'templates' | 'quickCommands' | 'schedules' | 'system' | 'model' | 'webhooks' | 'autoReplies' | 'knowledge' | 'secrets'
+export type ConfigSection = 'hosts' | 'knownHosts' | 'templates' | 'quickCommands' | 'schedules' | 'system' | 'model' | 'webhooks' | 'autoReplies' | 'memory' | 'secrets'
 export const CONFIG_SECTIONS: { id: ConfigSection; label: string }[] = [
   { id: 'hosts', label: tk('主机（含跳板/分组/备注/凭据）') },
   { id: 'knownHosts', label: tk('已信任指纹') },
@@ -13,7 +13,7 @@ export const CONFIG_SECTIONS: { id: ConfigSection; label: string }[] = [
   { id: 'model', label: tk('模型设置（全部模型配置 + 单价）') },
   { id: 'webhooks', label: tk('告警机器人（地址含 token，需设导出密码）') },
   { id: 'autoReplies', label: tk('自动应答（密钥应答需设导出密码）') },
-  { id: 'knowledge', label: tk('知识库（主机 / 分组 / 全局知识卡）') },
+  { id: 'memory', label: tk('记忆库（主机 / 分组 / 全局记忆卡）') },
   { id: 'secrets', label: tk('密钥保险箱（名称 / 说明 / 范围；值需设导出密码）') },
 ]
 
@@ -44,7 +44,7 @@ export interface ConfigImportOpts {
   model?: boolean
   webhooks?: MergeMode
   autoReplies?: MergeMode     // 按规则名合并
-  knowledge?: MergeMode       // 按卡片 id 合并；主机卡按导入的主机重映射，本机找不到的主机卡丢弃
+  memory?: MergeMode       // 按卡片 id 合并；主机卡按导入的主机重映射，本机找不到的主机卡丢弃
   secrets?: MergeMode         // 密钥保险箱：按名称合并；指定主机按导入的主机重映射
 }
 
@@ -60,6 +60,6 @@ export interface ConfigImportReport {
   apiKeys?: number
   webhooks?: MergeCount
   autoReplies?: MergeCount & { needResponse: string[] }   // needResponse：密钥应答没随文件带来（未设导出密码）、已停用待重填的规则名
-  knowledge?: MergeCount & { dropped: number }            // dropped：所属主机在本机找不到、丢弃的主机卡数
+  memory?: MergeCount & { dropped: number }            // dropped：所属主机在本机找不到、丢弃的主机卡数
   secrets?: MergeCount & { needValue: string[] }          // needValue：值没随文件带来（未设导出密码）、需「替换值」后才能用的密钥名
 }

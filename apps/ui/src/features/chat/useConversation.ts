@@ -47,7 +47,7 @@ export interface ConvItem {
     deadlineMs: number
     result?: 'allow' | 'deny' | 'timeout' | 'cancelled'
   }
-  knowledge?: Omit<import('@lingshell/shared').KnowledgeProposalEvent, 'type' | 'sessionId'>   // AI 提议的知识卡（propose_host_knowledge）
+  memory?: Omit<import('@lingshell/shared').MemoryProposalEvent, 'type' | 'sessionId'>   // AI 提议的记忆卡（propose_host_memory）
   ask?: Omit<import('@lingshell/shared').AskRequestEvent, 'type' | 'sessionId'> & { result?: 'answered' | 'skipped' | 'timeout'; answer?: import('@lingshell/shared').AskAnswer }   // AI 提问卡（ask_user）
   attachments?: MsgAttachment[]   // user_message 带的附件（气泡下方显示）
   msgId?: string               // user_message 的服务端 id（回显 / 回放后才有；编辑重发、分叉、重新生成按它定位）
@@ -358,10 +358,10 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
             plan: { approvalId: e.approvalId, title: e.title, steps: e.steps, deadlineMs: e.deadlineMs },
           })
           break
-        case 'knowledge:proposal':
+        case 'memory:proposal':
           upsert(e.sessionId, {
             itemId: e.proposalId, kind: 'host_note', status: 'completed', text: '',
-            knowledge: { proposalId: e.proposalId, draft: e.draft, targetLabel: e.targetLabel, previous: e.previous },
+            memory: { proposalId: e.proposalId, draft: e.draft, targetLabel: e.targetLabel, previous: e.previous },
           })
           break
         case 'ask:request': {

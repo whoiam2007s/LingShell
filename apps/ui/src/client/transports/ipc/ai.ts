@@ -94,17 +94,21 @@ export function createAiIpc(): AiApi {
       check: (sid, at) => window.electronAPI.invoke('rollback:check', sid, at) as ReturnType<AppClient['rollback']['check']>,
       run: (sid, at, ack) => window.electronAPI.invoke('rollback:run', sid, at, ack) as ReturnType<AppClient['rollback']['run']>,
     },
-    knowledge: {
-      list: () => window.electronAPI.invoke('knowledge:list') as ReturnType<AppClient['knowledge']['list']>,
-      save: (input) => window.electronAPI.invoke('knowledge:save', input) as ReturnType<AppClient['knowledge']['save']>,
-      remove: (id) => window.electronAPI.invoke('knowledge:remove', id) as Promise<void>,
-      consolidate: (trigger) => window.electronAPI.invoke('knowledge:consolidate', trigger) as ReturnType<AppClient['knowledge']['consolidate']>,
-      consolidateApply: (actions) => window.electronAPI.invoke('knowledge:consolidateApply', actions) as ReturnType<AppClient['knowledge']['consolidateApply']>,
-      consolidatePending: () => window.electronAPI.invoke('knowledge:consolidatePending') as ReturnType<AppClient['knowledge']['consolidatePending']>,
-      consolidatePendingClear: () => window.electronAPI.invoke('knowledge:consolidatePendingClear') as Promise<void>,
+    memory: {
+      list: () => window.electronAPI.invoke('memory:list') as ReturnType<AppClient['memory']['list']>,
+      save: (input) => window.electronAPI.invoke('memory:save', input) as ReturnType<AppClient['memory']['save']>,
+      remove: (id) => window.electronAPI.invoke('memory:remove', id) as Promise<void>,
+      consolidate: (trigger) => window.electronAPI.invoke('memory:consolidate', trigger) as ReturnType<AppClient['memory']['consolidate']>,
+      consolidateApply: (actions) => window.electronAPI.invoke('memory:consolidateApply', actions) as ReturnType<AppClient['memory']['consolidateApply']>,
+      consolidatePending: () => window.electronAPI.invoke('memory:consolidatePending') as ReturnType<AppClient['memory']['consolidatePending']>,
+      consolidatePendingClear: () => window.electronAPI.invoke('memory:consolidatePendingClear') as Promise<void>,
     },
     subagent: {
       list: (sid) => window.electronAPI.invoke('subagent:list', sid) as ReturnType<AppClient['subagent']['list']>,
+    },
+    bg: {
+      list: (sid) => window.electronAPI.invoke('bg:list', sid) as ReturnType<AppClient['bg']['list']>,
+      cancel: (sid) => window.electronAPI.invoke('bg:cancel', sid) as Promise<void>,
     },
     chatPlus: {
       digest: (sid) => window.electronAPI.invoke('chatPlus:digest', sid) as Promise<string>,

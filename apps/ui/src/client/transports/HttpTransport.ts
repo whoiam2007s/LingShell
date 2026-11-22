@@ -66,8 +66,10 @@ export class HttpTransport implements AppClient {
   hostCheck: AppClient['hostCheck'] = { run: ni, history: ni, get: ni, fileDiff: ni, fetchFile: ni }
   hostChanges: AppClient['hostChanges'] = { list: ni }
   systemd: AppClient['systemd'] = { list: ni, status: ni, action: ni }
-  knowledge: AppClient['knowledge'] = { list: ni, save: ni, remove: ni, consolidate: ni, consolidateApply: ni, consolidatePending: ni, consolidatePendingClear: ni }
+  memory: AppClient['memory'] = { list: ni, save: ni, remove: ni, consolidate: ni, consolidateApply: ni, consolidatePending: ni, consolidatePendingClear: ni }
   subagent: AppClient['subagent'] = { list: ni }
+  // 后台任务表只在主进程内存里（本机）：远程 / 浏览器侧拿不到，按「没有」处理
+  bg: AppClient['bg'] = { list: async () => [], cancel: ni }
   dashboard: AppClient['dashboard'] = { open: ni, close: ni, snapshot: ni, setSampling: ni, setInterval: ni }
   appearance: AppClient['appearance'] = { apply: async () => {} }   // 浏览器里没有原生主题 / 缩放，页面内的主题照常
   secrets: AppClient['secrets'] = { list: ni, save: ni, delete: ni, copy: ni, send: ni }

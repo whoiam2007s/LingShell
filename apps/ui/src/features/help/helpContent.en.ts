@@ -59,7 +59,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
   {
     id: 'chat', title: 'AI chat and permissions', icon: MessageSquare,
     blocks: [
-      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hovering shows the session name and its bound working directory, the "⋯" menu next to it holds "Rename", "Export session" and "Session flow"; drawer edges can be dragged to resize (up to half the window, double-click resets); unbound ones say "No working directory bound (using the default workspace)"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Knowledge base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
+      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hovering shows the session name and its bound working directory, the "⋯" menu next to it holds "Rename", "Export session" and "Session flow"; drawer edges can be dragged to resize (up to half the window, double-click resets); unbound ones say "No working directory bound (using the default workspace)"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Memory base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
       { h: 'Folder / branch tags before the title', p: 'Two small tags sit in front of the session title: on the left the **bound working folder name** (e.g. `source`), on the right the **current Git branch** (e.g. `feat/0.1.16`). Both are capped at 100px with an ellipsis; hover for the full value. The folder tag is hidden when no folder is bound, the branch tag when it is not a Git repository.', tips: [
         'Click the folder tag: open that folder in the system file manager.',
         'Click the branch tag: open the Git panel.',
@@ -141,8 +141,8 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Each dropdown row shows only a one-line title; open it to see the full task, any blocked question and the summary.',
       ], tips: ['How many subagents run at once and the default timeout are both in "Settings → AI" (default 3 / 600s); over the limit it asks you to wait for one to finish. A subagent cannot spawn subagents, delete things or talk to you.', 'Subagents cannot see your chat: the main agent writes the terminal id into the task, and when no suitable terminal exists the subagent opens a new one itself.', 'Expand a subagent to see its execution trace: which tool it called, what it wrote, and when — no need to wait for it to finish to know what it is doing.'] },
       { h: 'Let the AI change settings (incl. UI theme)', p: 'Preference settings can be changed by the AI directly and apply immediately (theme and zoom need no restart): terminal font size / color scheme / keyword highlighting / scrollback, UI theme (including which dark and light themes follow the system), UI zoom, icon size, desktop notifications and sound, idle auto-lock, compaction ratio, suggested new-session steps, local notes and more.', tips: ['Provider, model name, API URL and global custom rules are read-only — changing them affects the running session or security policy, so edit those in the UI.', '"UI theme" and "terminal color scheme" are two different things: the former reskins the whole interface, the latter only the terminal area (which defaults to following the UI theme).', 'API keys and other secrets never pass through the AI; the model never writes them.'] },
-      { h: 'Knowledge base and tidying', p: 'The "Knowledge base" item on the left activity bar stores long-lived operational knowledge (deploy paths, log locations, how to start and stop, known issues) at four levels: this machine / host / group / global. The AI reads it automatically when it works on a matching host.', steps: [
-        '"Consolidate knowledge": the AI reads every card and proposes merges / rewrites / deletions; nothing changes until you tick items and click Apply. When the cards are already tidy it says "Nothing to tidy up".',
+      { h: 'Memory base and tidying', p: 'The "Memory base" item on the left activity bar stores long-lived operational memory (deploy paths, log locations, how to start and stop, known issues) at four levels: this machine / host / group / global. The AI reads it automatically when it works on a matching host.', steps: [
+        '"Consolidate memory": the AI reads every card and proposes merges / rewrites / deletions; nothing changes until you tick items and click Apply. When the cards are already tidy it says "Nothing to tidy up".',
         'Tidying waits at most 60 seconds and shows the elapsed seconds meanwhile; you can retry after a timeout or failure.',
         'When the AI learns something worth keeping it proposes a card first; it is only saved after you click Save.',
       ], tips: ['Card bodies are limited to 2000 characters; longer ones are rejected. The model reads them in full (when the total budget is exceeded some cards degrade to title-only lines).', 'In the background it tidies once when the library reaches 50 cards or 7 days have passed since the last run — it only produces a proposal and never changes data.'] },
@@ -857,7 +857,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     id: 'backup', title: 'Backup & diagnostics', icon: ArchiveRestore, settings: 'maintenance',
     blocks: [
       { h: 'Export config', steps: [
-        'In "Settings → Backup & diagnostics → Export config", check what to export: hosts (with credentials), trusted fingerprints, task templates, quick commands, scheduled inspections, app settings (Terminal / AI & security / General), model settings (with prices), alert bots, auto-replies, knowledge base, and secret vault.',
+        'In "Settings → Backup & diagnostics → Export config", check what to export: hosts (with credentials), trusted fingerprints, task templates, quick commands, scheduled inspections, app settings (Terminal / AI & security / General), model settings (with prices), alert bots, auto-replies, memory base, and secret vault.',
         'You can set an export password (at least 6 characters): only with one are credentials such as host passwords / private keys and API keys encrypted and exported; without one, no credentials are included.',
         'Click "Export config" to get a .lingshell-config.json file.',
       ], tips: [
@@ -1091,24 +1091,24 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     ],
   },
   {
-    id: 'knowledge', title: 'Knowledge base (host / group / global cards)', icon: BookMarked,
+    id: 'memory', title: 'Memory base (host / group / global cards)', icon: BookMarked,
     blocks: [
-      { p: 'Record long-lived knowledge about your servers as knowledge cards: how things are deployed, where logs are, how to start / stop, known issues and so on. Each card has a title, content (Markdown) and a category (Deployment / Log locations / Start & stop / Known issues / Other), and is attached to a host, a group or "Global". Once the AI uses a host, it automatically reads the cards for that host, its group and global (newest first, about 4,000 characters total; beyond that only titles are listed), so it gets to know your servers better over time.' },
-      { h: 'Open the knowledge base', steps: [
-        'Click the "Knowledge base" icon (bookmark) in the left activity bar, or search "Open knowledge base" in the command palette.',
-        'In the Host panel ("Hosts" in the title bar), right-click a host → "Knowledge base" to see that host\'s cards directly; right-click a group header → "Group knowledge base".',
+      { p: 'Record long-lived memory about your servers as memory cards: how things are deployed, where logs are, how to start / stop, known issues and so on. Each card has a title, content (Markdown) and a category (Deployment / Log locations / Start & stop / Known issues / Other), and is attached to a host, a group or "Global". Once the AI uses a host, it automatically reads the cards for that host, its group and global (newest first, about 4,000 characters total; beyond that only titles are listed), so it gets to know your servers better over time.' },
+      { h: 'Open the memory base', steps: [
+        'Click the "Memory base" icon (bookmark) in the left activity bar, or search "Open memory base" in the command palette.',
+        'In the Host panel ("Hosts" in the title bar), right-click a host → "Memory base" to see that host\'s cards directly; right-click a group header → "Group memory base".',
         'Filter by "All / Global / Group / Host" on the left; the search box at the top searches titles and content in full text (separate multiple words with spaces); the dropdown on the right filters by category.',
       ] },
       { h: 'Add / edit / delete manually', steps: [
         'Click "New card" in the top-right corner: choose where it belongs (Global / a group / a host) and a category, fill in the title and content, and click "Save".',
         'The pencil on the right of a card is "Edit"; the trash can is "Delete" (asks once more).',
       ] },
-      { h: 'AI-suggested cards', p: 'When troubleshooting turns up something worth remembering long term (where a service is deployed, log locations, how to start / stop it, pitfalls you hit), the AI shows an "AI suggests saving to knowledge base" card in the chat (or "AI suggests updating a knowledge card" when correcting an existing card; expand it to see the original). You can edit the title, category and content first. Nothing is written until you click "Save"; "Ignore" writes nothing. After saving, click "View in knowledge base".', tips: [
-        'The AI only suggests stable, non-sensitive facts. Don\'t put passwords, keys or tokens in the knowledge base.',
-        'Knowledge cards are your own notes and can go stale. When the AI finds they don\'t match what\'s actually on the host, it trusts the host and suggests an update.',
+      { h: 'AI-suggested cards', p: 'When troubleshooting turns up something worth remembering long term (where a service is deployed, log locations, how to start / stop it, pitfalls you hit), the AI shows an "AI suggests saving to memory base" card in the chat (or "AI suggests updating a memory card" when correcting an existing card; expand it to see the original). You can edit the title, category and content first. Nothing is written until you click "Save"; "Ignore" writes nothing. After saving, click "View in memory base".', tips: [
+        'The AI only suggests stable, non-sensitive facts. Don\'t put passwords, keys or tokens in the memory base.',
+        'Memory cards are your own notes and can go stale. When the AI finds they don\'t match what\'s actually on the host, it trusts the host and suggests an update.',
       ] },
       { h: 'Old "Host notes"', p: 'The old "Notes" in the host form and "Local notes" in "Settings → AI & security" have been migrated automatically into a "Host notes" card for that host (or this machine), with nothing lost. Editing the notes later updates this card too.' },
-      { h: 'Backup', p: 'Check "Knowledge base" in "Settings → Backup & diagnostics → Export config" to include it in the config export. On import you can merge or overwrite (per card). Host cards are matched to the imported hosts; host cards whose host can\'t be found locally are dropped, so import them together with "Hosts".' },
+      { h: 'Backup', p: 'Check "Memory base" in "Settings → Backup & diagnostics → Export config" to include it in the config export. On import you can merge or overwrite (per card). Host cards are matched to the imported hosts; host cards whose host can\'t be found locally are dropped, so import them together with "Hosts".' },
     ],
   },
   {
@@ -1146,7 +1146,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       { h: 'Issues', p: 'CPU or memory over 90%, the fullest mount point over 85%, failed systemd services, or an active watchdog alert on the host: if any applies, the card gets a red border, moves to the front, and lists the reasons below.' },
       { h: 'Card actions', steps: [
         'Click a card to open that host\'s terminal (or switch to it if already open); the dashboard closes.',
-        '"…" menu in the card\'s top-right corner: "Host health check", "Services", "Ports" (switch to / connect that host\'s terminal and open the matching drawer), "Knowledge base", "Ask across hosts" (prefilled with the host\'s group), "Ask AI" (sends the host\'s current status, issues, alerts and health check results to the AI as a message).',
+        '"…" menu in the card\'s top-right corner: "Host health check", "Services", "Ports" (switch to / connect that host\'s terminal and open the matching drawer), "Memory base", "Ask across hosts" (prefilled with the host\'s group), "Ask AI" (sends the host\'s current status, issues, alerts and health check results to the AI as a message).',
       ] },
     ],
   },
@@ -1533,7 +1533,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       ] },
       { h: 'AI review (a second model checks high-risk commands)', steps: [
         'In "Settings → AI & security → AI review", turn on "Enable AI review", pick a "Review model" (you can choose a cheaper model profile) and the "Review scope": write commands on production hosts / all dangerous commands / all write commands.',
-        'Commands in scope go to the review model before the permission card appears (with the host, recent session context, and that host\'s rules and knowledge card titles; file writes also include the diff, redacted by "Redact before sending to AI" with vault values swapped for placeholders). The card shows "AI review: risk · reason".',
+        'Commands in scope go to the review model before the permission card appears (with the host, recent session context, and that host\'s rules and memory card titles; file writes also include the diff, redacted by "Redact before sending to AI" with vault values swapped for placeholders). The card shows "AI review: risk · reason".',
         'When the review says "Suggest blocking", the command is denied by default and the reason is passed to the AI (the execution log records "Blocked by AI review"). Set "When review suggests blocking" to "Warn only, don\'t block" to show the card as usual.',
       ], tips: [
         'Review has a 15-second limit. On timeout or error the card shows "AI review: not reviewed" and appears as usual.',
@@ -1800,9 +1800,9 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     id: 'layout', title: 'Layout: activity bars, drawers and the input box', icon: AppWindow,
     blocks: [
       { h: 'Two activity bars', p: 'There are two vertical icon bars, split by what they manage rather than where they sit:', steps: [
-        '**Left (next to the chat)**: Explorer (chat working directory), History, Session permissions / execution log, Knowledge base | Table viewer, Git, Database, API debugger, Deploy review. The last five relate to "this project / this machine" but don\'t depend on which terminal is active, so they live here.',
+        '**Left (next to the chat)**: Explorer (chat working directory), History, Session permissions / execution log, Memory base | Table viewer, Git, Database, API debugger, Deploy review. The last five relate to "this project / this machine" but don\'t depend on which terminal is active, so they live here.',
         '**Right (in the terminal area)**: Explorer (current terminal directory), Dual-pane files, Command history | Host health check, Processes, Services, Containers, Listening ports, More views (disk / cron / firewall / service topology / Kubernetes) | Alerts, Logs, Session log, Instant replay | Connectivity probe, Batch run, File compare, Runbooks | the transfer queue at the bottom.',
-        'Drawers slide out from the bar that owns them: the left bar\'s drawers come out at the chat panel\'s right edge (Git, Database, History, Permissions, Knowledge base), the right bar\'s drawers cover the terminal area\'s right edge. Click the same icon again to close.',
+        'Drawers slide out from the bar that owns them: the left bar\'s drawers come out at the chat panel\'s right edge (Git, Database, History, Permissions, Memory base), the right bar\'s drawers cover the terminal area\'s right edge. Click the same icon again to close.',
         'Every icon has a tooltip saying what it does and what it needs (e.g. "Linux SSH only", "local terminal shows local Docker"); hover first when unsure.',
       ], tips: [
         'Icons never wrap or collapse; when the window is short they simply continue downwards.',

@@ -34,8 +34,8 @@ import { noteSessionEvent } from './lib/sessionStates.js'
 import { loadTermPrefs } from './lib/termPrefs.js'
 import { logger } from './lib/logger.js'
 import { BookMarked } from 'lucide-react'
-import { KnowledgeModal } from './features/knowledge/index.js'
-import { openKnowledge } from './features/knowledge/index.js'
+import { MemoryModal } from './features/memory/index.js'
+import { openMemory } from './features/memory/index.js'
 import { DashboardModal } from './features/dashboard/index.js'
 import { closeDashboard, openDashboard } from './features/dashboard/index.js'
 import { RunbookViewModal } from './features/runbooks/index.js'
@@ -383,7 +383,7 @@ function AppShell() {
           {activeId && <ActBtn title={tr('资源管理器（会话工作目录）')} active={drawer === 'explorer'} onClick={() => setDrawer((d) => (d === 'explorer' ? null : 'explorer'))}><FolderTree className="h-4 w-4" /></ActBtn>}
           <ActBtn title={tr('历史会话')} active={drawer === 'history'} onClick={() => setDrawer((d) => (d === 'history' ? null : 'history'))}><History className="h-4 w-4" /></ActBtn>
           {activeId && <ActBtn title={tr('会话授权 / 执行记录')} active={drawer === 'auth'} onClick={() => setDrawer((d) => (d === 'auth' ? null : 'auth'))}><ShieldCheck className="h-4 w-4" /></ActBtn>}
-          <ActBtn title={tr('知识库（主机 / 分组 / 全局知识卡）')} onClick={() => openKnowledge()}><BookMarked className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('记忆库（主机 / 分组 / 全局记忆卡）')} onClick={() => openMemory()}><BookMarked className="h-4 w-4" /></ActBtn>
           <ActSep />
           {/* 工具：跟「这个项目 / 这台机器」有关，但不依赖终端区停在哪，所以从终端那条活动栏挪到这边 */}
           <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON）按表格看')} onClick={() => void pickAndOpenTable().catch((e) => log.warn('table pick failed', e))}><Table2 className="h-4 w-4" /></ActBtn>
@@ -488,7 +488,7 @@ function AppShell() {
         <DirSyncDialog />
         {/* 用量统计弹窗：openUsage() 打开；点会话名 → 收起设置并切到该会话 */}
         <UsageModal onOpenSession={(sid) => { setShowSettings(false); void selectSession(sid) }} />
-        <KnowledgeModal />
+        <MemoryModal />
         <DashboardModal />
         <RunbookViewModal />
         <ComplianceBatchModal />

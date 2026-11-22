@@ -15,7 +15,7 @@ import {
   type TrustLevel, type PlanStep, type SafetyChangedEvent, tr,
 } from '@lingshell/shared'
 import type { ReviewRequest, ApprovalRequest } from '@lingshell/dsh-controller'
-import { knowledgeHosts } from './knowledgeIpc.js'
+import { memoryHosts } from './memoryIpc.js'
 
 export interface SafetyDeps {
   handle(channel: string, fn: (e: unknown, ...args: unknown[]) => unknown): void
@@ -30,7 +30,7 @@ export interface SafetyDeps {
     revokeSudo(sid: string, hostKey: string): boolean
   }
   isReadOnly(cmd: string): boolean
-  knowledgeTitles(hostKey: string): string[]
+  memoryTitles(hostKey: string): string[]
   complete(system: string, user: string, signal: AbortSignal, source: string, profileId?: string): Promise<string>
   profileName(profileId?: string): string
   preview: { get(sid: string): boolean; set(sid: string, on: boolean): void; approve(sid: string, steps: PlanStep[]): number }
@@ -73,7 +73,7 @@ export function registerSafety(d: SafetyDeps) {
     } catch { cache.delete(p); return '' }
   }
   const workdirRules = (workDir?: string) => (workDir ? WORKDIR_RULE_FILES.map((f) => ({ file: f, text: readRuleFile(join(workDir, f)) })).filter((w) => w.text.trim()) : [])
-  const hostLayers = (hostKeys: string[]) => knowledgeHosts(d.hosts()).filter((h) => hostKeys.includes(h.hostKey))
+  const hostLayers = (hostKeys: string[]) => memoryHosts(d.hosts()).filter((h) => hostKeys.includes(h.hostKey))
 
   // ── sudo 限时提权 ──
   const hostOf = (k: string) => d.hosts().find((h) => h.id === k)
@@ -129,7 +129,7 @@ export function registerSafety(d: SafetyDeps) {
         tool: req.tool, command: clean(req.command), diff: req.diff && clean(req.diff), explain: req.explain && clean(req.explain),
         rollback: req.rollback && clean(req.rollback),
         hosts: hs.map((h) => ({ label: h.label, env: hostOf(h.hostKey)?.env })), context: clean(req.context),
-        rules: buildLayeredRules(ruleLayersFor(readRules(), hs)), knowledge: req.hostKeys.flatMap(d.knowledgeTitles),
+        rules: buildLayeredRules(ruleLayersFor(readRules(), hs)), memory: req.hostKeys.flatMap(d.memoryTitles),
       })
       const ac = new AbortController()
       let timer: ReturnType<typeof setTimeout> | undefined

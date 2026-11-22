@@ -14,7 +14,7 @@ import { SubagentBadge } from './SubagentBadge.js'
 import { TodoItem } from './items/TodoItem.js'
 import { AuthRequestItem } from './items/AuthRequestItem.js'
 import { PlanRequestItem } from './items/PlanRequestItem.js'
-import { KnowledgeItem } from './items/KnowledgeItem.js'
+import { MemoryItem } from './items/MemoryItem.js'
 import { TurnSummaryBar } from './items/TurnSummaryBar.js'
 import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
@@ -87,7 +87,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   onManageSkills?: () => void
   onContinueSession?: (title: string) => Promise<{ id: string; digest: string } | undefined>   // 接续：用摘要开新会话（旧会话原样保留）
 }) {
-  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, sendTo, regenerate, fail, interrupt, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
+  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, regenerate, fail, interrupt, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
   const models = useSessionModel(activeSessionId, busy, onManageModels)
   const turnChanges = useTurnChanges(activeSessionId, busy)   // 回合末「本轮改了 N 个文件」
   const hostChanges = useTurnHostChanges(activeSessionId)     // 回合末「本轮主机变化」
@@ -451,6 +451,38 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   // 只有真的收下了才清空输入框——被拒时留着内容，不让用户白打一遍
   // 选了 Skill：消息前加 `/名字`，由 dsh-tool-skill 把该 skill 的完整指令注入本轮（用户显式调用）
   const [skill, setSkill] = useState<string>()
+  // 输入框里打 `/` 直接唤起 Skill 列表（只认「/ + 还没空格」这种开头），省得去「+」菜单里翻两层
+  const [sks, setSks] = useState<{ name: string; description?: string }[] | null>(null)
+  const [slashQ, setSlashQ] = useState<string | null>(null)
+  const [slashIdx, setSlashIdx] = useState(0)
+  const slashItems = useMemo(() => {
+    if (slashQ === null) return []
+    const q = slashQ.trim().toLowerCase()
+    return (sks ?? []).filter((s) => !q || s.name.toLowerCase().includes(q)).slice(0, 8)
+  }, [sks, slashQ])
+  const loadSkills = () => {
+    if (sks) return
+    client.skills.list()
+      .then((l) => setSks(l.filter((s) => s.enabled && s.userInvocable && !s.error).map((s) => ({ name: s.name, description: s.description }))))
+      .catch(() => setSks([]))
+  }
+  const pickSkillByName = (name: string) => {
+    setSkill(name); setSlashQ(null); setInput(''); draftRef.current.delete(activeSessionId)
+    requestAnimationFrame(() => taRef.current?.focus())
+  }
+  // 后台任务（start_background 起的）：有回合在跑、或还有任务没结束时才轮询；两边都空就完全停（不空转）
+  // 注意：这里**只用于显示**，绝不参与「能不能输入」的判断 —— 输入框始终可用（追问机制）
+  const [bgTasks, setBgTasks] = useState<{ jobId: string; command: string; startedAt: number; terminalId: string }[]>([])
+  const bgPolling = busy || bgTasks.length > 0
+  useEffect(() => {
+    if (!activeSessionId) return
+    if (!bgPolling) { setBgTasks((cur) => (cur.length ? [] : cur)); return }
+    let alive = true
+    const tick = () => { void client.bg.list(activeSessionId).then((l) => { if (alive) setBgTasks(l) }).catch(() => { /* 会话已关：下次轮询自然停 */ }) }
+    tick()
+    const t = setInterval(tick, 2500)
+    return () => { alive = false; clearInterval(t) }
+  }, [activeSessionId, bgPolling])
   // 切会话：保存上一个会话的草稿，恢复当前会话的草稿；Skill 属于具体一条消息，不跨会话
   useEffect(() => {
     const prev = prevSidRef.current
@@ -493,29 +525,24 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   // includeTurn：从 AI 回复分叉时带上这一轮（否则刚刚那一轮会被整个切掉）。
   // 分叉不再搬整段历史：新会话带「摘要 + 最近几轮」的 digest，附在该会话第一条消息上。
   // 回调经 ref 取最新闭包，context 值只随 busy / 会话变化，不带动所有消息重渲染
-  const forkRef = useRef<(msgId: string, edited?: string, includeTurn?: boolean) => void>(() => {})
-  forkRef.current = (msgId, edited, includeTurn) => {
+  // 分叉：把当前对话（含切点所在的那一轮）完整带到新会话。**不再回填输入框** —— 用户点分叉是
+  // 要「换个地方继续聊」，不是「重新发这条」。「编辑后重发」已移除（语义与分叉混淆，见规划文档 F3）。
+  const forkRef = useRef<(msgId: string, includeTurn?: boolean) => void>(() => {})
+  forkRef.current = (msgId, includeTurn) => {
     const sid = activeSessionId
     client.agent.forkSession(sid, msgId, 'fork', { includeTurn }).then(async (r) => {
       await onOpenSession?.(r.session.id)
       const dg = (r.digest ?? '').trim()
-      if (edited !== undefined) {
-        // 编辑重发：立刻在新会话里用改后的内容发出去，digest 作为上下文附件一起发
-        if (!dg) { sendTo(r.session.id, edited); return }
-        const a = contextAtt('session', tr('分叉前的上下文'), dg) as Exclude<DraftAtt, { kind: 'termBlock' }>
-        sendTo(r.session.id, edited, { send: [toTurn(a, true)], view: [toView(a)] })
-        return
-      }
-      if (dg) pendingDigest.current.set(r.session.id, dg)   // 用户接着输入时再附上
-      draftRef.current.set(r.session.id, r.text); setInput(r.text); requestAnimationFrame(() => { const ta = taRef.current; if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length) } })
+      if (dg) pendingDigest.current.set(r.session.id, dg)   // 只带摘要的兜底路径：用户接着输入时附上
     }, (e) => fail(sid, tr('分叉失败：{msg}', { msg: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') })))
   }
   const regenRef = useRef(regenerate)
   regenRef.current = regenerate
   const msgActions = useMemo<MsgActions>(() => ({
     busy,
-    onEdit: (id, text) => forkRef.current(id, text),
-    onFork: (id) => forkRef.current(id),
+    // includeTurn 必须透传：之前写成 (id) => forkRef.current(id)，把 AI 回复按钮传的 true 吞掉了，
+    // 结果「从最后一条回复分叉」也切在这一轮之前，最后一轮整个丢失（TS 不会报：少接可选参数是合法的）
+    onFork: (id, includeTurn) => forkRef.current(id, includeTurn),
     onRegenerate: (id) => regenRef.current(id),
   }), [busy, activeSessionId])
 
@@ -803,8 +830,8 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
             const pm = isPostmortemRequest(turn.userMsg?.text) && !(busy && i === turns.length - 1) ? turn.final.filter((x) => x.kind === 'agent_message' && x.text.trim()).at(-1)?.text : undefined
             // 预演模式：最后一轮回复末尾的「方案步骤」（可勾选执行）
             const pv = i === turns.length - 1 && !busy ? previewPlanOfTurn(turn, preview.on) : undefined
-            // 知识卡提议会被提到 final 前面，模型写在工具调用前的总结被折进【执行过程】。
-            // final 里没有文字、但有知识卡时，把那条总结补到回合末（纯 UI 复现，不请求模型）
+            // 记忆卡提议会被提到 final 前面，模型写在工具调用前的总结被折进【执行过程】。
+            // final 里没有文字、但有记忆卡时，把那条总结补到回合末（纯 UI 复现，不请求模型）
             const hasFinalText = turn.final.some((x) => x.kind === 'agent_message' && x.text.trim())
             const sum = !hasFinalText && turn.final.some((x) => x.kind === 'host_note')
               ? turn.steps.filter((x) => x.kind === 'agent_message' && x.text.trim()).at(-1)?.text
@@ -816,7 +843,8 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
           })
         })()}
         </ToolFocusContext.Provider></ToolSessionContext.Provider></MsgActionsContext.Provider>
-        {busy && <WorkingIndicator />}
+        {busy && <WorkingIndicator bg={bgTasks.length} />}
+        {!busy && bgTasks.length > 0 && <BgOnlyIndicator bg={bgTasks.length} />}
         {/* 待发送：本轮进行中补发的消息，不进时间线（否则本轮后续步骤会被归到它名下），真正发出时才入 items */}
         {steering.length > 0 && <SteeringMessages items={steering} authWaiting={busy && items.some((x) => (x.kind === 'auth_request' || x.kind === 'plan_request' || x.kind === 'ask_request') && x.status === 'in_progress')}
           onWithdraw={(k) => void withdrawSteer(k).then((r) => { if (r) { setInput((v) => (v.trim() ? `${v}
@@ -901,6 +929,20 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         </div>
         <div {...att.dropProps} data-compose-box style={inputH ? { height: inputH } : undefined} className={`relative flex items-end gap-1.5 rounded-lg border bg-[var(--color-bg-base)] px-2.5 py-1.5 transition-colors ${bang !== null ? 'border-[color:color-mix(in_srgb,var(--color-warn)_60%,transparent)]' : 'border-[var(--color-border-default)] focus-within:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'}`}>
           <AtMenuPopup m={atMenu} />
+          {/* `/` 唤起 Skill：键盘上下选、回车确认、Esc 关；选中后变成输入框上方的 skill tag */}
+          {slashQ !== null && (
+            <div data-slash-menu className="absolute bottom-full left-0 z-20 mb-1 w-[320px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl animate-fade-in">
+              {slashItems.length === 0
+                ? <div className="px-2.5 py-2 text-[12px] text-[var(--color-text-muted)]">{tr('没有匹配的 Skill')}</div>
+                : slashItems.map((s, i) => (
+                  <button key={s.name} onMouseEnter={() => setSlashIdx(i)} onClick={() => pickSkillByName(s.name)} title={s.description}
+                    className={`flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left transition-colors ${i === slashIdx ? 'bg-[var(--color-bg-hover)]' : ''}`}>
+                    <span className="font-mono text-[12.5px] text-[var(--color-text-primary)]">/{s.name}</span>
+                    {s.description && <span className="truncate text-[11px] text-[var(--color-text-muted)]">{s.description}</span>}
+                  </button>
+                ))}
+            </div>
+          )}
           {/* 「+」菜单：工作目录（会话绑定，本地终端 cwd / AI 默认工作区）/ Skills ▸ / 常用任务 ▸ / 运维手册 ▸。
               二级菜单选中后交给后面两个 picker（不显示自己的按钮，经 preset 打开）：模板填入输入框不自动发送；手册填参数 + 选终端后发出。
               三者包在一个 flex 项里：两个 picker 是 0 宽的空壳，单独作为 flex 项会各吃一份 gap，「+」和输入区就隔得很远 */}
@@ -925,9 +967,27 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
             ref={taRef} data-chat-input
             value={input}
             maxLength={INPUT_MAX}
-            onChange={(e) => { setInput(e.target.value); setCaret(e.target.selectionStart) }}
+            onChange={(e) => {
+              const v = e.target.value
+              setInput(v); setCaret(e.target.selectionStart)
+              // `/` 开头且还没打空格 → 唤起 Skill 列表（打了空格就当正文了）
+              const m = /^\/([^\s]*)$/.exec(v)
+              if (m) { loadSkills(); setSlashQ(m[1]); setSlashIdx(0) }
+              else if (slashQ !== null) setSlashQ(null)
+            }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={(e) => {
+              // `/` 浮层开着时先吃掉上下键 / 回车 / Esc，别让它落到发送逻辑上
+              if (slashQ !== null) {
+                if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIdx((i) => Math.min(i + 1, Math.max(0, slashItems.length - 1))); return }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIdx((i) => Math.max(0, i - 1)); return }
+                if (e.key === 'Escape') { e.preventDefault(); setSlashQ(null); return }
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && slashItems.length) {
+                  e.preventDefault()
+                  pickSkillByName(slashItems[Math.min(slashIdx, slashItems.length - 1)].name)
+                  return
+                }
+              }
               if (atMenu.onKey(e)) return
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(e.altKey ? { queue: true } : undefined) }
             }}
@@ -1110,7 +1170,7 @@ function TimelineItemBody({ item, active = false, regenFrom, turnUserMsgId }: { 
     case 'plan_request':
       return <PlanRequestItem item={item} />
     case 'host_note':
-      return <KnowledgeItem item={item} />
+      return <MemoryItem item={item} />
     case 'ask_request':
       return <AskRequestItem item={item} />
     default:
@@ -1548,11 +1608,25 @@ function QueuedMessages({ texts, onWithdraw }: { texts: string[]; onWithdraw: (i
   )
 }
 
-function WorkingIndicator() {
+function WorkingIndicator({ bg }: { bg: number }) {
+  // 有后台任务在跑也算「正在进行」：用户看到的是会话还在做事，但输入框照常可用（纯显示，不锁任何东西）
+  const text = bg > 0
+    ? tr('AI 工作中… · {n} 个后台任务在跑', { n: bg })
+    : tr('AI 工作中…')
   return (
-    <div className="flex items-center gap-2 px-5 py-1.5 text-[12px] text-[var(--color-text-muted)]">
+    <div data-working-indicator className="flex items-center gap-2 px-5 py-1.5 text-[12px] text-[var(--color-text-muted)]">
       <Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />
-      <span className="animate-pulse-dim">{tr('AI 工作中…')}</span>
+      <span className="animate-pulse-dim">{text}</span>
+    </div>
+  )
+}
+
+/** 会话空闲但还有后台任务在跑：继续显示一行（否则用户以为任务已经没了） */
+function BgOnlyIndicator({ bg }: { bg: number }) {
+  return (
+    <div data-working-indicator className="flex items-center gap-2 px-5 py-1.5 text-[12px] text-[var(--color-text-muted)]">
+      <Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />
+      <span>{tr('{n} 个后台任务在跑（完成会自动继续）', { n: bg })}</span>
     </div>
   )
 }
