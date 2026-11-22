@@ -36,6 +36,8 @@ export function registerSkills(d: SkillsIpcDeps): LocalSkills {
     return lib.save(i, typeof old === 'string' && old ? old : undefined)
   })
   d.handle('skills:remove', (_e, name) => lib.remove(str(name, tk('arg| skill 名'))))
+  // 内置 skill：重置为随应用打包的版本（覆盖用户改过的内容）
+  d.handle('skills:resetBuiltin', (_e, name) => lib.resetBuiltin(str(name, tk('arg| skill 名')), d.builtinDir))
   d.handle('skills:setFlags', (_e, name, flags) => {
     const f = (flags ?? {}) as { enabled?: unknown; modelInvocable?: unknown }
     const pick = (v: unknown) => (typeof v === 'boolean' ? v : undefined)

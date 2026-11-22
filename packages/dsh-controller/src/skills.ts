@@ -261,6 +261,21 @@ export class LocalSkills {
     return { added, updated }
   }
 
+  /** 把某个内置 skill 重置成随应用发布的版本（覆盖用户改过的内容）；不是内置的会报错 */
+  async resetBuiltin(name: string, srcDir?: string): Promise<void> {
+    if (!srcDir) throw new Error(tr('当前环境没有内置 skill 目录'))
+    const dir = await this.dirOf(name)
+    const dst = join(this.root, dir)
+    const from = join(srcDir, dir)
+    if (!existsSync(join(from, 'SKILL.md'))) throw new Error(tr('应用里没有「{name}」的内置源文件，无法重置', { name }))
+    await rm(dst, { recursive: true, force: true })
+    await cp(from, dst, { recursive: true })
+    const st = await this.state()
+    st[name] = { ...st[name], builtin: true, builtinHash: await hashDir(from) }
+    await this.saveState(st)
+    this.changed()
+  }
+
   async setFlags(name: string, flags: { enabled?: boolean; modelInvocable?: boolean }): Promise<void> {
     await this.dirOf(name)
     const st = await this.state()

@@ -57,7 +57,7 @@ export class HttpTransport implements AppClient {
   sshUrl: AppClient['sshUrl'] = { takePending: ni }
   gitBash: AppClient['gitBash'] = { status: ni, redetect: ni, pick: ni, clear: ni }
   modelProfiles: AppClient['modelProfiles'] = { test: ni, sessionModel: ni, setSessionModel: ni, setSessionThinking: ni, sessionThinking: ni }
-  skills: AppClient['skills'] = { list: ni, read: ni, save: ni, remove: ni, setFlags: ni, pickImport: ni, inspect: ni, commitImport: ni, cancelImport: ni, openDir: ni }
+  skills: AppClient['skills'] = { list: ni, read: ni, save: ni, remove: ni, resetBuiltin: ni, setFlags: ni, pickImport: ni, inspect: ni, commitImport: ni, cancelImport: ni, openDir: ni }
   attachments: AppClient['attachments'] = { pickFiles: ni, pickDirs: ni, pickImages: ni, kinds: ni, imageFile: ni, clipboardPaths: ni, send: ni, image: ni, open: ni }
   ports: AppClient['ports'] = { list: ni, forwards: ni, forward: ni, stop: ni }
   turnChanges: AppClient['turnChanges'] = { list: ni, check: ni, diff: ni, undo: ni }

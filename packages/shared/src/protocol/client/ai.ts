@@ -96,6 +96,8 @@ export interface AiApi {
     read(name: string): Promise<import('../types.js').SkillInput>
     save(input: import('../types.js').SkillInput, oldName?: string): Promise<void>
     remove(name: string): Promise<void>
+    /** 内置 skill：把自己改过的内容重置成随应用发布的版本（会覆盖用户修改） */
+    resetBuiltin(name: string): Promise<void>
     setFlags(name: string, flags: { enabled?: boolean; modelInvocable?: boolean }): Promise<void>
     pickImport(kind: 'folder' | 'file'): Promise<import('../types.js').SkillImportPreview | null>
     inspect(path: string): Promise<import('../types.js').SkillImportPreview>

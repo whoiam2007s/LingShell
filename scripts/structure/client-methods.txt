@@ -355,6 +355,7 @@ skills.openDir → skills:openDir
 skills.pickImport → skills:pickImport
 skills.read → skills:read
 skills.remove → skills:remove
+skills.resetBuiltin → skills:resetBuiltin
 skills.save → skills:save
 skills.setFlags → skills:setFlags
 sshAuth.answer → sshAuth:answer

@@ -46,9 +46,9 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   const openExternal = () => { void (scope === 'local' ? client.fs.openLocal(path) : client.preview.openExternal(scope, path)).catch(() => {}) }
   // 切换：查看 ↔ 编辑。切回查看不是「就地只读」，而是由父组件换回真正的查看器（.md 渲染、CSV 表格、图片…）
   const toggleEdit = () => {
-    if (!readOnly && dirty) { setNote(tr('有未保存的改动，先保存再切回查看')); return }
-    if (!readOnly) { if (onSwitchToView) onSwitchToView(); else setReadOnly(true); return }
-    setReadOnly(false)
+    if (readOnly) { setReadOnly(false); return }
+    if (dirty) { setAsk('view'); return }
+    goView()
   }
   const [base, setBase] = useState<string>()      // 打开时（或上次保存后）的磁盘原文，用于并发修改检测
   const [text, setText] = useState('')
@@ -56,7 +56,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   const [err, setErr] = useState<string>()
   const [note, setNote] = useState('')
   const [diff, setDiff] = useState<string>()       // 非 undefined = 显示保存确认
-  const [askClose, setAskClose] = useState(false)
+  const [ask, setAsk] = useState<'close' | 'view' | null>(null)   // 有未保存改动时的确认：关窗 or 切回查看
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [syntaxWarn, setSyntaxWarn] = useState<SyntaxProblem>()
@@ -87,7 +87,9 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
     const withNl = finalNewline && t !== '' && !t.endsWith('\n') ? `${t}\n` : t
     return eol === 'crlf' ? withNl.replace(/\n/g, '\r\n') : withNl
   }
-  const dirty = base !== undefined && toDisk(text) !== base
+  // 比较时统一成 LF：只差换行符（CRLF↔LF）不算改动，否则打开就显示「有未保存改动」、切不回查看
+  const same = (a: string, b: string) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n')
+  const dirty = base !== undefined && !same(toDisk(text), base)
 
   // 打开时读一次（父组件按 path 做 key 重挂载）；打不开的，切到 sudo 或验证完密码后再读
   useEffect(() => {
@@ -111,16 +113,18 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
       .catch((e: unknown) => setErr(fmtErr(e)))
       .finally(() => setBusy(false))
   }
-  const confirmSave = () => {
+  const confirmSave = (then?: () => void) => {
     if (base === undefined) return
     const next = toDisk(text)
     setBusy(true)
     client.fs.writeText(scope, path, base, next)
-      .then(() => { setBase(next); setDiff(undefined); setErr(undefined); setSaved(true) })
+      .then(() => { setBase(next); setDiff(undefined); setErr(undefined); setSaved(true); then?.() })
       .catch((e: unknown) => { setDiff(undefined); setErr(fmtErr(e)) })
       .finally(() => setBusy(false))
   }
-  const requestClose = () => (dirty ? setAskClose(true) : onClose())
+  // 关闭 / 切回查看：有改动先问（保存并继续 / 不保存 / 取消）
+  const goView = () => { if (onSwitchToView) onSwitchToView(); else setReadOnly(true) }
+  const requestClose = () => (dirty ? setAsk('close') : onClose())
   useEffect(() => { if (sudoSave && sudo) { setSudoSave(false); confirmSave() } }, [sudo, sudoSave])
 
   // ── 编辑：按差异写回 textarea（浏览器原生插入，Ctrl+Z 能撤销），再设选区 ──
@@ -296,8 +300,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   }, [text, big, showWs, showInv, suspects, trails, matches, curIdx])
 
   // 捕获阶段拦 Ctrl+S / Ctrl+F / Ctrl+H / Ctrl+G / F3 / Esc：抢在抽屉的 Esc 关闭（window 冒泡监听）和终端之前
-  const keys = useRef({ requestSave, requestClose, diff, askClose, openFind, find, gotoLine, goMatch, syntaxWarn })
-  keys.current = { requestSave, requestClose, diff, askClose, openFind, find, gotoLine, goMatch, syntaxWarn }
+  const keys = useRef({ requestSave, requestClose, diff, ask, openFind, find, gotoLine, goMatch, syntaxWarn })
+  keys.current = { requestSave, requestClose, diff, ask, openFind, find, gotoLine, goMatch, syntaxWarn }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const k = keys.current
@@ -311,7 +315,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
       else if (e.key === 'Escape') {
         stop()
         if (k.diff !== undefined) setDiff(undefined)
-        else if (k.askClose) setAskClose(false)
+        else if (k.ask) setAsk(null)
         else if (k.syntaxWarn) setSyntaxWarn(undefined)
         else if (k.find || k.gotoLine !== null) { setFind(null); setGotoLine(null); area.current?.focus() }
         else k.requestClose()
@@ -487,19 +491,22 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
               <DiffView diff={diff} maxHeight="max-h-[55vh]" />
               <div className="mt-3 flex justify-end gap-2">
                 <button onClick={() => setDiff(undefined)} className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('取消')}</button>
-                <button onClick={confirmSave} disabled={busy} autoFocus className={`${btn} border border-transparent bg-[var(--color-accent)] font-medium text-[var(--color-bg-base)] hover:opacity-90`}>{busy ? tr('保存中…') : tr('保存')}</button>
+                <button onClick={() => confirmSave()} disabled={busy} autoFocus className={`${btn} border border-transparent bg-[var(--color-accent)] font-medium text-[var(--color-bg-base)] hover:opacity-90`}>{busy ? tr('保存中…') : tr('保存')}</button>
               </div>
             </div>
           </div>
         )}
-        {askClose && (
+        {ask && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
-            <div className="w-[340px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-5 shadow-2xl">
-              <div className="mb-2 text-[14px] font-semibold text-[var(--color-text-primary)]">{tr('放弃未保存的改动？')}</div>
-              <p className="mb-4 text-[12.5px] text-[var(--color-text-secondary)]">{tr('关闭后本次编辑的内容会丢失。')}</p>
+            <div className="w-[380px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-5 shadow-2xl">
+              <div className="mb-2 text-[14px] font-semibold text-[var(--color-text-primary)]">{tr('有未保存的改动')}</div>
+              <p className="mb-4 text-[12.5px] text-[var(--color-text-secondary)]">{ask === 'close' ? tr('关闭后本次编辑的内容会丢失。') : tr('切回查看前，本次编辑的内容需要处理。')}</p>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setAskClose(false)} autoFocus className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('继续编辑')}</button>
-                <button onClick={onClose} className={`${btn} border border-transparent bg-[var(--color-danger)] font-medium text-[var(--color-on-danger)] hover:opacity-90`}>{tr('放弃并关闭')}</button>
+                <button onClick={() => setAsk(null)} autoFocus className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('取消')}</button>
+                <button onClick={() => { const a = ask; setAsk(null); if (a === 'close') onClose(); else goView() }}
+                  className={`${btn} border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)]`}>{tr('不保存')}</button>
+                <button onClick={() => { const a = ask; confirmSave(() => { setAsk(null); if (a === 'close') onClose(); else goView() }) }}
+                  className={`${btn} border border-transparent bg-[var(--color-accent)] font-medium text-[var(--color-bg-base)] hover:opacity-90`}>{tr('保存并继续')}</button>
               </div>
             </div>
           </div>

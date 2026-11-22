@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Pencil, Trash2, Plus, FolderOpen, Download, ChevronDown, Folder, FileArchive, Sparkles, AlertTriangle, X } from 'lucide-react'
+import { Pencil, Trash2, Plus, FolderOpen, Download, ChevronDown, Folder, FileArchive, Sparkles, AlertTriangle, X, RefreshCw } from 'lucide-react'
 import { tk, tr, type SkillInfo, type SkillImportPreview } from '@lingshell/shared'
 import { trx } from '../../../lib/trx.js'
 import { client } from '../../../client/index.js'
@@ -21,6 +21,7 @@ export function SkillsPanel() {
   const [form, setForm] = useState<Form | null>(null)
   const [preview, setPreview] = useState<SkillImportPreview | null>(null)
   const [delTarget, setDelTarget] = useState<SkillInfo | null>(null)
+  const [resetTarget, setResetTarget] = useState<SkillInfo | null>(null)
   const [importMenu, setImportMenu] = useState(false)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
@@ -42,6 +43,7 @@ export function SkillsPanel() {
     try { const r = await client.skills.read(s.name); setForm({ old: s.name, ...r }) }
     catch (e) { setErr(errText(e)) }
   }
+  const doReset = () => { if (resetTarget) client.skills.resetBuiltin(resetTarget.name).then(refresh).catch((e) => setErr(errText(e))); setResetTarget(null) }
   const doDelete = () => {
     if (delTarget) client.skills.remove(delTarget.name).then(refresh).catch((e) => setErr(errText(e)))
     setDelTarget(null)
@@ -111,12 +113,10 @@ export function SkillsPanel() {
                     <button onClick={() => edit(s)} title={tr('编辑')} className={ICON_BTN}><Pencil className="h-3 w-3" /></button>
                   </>
                 )}
-                {/* 内置 skill 可以编辑，但不能删（删了下次启动也会被补回来） */}
-                <button onClick={() => setDelTarget(s)} disabled={s.builtin}
-                  title={s.builtin ? tr('随应用内置：可以编辑，不能删除') : tr('删除')}
-                  className={s.builtin ? `${ICON_DEL} cursor-not-allowed opacity-40 hover:bg-transparent` : ICON_DEL}>
-                  <Trash2 className="h-3 w-3" />
-                </button>
+                {/* 内置 skill：有版本更新机制（改过的不覆盖），所以不放删除，放「刷新同步」把它重置回内置版本 */}
+                {s.builtin
+                  ? <button onClick={() => setResetTarget(s)} title={tr('刷新同步：重置为当前版本内置的内容（会覆盖你的修改）')} className={ICON_BTN}><RefreshCw className="h-3 w-3" /></button>
+                  : <button onClick={() => setDelTarget(s)} title={tr('删除')} className={ICON_DEL}><Trash2 className="h-3 w-3" /></button>}
               </div>
             </div>
           ))}
@@ -126,6 +126,9 @@ export function SkillsPanel() {
       {msg && <div className="text-[12px] text-[var(--color-success)]">{msg}</div>}
       {preview && <ImportDialog preview={preview} onClose={() => { void client.skills.cancelImport(preview.token).catch(() => {}); setPreview(null) }}
         onDone={(name) => { setPreview(null); setMsg(tr('已导入 {name}，立即生效', { name })); refresh() }} />}
+      <ConfirmDialog open={!!resetTarget} title={tr('刷新同步')}
+        message={tr('把「{name}」重置为随应用内置的版本？你改过的内容会丢失。', { name: resetTarget?.name ?? '' })}
+        onConfirm={doReset} onCancel={() => setResetTarget(null)} />
       <ConfirmDialog open={!!delTarget} title={tr('删除 Skill')} message={tr('确定删除 {name}？会删除它的整个目录（含资源文件），不可恢复。', { name: delTarget?.name ?? '' })} onConfirm={doDelete} onCancel={() => setDelTarget(null)} />
     </Page>
   )
