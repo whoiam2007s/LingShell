@@ -40,12 +40,19 @@ function AuthRequestCard({ auth: a }: { auth: NonNullable<ConvItem['auth']> }) {
   }, [resolved])
 
   const danger = a.risk === 'dangerous'
-  // 应用配置 / 派子代理用的是伪主机键（'app' / 'subagent'）：卡片上不谈"终端"
+  // 伪主机键：应用配置（'app'）/ 派子代理（'subagent'）/ 跑 skill 脚本（'skill:<名字>'）
+  // —— 都不是终端，卡片上不能写成「对终端…的权限」，否则用户以为在给某台机器授权
   const isSubagent = a.terminalId === 'subagent'
-  const isPseudoKey = isSubagent || a.terminalId === 'app'
-  const pseudoLabel = isSubagent ? tr('子代理') : tr('应用设置')
+  const isSkill = a.terminalId.startsWith('skill:')
+  const isPseudoKey = isSubagent || a.terminalId === 'app' || isSkill
+  const pseudoLabel = isSubagent ? tr('子代理')
+    : isSkill ? tr('Skill · {name}', { name: a.terminalId.slice('skill:'.length) })
+    : tr('应用设置')
   const reasonText =
-    isPseudoKey ? (isSubagent ? tr('AI 要派一个子代理去跑这个任务') : tr('AI 要改动应用设置（不是某台主机上的操作）'))
+    isPseudoKey
+      ? (isSubagent ? tr('AI 要派一个子代理去跑这个任务')
+        : isSkill ? tr('AI 要运行这个 Skill 自带的脚本（只能跑 scripts/ 目录下的文件）；允许后本会话这个 Skill 的其它脚本不再询问')
+        : tr('AI 要改动应用设置（不是某台主机上的操作）'))
     : a.mcp ? tr('外部工具可能产生副作用，每次调用都需确认（可在 设置 → MCP 服务 里把该工具标为免确认）')
     : a.tool === 'write_file' ? tr('确认以下改动？覆盖前会自动备份原文件，可在执行记录里还原')
     : a.tool === 'download_file' ? tr('确认把该文件下载到本机？')

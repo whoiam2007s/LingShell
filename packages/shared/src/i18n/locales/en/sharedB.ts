@@ -277,6 +277,8 @@ export const sharedB: Record<string, string> = {
   '一次把所有工具都设为免确认 / 都要确认': 'Mark every tool as no-confirmation or require confirmation for all',
   '用邮件程序打开': 'Open with your mail app',
   '运行 Skill 脚本：{skill}/scripts/{script}': 'Run skill script: {skill}/scripts/{script}',
+  'Skill · {name}': 'Skill · {name}',
+  'AI 要运行这个 Skill 自带的脚本（只能跑 scripts/ 目录下的文件）；允许后本会话这个 Skill 的其它脚本不再询问': 'The AI wants to run a script bundled with this skill (only files under scripts/). Once allowed, other scripts of this skill run without asking in this session.',
   '点击放大（可缩放 / 拖拽）': 'Click to enlarge (zoom / drag)',
   '这是目录，用资源管理器打开：{p}': 'This is a folder — open it in the explorer: {p}',
   '本地没有这个文件（远端主机上的文件请在终端里查看）：{p}': 'No such local file (files on remote hosts: open them in the terminal): {p}',

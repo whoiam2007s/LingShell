@@ -62,6 +62,8 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
   const preview0 = (name === 'propose_host_knowledge' || name === 'propose_runbook') && typeof input?.title === 'string' ? input.title
     : name === 'propose_quick_commands' && typeof input?.set_name === 'string' ? input.set_name
     : name === 'ask_user' && typeof input?.question === 'string' ? input.question
+    // run_skill_script 的入参只有 skill / script，不拼出来卡片那一行就是空的
+    : name === 'run_skill_script' && typeof input?.skill === 'string' ? `${input.skill}/scripts/${String(input.script ?? '')}`
     : name === 'run_on_hosts' && Array.isArray(input?.targets) && command ? `[${(input.targets as string[]).join(', ')}] ${command}` : command
   // spawn_subagent：卡片上只显示一句话标题（完整 task 收在展开的参数里，一眼看出在干什么）
   const subTitle = name === 'spawn_subagent'

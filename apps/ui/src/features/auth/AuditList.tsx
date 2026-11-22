@@ -89,7 +89,7 @@ export function AuditList({ sessionId, hosts }: { sessionId: string; hosts: Host
     if (ev.type === 'auth:resolved' || (ev.type === 'agent:itemUpdated' && ev.kind === 'tool_call' && ev.status !== 'in_progress')) refresh()
   }), [refresh])
 
-  const host = (k: string) => (k === 'local' ? tr('本地') : k.startsWith('mcp:') ? `MCP · ${k.slice(4)}` : hosts.find((h) => h.id === k)?.label ?? k)
+  const host = (k: string) => (k === 'local' ? tr('本地') : k.startsWith('mcp:') ? `MCP · ${k.slice(4)}` : k.startsWith('skill:') ? tr('Skill · {name}', { name: k.slice(6) }) : hosts.find((h) => h.id === k)?.label ?? k)
   // 「还原」：确认后用该记录的备份覆盖回原文件（覆盖前当前内容同样会备份，并新增一条「已还原」记录）
   const [restoring, setRestoring] = useState<AuditEntry>()
   const [restoreErr, setRestoreErr] = useState<{ at: string; msg: string }>()
