@@ -41,7 +41,7 @@ const DECO_CLS: Record<number, string> = { [D.Space]: 'ed-sp', [D.Tab]: 'ed-tab'
 /** 能渲染成「查看」形态的格式（md 渲染 / csv 表格 / pdf / 图片）；其余只读文本 */
 const PREVIEWABLE = /\.(md|markdown|csv|tsv|pdf|png|jpe?g|gif|webp|bmp|svg)$/i
 
-export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false, onSwitchToView }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean; onSwitchToView?: () => void }) {
+export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean }) {
   const sudo = scope !== 'local' && !!scope.sudo
   const fmtErr = (e: unknown) => { const m = errMsg(e); if (m.includes(SUDO_NEED_PW)) { onNeedPw?.(); return m.replace(SUDO_NEED_PW, '') } return m }
   const deniedMsg = (m?: string) => !!m && !sudo && !!onSudo && /Permission denied|没有权限|EACCES|权限不够/i.test(m)   // i18n-ignore 匹配报错文本
@@ -50,11 +50,12 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   // 父组件把 edit 改掉时跟着同步（同一个弹窗内切模式，不靠 key 重挂载——那样会重新读文件闪一下）
   useEffect(() => { setReadOnly(!edit) }, [edit])
   const openExternal = () => { void (scope === 'local' ? client.fs.openLocal(path) : client.preview.openExternal(scope, path)).catch(() => {}) }
-  // 切换：查看 ↔ 编辑。切回查看不是「就地只读」，而是由父组件换回真正的查看器（.md 渲染、CSV 表格、图片…）
+  // 切换：查看 ↔ 编辑。查看模式的渲染由本组件负责（md 渲染 / csv 表格 / 代码只读文本），
+  // 所以直接切内部状态即可 —— 之前调父组件的 onSwitchToView，但父组件的 edit prop 没变，React 不重渲染，表现为「点了没反应」
   const toggleEdit = () => {
     if (readOnly) { setReadOnly(false); return }
     if (dirty) { setAsk('view'); return }
-    goView()
+    setReadOnly(true)
   }
   const [base, setBase] = useState<string>()      // 打开时（或上次保存后）的磁盘原文，用于并发修改检测
   const [text, setText] = useState('')
@@ -129,7 +130,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
       .finally(() => setBusy(false))
   }
   // 关闭 / 切回查看：有改动先问（保存并继续 / 不保存 / 取消）
-  const goView = () => { if (onSwitchToView) onSwitchToView(); else setReadOnly(true) }
+  const goView = () => setReadOnly(true)
   const requestClose = () => (dirty ? setAsk('close') : onClose())
   useEffect(() => { if (sudoSave && sudo) { setSudoSave(false); confirmSave() } }, [sudo, sudoSave])
 
