@@ -103,7 +103,13 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const [flowOpen, setFlowOpen] = useState(false)
   // 对话里点文件路径 → 弹原生预览（本地文件；不支持的格式在预览里可「用系统程序打开」）
   const [peekPath, setPeekPath] = useState<string>()
-  useEffect(() => onOpenPathPreview((p) => setPeekPath(p)), [])
+  useEffect(() => onOpenPathPreview((p) => {
+    // 相对路径按会话工作目录解析：主进程按应用自己的 cwd 找，会报「文件不存在」
+    const abs = !/^([a-zA-Z]:[\\/]|[\\/]|~)/.test(p) && workDir
+      ? `${workDir.replace(/[\\/]+$/, '')}/${p.replace(/^\.\//, '')}`
+      : p
+    setPeekPath(abs)
+  }), [workDir])
   // 流程图里展开子代理用：打开时拉一次这个会话派过的子代理（与导出会话同源）
   const [flowSubs, setFlowSubs] = useState<SubagentView[]>([])
   useEffect(() => {
