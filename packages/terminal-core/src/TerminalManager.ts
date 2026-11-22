@@ -18,11 +18,16 @@ interface Entry { term: Terminal; info: TerminalInfo; ssh?: SshConnectOpts & { t
 // 新的 tmux 会话名：lingshell-<8 位 hex>（格式见 shared/terminal/tmux.ts）
 export const newTmuxSessionName = (): string => `${TMUX_PREFIX}${randomBytes(4).toString('hex')}`
 
-// MSYS/Git-Bash 路径 → Windows 路径：/c/Users/x → C:\Users\x。非 MSYS 挂载形式(如已是 C:\... 或普通 /foo)原样返回。
+// MSYS/Git-Bash 路径 → Windows 路径：/c/Users/x → C:\Users\x。
+// 也认 Git Bash 以 Windows 原生路径启动 cwd 时 $PWD 报的混合形式 d:/Users/x（小写盘符 + 正斜杠），
+// 一起归一成 C:\Users\x —— 否则 knownCwd 返回 d:/...，和 Windows 路径比来比去永远不相等。
+// 非 MSYS 挂载形式（如已是 C:\... 或普通 /foo）原样返回。
 export function toWinPath(p: string): string {
   const m = /^\/([A-Za-z])\/(.*)$/.exec(p)   // /c/rest
   if (m) return `${m[1].toUpperCase()}:\\${m[2].replace(/\//g, '\\')}`
   if (/^\/([A-Za-z])$/.test(p)) return `${p[1].toUpperCase()}:\\`   // 恰好在盘根 /c
+  const w = /^([A-Za-z]):\/(.*)$/.exec(p)   // d:/rest（混合形式，或 d:/ 恰好盘根）
+  if (w) return `${w[1].toUpperCase()}:\\${w[2].replace(/\//g, '\\')}`
   return p
 }
 
