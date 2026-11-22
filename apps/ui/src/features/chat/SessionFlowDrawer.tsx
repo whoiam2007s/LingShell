@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { buildSessionFlow, tr, type FlowEdgeKind, type FlowInput, type FlowNode, type FlowNodeKind } from '@lingshell/shared'
+import { buildSessionFlow, tr, type FlowEdgeKind, type FlowInput, type FlowNode, type FlowNodeKind, type SubagentView } from '@lingshell/shared'
 
 // 会话流程图：每轮三段（提问+chips → 工具/文字 → 产物），横向按轮推进，阶段内竖向多节点。
 // 节点只放「图标 + 短名」，完整信息在悬停与点击详情里；连线不放文字，只用颜色。
@@ -60,11 +60,17 @@ function NodeBox({ data }: NodeProps) {
 
 const nodeTypes = { box: NodeBox }
 
-export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[]; title?: string; onClose: () => void }) {
+export function SessionFlowDrawer({ items, subagents, title, onClose }: { items: FlowInput[]; subagents?: SubagentView[]; title?: string; onClose: () => void }) {
   const [sel, setSel] = useState<string>()
   const [from, setFrom] = useState<number | undefined>(undefined)   // undefined = 贴到最后几轮
   const flow = useMemo(() => buildSessionFlow(items, { size: WINDOW, from }), [items, from])
   const selNode = flow.nodes.find((n) => n.id === sel)
+  // 点中的是子代理节点时，按 task / 标题匹配到它的执行轨迹（数据源与「导出会话」里的子代理段一致）
+  const sub = useMemo(() => {
+    if (!selNode || selNode.label !== 'agent' || !subagents?.length) return undefined
+    const d = selNode.detail ?? ''
+    return subagents.find((s) => (s.title && d.includes(s.title)) || (s.task && d.includes(s.task.slice(0, 12))))
+  }, [selNode, subagents])
 
   const maxFrom = Math.max(0, flow.totalTurns - WINDOW)
   const step = (d: number) => setFrom(Math.max(0, Math.min(maxFrom, flow.from + d * WINDOW)))
@@ -171,8 +177,8 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
             <Controls showInteractive={false} />
           </ReactFlow>
         </div>
-        {/* 点击节点 → 详情（图上只留短名，完整信息在这里） */}
-        <div className="h-[76px] shrink-0 overflow-hidden border-t border-[var(--color-border-subtle)] px-3 py-1.5 text-[10.5px]">
+        {/* 点击节点 → 详情（图上只留短名，完整信息在这里）；点子代理节点会展开它自己的步骤 */}
+        <div className="max-h-[168px] shrink-0 overflow-y-auto border-t border-[var(--color-border-subtle)] px-3 py-1.5 text-[10.5px]">
           {selNode ? (
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
@@ -180,8 +186,20 @@ export function SessionFlowDrawer({ items, title, onClose }: { items: FlowInput[
                 <span className="text-[11.5px] font-semibold text-[var(--color-text-primary)]">{selNode.title.split('\n')[0]}</span>
                 <span className="text-[var(--color-text-muted)]">{tr('第 {n} 轮', { n: flow.from + selNode.turn + 1 })}</span>
                 {selNode.ok === false && <span className="text-[var(--color-danger)]">{tr('失败')}</span>}
+                {sub && <span className="text-[var(--color-text-muted)]">{tr('子代理 · {n} 步', { n: sub.steps?.length ?? 0 })}</span>}
               </div>
               <div className="truncate font-mono text-[var(--color-text-secondary)]" title={selNode.detail}>{selNode.detail ?? selNode.title}</div>
+              {/* 子代理：把它的执行轨迹展开（跟导出会话里那段同源） */}
+              {sub && (
+                <div className="mt-0.5 flex flex-col gap-0.5 border-t border-[var(--color-border-subtle)] pt-1 text-[10px] text-[var(--color-text-secondary)]">
+                  {(sub.steps ?? []).map((s, i) => (
+                    <div key={`${s.at}${i}`} className="truncate" title={s.label}>
+                      <span className="text-[var(--color-text-muted)]">{i + 1}.</span> {s.label}
+                    </div>
+                  ))}
+                  {sub.summary && <div className="mt-0.5 truncate text-[var(--color-text-secondary)]" title={sub.summary}>{tr('结论：')}{sub.summary}</div>}
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center gap-3 pt-4 text-[10px] text-[var(--color-text-muted)]">

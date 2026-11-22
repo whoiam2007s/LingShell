@@ -4,6 +4,8 @@ import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Termina
 import { useConversation, type ContextState, type ConvItem, type SessionPhase, type OutgoingAttachments } from './useConversation.js'
 import { SessionFlowDrawer } from './SessionFlowDrawer.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
+import { onOpenPathPreview } from '../../lib/chatBus.js'
+import { FileEditor } from '../explorer/index.js'
 import { MessageItem, MsgActionsContext, type MsgActions } from './items/MessageItem.js'
 import { ToolSessionContext } from '../auth/index.js'
 import { ReasoningItem } from './items/ReasoningItem.js'
@@ -18,7 +20,7 @@ import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
-import type { TurnTimes, SessionMeta } from '@lingshell/shared'
+import type { TurnTimes, SessionMeta, SubagentView } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode, INPUT_MAX, insertCapped, capInput } from '@lingshell/shared'
 import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
 import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
@@ -99,6 +101,32 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const taRef = useRef<HTMLTextAreaElement>(null)
   // 会话流程图弹窗（标题栏「⋯」→ 会话流程图）
   const [flowOpen, setFlowOpen] = useState(false)
+  // 对话里点文件路径 → 弹原生预览（本地文件；不支持的格式在预览里可「用系统程序打开」）
+  const [peekPath, setPeekPath] = useState<string>()
+  const [peekNote, setPeekNote] = useState('')
+  const peekTimer = useRef<number | undefined>(undefined)
+  const flashPeek = (msg: string) => { setPeekNote(msg); window.clearTimeout(peekTimer.current); peekTimer.current = window.setTimeout(() => setPeekNote(''), 2600) }
+  useEffect(() => () => window.clearTimeout(peekTimer.current), [])   // 卸载后别再往里 setState
+  useEffect(() => onOpenPathPreview((p) => {
+    // 相对路径按会话工作目录解析：主进程按应用自己的 cwd 找，会报「文件不存在」
+    const abs = !/^([a-zA-Z]:[\\/]|[\\/]|~)/.test(p) && workDir
+      ? `${workDir.replace(/[\\/]+$/, '')}/${p.replace(/^\.\//, '')}`
+      : p
+    // 只支持本地文件：会话可以同时对多台主机干活，文本里的路径没有主机归属，
+    // 远端路径（/etc/nginx/nginx.conf 这类）在这里点不开，提示里说明白别让人以为坏了。
+    // 不存在也别弹窗：消息里的示例路径、还没创建的文件很常见，弹个错误框很吵
+    void client.fs.stats('local', [abs]).then((s) => {
+      if (s.files > 0) setPeekPath(abs)
+      else if (s.dirs > 0) flashPeek(tr('这是目录，用资源管理器打开：{p}', { p: abs }))
+      else flashPeek(tr('本地没有这个文件（远端主机上的文件请在终端里查看）：{p}', { p: abs }))
+    }).catch(() => setPeekPath(abs))
+  }), [workDir])
+  // 流程图里展开子代理用：打开时拉一次这个会话派过的子代理（与导出会话同源）
+  const [flowSubs, setFlowSubs] = useState<SubagentView[]>([])
+  useEffect(() => {
+    if (!flowOpen || !activeSessionId) return
+    void client.subagent.list(activeSessionId).then(setFlowSubs).catch(() => setFlowSubs([]))
+  }, [flowOpen, activeSessionId])
 
   // ── 输入框高度：**默认一行，不记忆**。只在需要时把框上沿往上拖临时拉高，
   // 双击那道边回到一行；下次启动还是默认一行。
@@ -534,14 +562,19 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const bang = bangCommand(input)
   // 上下文快到压缩阈值时提醒一次（阈值在「设置 → AI」，0 = 关闭）；点 × 只关掉当前会话的提示
   const [compactHintOff, setCompactHintOff] = useState('')
-  const [warnAt, setWarnAt] = useState(80)
+  const [warnAt, setWarnAt] = useState(90)
   useEffect(() => {
-    const load = () => { client.settings.get().then((s) => setWarnAt(s.system?.contextWarnAt ?? 80), () => {}) }
+    const load = () => { client.settings.get().then((s) => setWarnAt(s.system?.contextWarnAt ?? 90), () => {}) }
     load()
     window.addEventListener('focus', load)   // 改完设置切回窗口就生效，不用重启
     return () => window.removeEventListener('focus', load)
   }, [])
+  // 触发：占「压缩阈值」的百分比（阈值 60% + 提醒 90% → 窗口用到 54% 时提醒）
   const compactPct = usage?.compactAt ? Math.round((usage.inputTokens / usage.compactAt) * 100) : 0
+  // 显示：占「整个上下文窗口」的百分比（用户看到的是 54%，不是 90） + 到多少会真正压缩
+  const winTok = usage?.window ?? usage?.limit ?? 0
+  const usedPct = winTok && usage ? Math.round((usage.inputTokens / winTok) * 100) : compactPct
+  const compactAtPct = winTok && usage?.compactAt ? Math.round((usage.compactAt / winTok) * 100) : 100
   const showCompactHint = !!activeSessionId && !busy && warnAt > 0 && compactPct >= warnAt && compactPct < 100 && compactHintOff !== activeSessionId
   const [shellBusy, setShellBusy] = useState('')
   const [shellAsk, setShellAsk] = useState<{ plan: ComposePlan; tid: string; cmd: string } | null>(null)
@@ -727,7 +760,15 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
               ref: a.path ?? a.imageId ?? undefined,
             })),
           }))}
-          title={sessionTitle} onClose={() => setFlowOpen(false)} />
+          title={sessionTitle} subagents={flowSubs} onClose={() => setFlowOpen(false)} />
+      )}
+
+      {/* 点对话里的文件路径 → 原生预览（本地文件；图片/md/csv/pdf 在应用内看，其它可「用系统程序打开」） */}
+      {peekPath && <FileEditor scope="local" path={peekPath} onClose={() => setPeekPath(undefined)} />}
+      {peekNote && (
+        <div className="pointer-events-none fixed left-1/2 top-14 z-[70] -translate-x-1/2 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] shadow-lg">
+          {peekNote}
+        </div>
       )}
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
@@ -843,7 +884,7 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         {/* 上下文快到压缩阈值：提醒一次，可立即压缩或关掉本会话的提示 */}
         {showCompactHint && (
           <div data-compact-hint className="mx-3 mb-1 flex items-center gap-2 rounded-md border border-[color:color-mix(in_srgb,var(--color-warn)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-[11.5px]">
-            <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">{tr('上下文已用 {pct}%，到 100% 会自动压缩。', { pct: compactPct })}</span>
+            <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">{tr('上下文已用 {used}%，到 {at}% 会自动压缩。', { used: usedPct, at: compactAtPct })}</span>
             <button onClick={() => { void client.agent.compact(activeSessionId).catch(() => {}) }} disabled={busy}
               className="shrink-0 rounded bg-[var(--color-accent)] px-2 py-0.5 text-[11px] text-[var(--color-bg-base)] disabled:opacity-40">{tr('立即压缩')}</button>
             <button onClick={() => setCompactHintOff(activeSessionId)} title={tr('本会话不再提示')}

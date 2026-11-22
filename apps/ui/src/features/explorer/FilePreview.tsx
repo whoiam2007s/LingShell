@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Download, ExternalLink, Eye, Loader2, Pencil, X } from 'lucide-react'
-import { PREVIEW_KIND_LABEL, formatSize, parseDelimited, previewMime, tr, type FsScope, type PreviewData } from '@lingshell/shared'
+import { Loader2 } from 'lucide-react'
+import { parseDelimited, previewMime, tr, type FsScope, type PreviewData } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { ImageViewer } from '../../components/ImageViewer.js'
 import { Input } from '../../components/ui/Input.js'
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
-const BTN = 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-[var(--color-border-default)] px-2 text-[11.5px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
 const MAX_SHOWN = 2000
 
 /** 把 Markdown 里的相对图片路径解析成「相对 Markdown 文件所在目录」的路径；绝对路径 / URL 原样返回 */
@@ -56,46 +54,47 @@ function MarkdownImage({ src, alt, title, scope, basePath }: { src?: string; alt
 
 // 资源管理器里的文件预览（双击 / 右键「预览」）：图片用 ImageViewer（缩放 / 拖拽）、Markdown 渲染、CSV / TSV 表格、PDF 用内置查看器（iframe），
 // 超过 20MB 或读不了的提示下载 / 用系统程序打开。弹窗只能按 × / Esc 关
-export function FilePreview({ scope, path, onDownload, onEdit, onClose }: { scope: FsScope; path: string; onDownload?: () => void; onEdit?: () => void; onClose: () => void }) {
+/** 预览正文（不带弹窗外壳）：统一弹窗的查看模式直接用它 */
+export function PreviewBody({ scope, path, text }: { scope: FsScope; path: string; text?: string }) {
   const [data, setData] = useState<PreviewData>()
   const [err, setErr] = useState('')
-  const [note, setNote] = useState('')
-  useEffect(() => { client.preview.read(scope, path).then(setData).catch((e) => setErr(errMsg(e))) }, [])
-  const isImage = data?.kind === 'image'
-  // 图片交给 ImageViewer 自己处理 Esc；其余在捕获阶段拦 Esc，免得先关掉底下的抽屉
+  const [zoom, setZoom] = useState(false)   // 图片点开后用 ImageViewer（缩放 / 拖拽 / ← → 切换）
+  // md / csv 的正文父组件已经读过（切编辑还要用），这里直接用，不再读一遍；图片 / PDF 没有正文，走 preview.read
+  const textKind = text === undefined ? undefined
+    : /\.(md|markdown)$/i.test(path) ? 'markdown' : /\.tsv$/i.test(path) ? 'tsv' : /\.csv$/i.test(path) ? 'csv' : undefined
   useEffect(() => {
-    if (isImage) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose() } }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [isImage, onClose])
-  const openExternal = () => { setNote(tr('正在用系统程序打开…')); client.preview.openExternal(scope, path).then(() => setNote('')).catch((e) => setNote(errMsg(e))) }
-
-  if (data?.kind === 'image') return <ImageViewer items={[{ kind: 'image', name: data.name, path, src: `data:${previewMime(data.name)};base64,${data.base64}` }]} index={0} onClose={onClose} />
-  const name = path.split(/[\\/]/).pop() ?? path
-  return createPortal((
-    <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/55 backdrop-blur-sm animate-fade-in">
-      <div data-file-preview={data?.kind ?? (err ? 'error' : 'loading')} className="flex h-[85vh] w-[min(1100px,92vw)] flex-col overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] shadow-2xl">
-        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-3">
-          <Eye className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
-          <span className="min-w-0 truncate font-mono text-[12px] text-[var(--color-text-primary)]" title={path}>{name}</span>
-          {data && <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{tr(PREVIEW_KIND_LABEL[data.kind])} · {formatSize(data.size)}</span>}
-          {note && <span className="min-w-0 truncate text-[11px] text-[var(--color-text-muted)]">{note}</span>}
-          <span className="ml-auto" />
-          {onEdit && (data?.kind === 'markdown' || data?.kind === 'csv' || data?.kind === 'tsv') && <button onClick={onEdit} title={tr('在文本编辑器里查看 / 编辑原文')} className={BTN}><Pencil className="h-3.5 w-3.5" />{tr('编辑')}</button>}
-          <button onClick={openExternal} title={tr('下载到临时目录后用系统默认程序打开')} className={BTN}><ExternalLink className="h-3.5 w-3.5" />{tr('用系统程序打开')}</button>
-          {onDownload && <button onClick={onDownload} title={tr('下载到本地…')} className={BTN}><Download className="h-3.5 w-3.5" />{tr('下载')}</button>}
-          <button onClick={onClose} title={tr('关闭（Esc）')} className="flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><X className="h-4 w-4" /></button>
-        </div>
-        {err ? <div className="p-5 text-[12.5px] text-[var(--color-danger)]">{tr('无法预览：{err}', { err })}</div>
-          : !data ? <div className="flex items-center gap-1.5 p-5 text-[12px] text-[var(--color-text-muted)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tr('读取中…')}</div>
-            : data.kind === 'markdown' ? <div className="min-h-0 flex-1 overflow-auto px-8 py-5"><div className="markdown-body mx-auto max-w-[860px] break-words text-[13px] text-[var(--color-text-primary)]"><Markdown remarkPlugins={[remarkGfm]} components={{ img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} scope={scope} basePath={path} /> } as Components}>{data.text ?? ''}</Markdown></div></div>
-              : data.kind === 'pdf' ? <PdfView data={data} />
-                : <CsvView text={data.text ?? ''} sep={data.kind === 'tsv' ? '\t' : ','} />}
+    if (textKind) return
+    client.preview.read(scope, path).then(setData).catch((e) => setErr(errMsg(e)))
+  }, [scope, path, textKind])
+  const mdBlock = (src: string) => (
+    <div className="min-h-0 flex-1 overflow-auto px-8 py-5">
+      <div className="markdown-body mx-auto max-w-[860px] break-words text-[13px] text-[var(--color-text-primary)]">
+        <Markdown remarkPlugins={[remarkGfm]} components={{ img: ({ src, alt, title }) => <MarkdownImage src={src} alt={alt} title={title} scope={scope} basePath={path} /> } as Components}>{src}</Markdown>
       </div>
     </div>
-  ), document.body)
+  )
+  if (textKind === 'markdown') return mdBlock(text ?? '')
+  if (textKind) return <CsvView text={text ?? ''} sep={textKind === 'tsv' ? '\t' : ','} />
+  if (err) return <div className="p-5 text-[12.5px] text-[var(--color-danger)]">{tr('无法预览：{err}', { err })}</div>
+  if (!data) return <div className="flex items-center gap-1.5 p-5 text-[12px] text-[var(--color-text-muted)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tr('读取中…')}</div>
+  if (data.kind === 'image') {
+    const src = `data:${previewMime(data.name)};base64,${data.base64}`
+    return <>
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--color-bg-base)] p-3">
+        <img data-preview-image src={src} alt={data.name} title={tr('点击放大（可缩放 / 拖拽）')} onClick={() => setZoom(true)}
+          className="max-h-full max-w-full cursor-zoom-in object-contain" />
+      </div>
+      {zoom && <ImageViewer items={[{ kind: 'image', name: data.name, path, src }]} index={0} onClose={() => setZoom(false)} />}
+    </>
+  }
+  if (data.kind === 'markdown') return mdBlock(data.text ?? '')
+  if (data.kind === 'pdf') return <PdfView data={data} />
+  return <CsvView text={data.text ?? ''} sep={data.kind === 'tsv' ? '\t' : ','} />
 }
+
+// 资源管理器里双击文件 → 统一弹窗的查看模式（FileEditor 只读态）渲染本文件的 PreviewBody
+
+
 
 // PDF：base64 → Blob URL，交给 Chromium 内置的 PDF 查看器（iframe）；查看器不可用时用右上角「用系统程序打开」
 function PdfView({ data }: { data: PreviewData }) {

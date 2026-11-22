@@ -212,7 +212,7 @@ export abstract class BaseTerminal implements Terminal {
         this.writeRaw('\x03')
         const partialOut = cur ? cur.parser.partial() : ''
         const r = { output: partialOut, exitCode: -1, truncated: true }
-        cleanup(); finish(r); resolve(r)
+        cleanup(); finish(r); resolve(autoAnswers.length ? { ...r, autoAnswered: [...autoAnswers] } : r)
       }, timeoutMs)
       // 中断收割：发 Ctrl-C 尝试中止命令，清 capturing，promise reject('aborted')。
       // ponytail: Ctrl-C 杀不掉的命令（SSH 端不理）留在终端，用户可见可手动处理，不升级强杀。
@@ -232,6 +232,7 @@ export abstract class BaseTerminal implements Terminal {
       let probed = false
       let answered = 0
       let answering = false
+      const autoAnswers: string[] = []   // auto 模式替用户答过什么（随结果返回，让界面上看得见）
       const abortForInput = (prompt: string, forceHandoff?: boolean): void => {
         if (!this.capturing) return
         clearTimeout(timer)
@@ -248,6 +249,7 @@ export abstract class BaseTerminal implements Terminal {
           ...(handoff ? { handedOff: true } : {}),
         }
         finish(r)
+        if (autoAnswers.length) r.autoAnswered = [...autoAnswers]
         resolve(r)
       }
       const armStall = (): void => {
@@ -266,6 +268,7 @@ export abstract class BaseTerminal implements Terminal {
             if (!this.capturing) return
             if (!answer) { abortForInput(prompt, true); return }   // 交给用户：保留现场
             answered++
+            autoAnswers.push(answer)
             this.writeRaw(`${answer}\r`)
             armStall()   // 答案发出去后命令会继续跑，重新计时
           })
@@ -298,7 +301,7 @@ export abstract class BaseTerminal implements Terminal {
           cleanup()
           finish(r)
           if (!silent && tail) this.emitToUi(tail)   // 结束标记后的提示符；silent 探测不补，免得多一行提示符
-          resolve({ ...r, output: groomOutput(r.output) })
+          resolve({ ...r, output: groomOutput(r.output), ...(autoAnswers.length ? { autoAnswered: [...autoAnswers] } : {}) })
         },
         reject: (e) => { if (signal) signal.removeEventListener('abort', onAbort); cleanup(); reject(e) },
         timer,

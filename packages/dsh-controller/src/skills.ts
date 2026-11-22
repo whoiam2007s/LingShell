@@ -9,13 +9,21 @@ import { existsSync, mkdirSync, watch, type FSWatcher } from 'node:fs'
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile, rename as mv } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, extname, join, relative, resolve, sep } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { buildSkillMd, isSkillName, parseSkillMd, type SkillMeta } from './skillFile.js'
 
 import { tr, type SkillInfo, type SkillImportPreview, type SkillOrigin, type SkillInput } from '@lingshell/shared'
 export type { SkillInfo, SkillImportPreview }
 
-interface State { [name: string]: { enabled?: boolean; modelInvocable?: boolean; origin?: SkillOrigin } }
+interface State { [name: string]: { enabled?: boolean; modelInvocable?: boolean; origin?: SkillOrigin; builtin?: boolean; builtinHash?: string } }
+
+/** 目录内容 hash（相对路径 + 内容，按路径排序）：用来判断「用户改没改过这个内置 skill」 */
+async function hashDir(dir: string): Promise<string> {
+  const files = (await walk(dir)).sort()
+  const h = createHash('sha256')
+  for (const f of files) { h.update(f); h.update('\0'); h.update(await readFile(join(dir, f))) }
+  return h.digest('hex').slice(0, 16)
+}
 
 // 导入包的上限：防误导入整个大目录 / zip 炸弹
 const MAX_FILES = 500
@@ -132,9 +140,11 @@ export class LocalSkills {
         seen.add(meta.name)
         out.push({
           ...base, files, name: meta.name, description: meta.description, origin: s.origin ?? 'manual',
+          ...(meta.version ? { version: meta.version } : {}),
           enabled: !dup && s.enabled !== false,
           modelInvocable: s.modelInvocable ?? !meta.disableModelInvocation,
           userInvocable: meta.userInvocable !== false,
+          ...(s.builtin ? { builtin: true } : {}),
           ...(dup ? { error: tr('与另一个目录里的 skill 重名（{name}），未启用', { name: meta.name }) } : {}),
         })
       } catch (e) {
@@ -152,10 +162,10 @@ export class LocalSkills {
   }
 
   /** 编辑用：解析后的字段 + 正文 */
-  async read(name: string): Promise<{ name: string; description: string; body: string }> {
+  async read(name: string): Promise<{ name: string; description: string; body: string; version?: string }> {
     const p = parseSkillMd(await readFile(join(await this.dirOf(name), 'SKILL.md'), 'utf8'))
     if (!p.ok) throw new Error(p.error)
-    return { name: p.meta.name, description: p.meta.description, body: p.body }
+    return { name: p.meta.name, description: p.meta.description, body: p.body, ...(p.meta.version ? { version: p.meta.version } : {}) }
   }
 
   /** 新建（old 缺省）或修改。改名 = 目录跟着改名；frontmatter 里其它键原样保留 */
@@ -169,7 +179,11 @@ export class LocalSkills {
     if (old) {
       const dir = await this.dirOf(old)
       const prev = parseSkillMd(await readFile(join(dir, 'SKILL.md'), 'utf8'))
-      const meta: SkillMeta = prev.ok ? { ...prev.meta, name, description: input.description.trim() } : { name, description: input.description.trim() }
+      const ver = (input.version ?? '').trim()
+      const base = prev.ok ? { ...prev.meta, name, description: input.description.trim() } : { name, description: input.description.trim() }
+      // 版本号：填了就用填的，清空就删掉（不再写回旧值）
+      const meta: SkillMeta = { ...base }
+      if (ver) meta.version = ver; else delete meta.version
       await writeFile(join(dir, 'SKILL.md'), buildSkillMd(meta, input.body, prev.ok ? prev.extra : []))
       if (name !== old) {
         await mv(dir, join(this.root, name))
@@ -180,7 +194,8 @@ export class LocalSkills {
     } else {
       const dir = join(this.root, name)
       await mkdir(dir, { recursive: true })
-      await writeFile(join(dir, 'SKILL.md'), buildSkillMd({ name, description: input.description.trim() }, input.body))
+      const v0 = (input.version ?? '').trim()
+      await writeFile(join(dir, 'SKILL.md'), buildSkillMd({ name, description: input.description.trim(), ...(v0 ? { version: v0 } : {}) }, input.body))
       st[name] = { origin: 'created' }
       await this.saveState(st)
     }
@@ -189,10 +204,84 @@ export class LocalSkills {
 
   async remove(name: string): Promise<void> {
     const dir = await this.dirOf(name)
+    // 内置 skill 可以编辑，但不允许删除：删了下次启动会被补回来，不如直接拦住
+    const st0 = await this.state()
+    if (st0[name]?.builtin) throw new Error(tr('「{name}」是随应用内置的 skill，可以编辑但不能删除', { name }))
     if (!resolve(dir).startsWith(resolve(this.root) + sep)) throw new Error(tr('路径不对，已拒绝删除'))
     await rm(dir, { recursive: true, force: true })
     const st = await this.state()
     delete st[name]
+    await this.saveState(st)
+    this.changed()
+  }
+
+  /**
+   * 把随应用打包的内置 skill 同步到用户目录，带版本更新：
+   *  - 没有 → 复制进来；
+   *  - 有、但用户没改过（内容与上次同步时记下的 hash 一致）、应用里的版本变了 → 覆盖更新；
+   *  - 有、且用户改过 → 保留用户的版本不再覆盖（想恢复原版就删掉那个目录，下次启动会重新复制）。
+   * srcDir 不存在（开发环境没打包）就什么都不做。
+   */
+  async syncBuiltin(srcDir: string): Promise<{ added: number; updated: number }> {
+    let names: string[]
+    try {
+      names = (await readdir(srcDir, { withFileTypes: true })).filter((d) => d.isDirectory() && !isHidden(d.name)).map((d) => d.name)
+    } catch { return { added: 0, updated: 0 } }
+    if (!names.length) return { added: 0, updated: 0 }
+    await mkdir(this.root, { recursive: true })
+    const st = await this.state()
+    let added = 0
+    let updated = 0
+    for (const dir of names) {
+      const from = join(srcDir, dir)
+      const to = join(this.root, dir)
+      const srcHash = await hashDir(from)
+      const prev = st[dir]?.builtinHash
+      if (!existsSync(join(to, 'SKILL.md'))) {
+        // 目录在但缺 SKILL.md（半截复制 / 用户删了文件）：先清掉残留再复制，
+        // 否则 cp 是合并语义，旧文件会留在新版本里
+        await rm(to, { recursive: true, force: true })
+        await cp(from, to, { recursive: true })
+        added++
+        this.log?.('info', 'builtin skill installed', { dir })
+      } else {
+        const userHash = await hashDir(to)
+        // 判断「用户改没改过」：有上次记录的 hash 就比对它；
+        // 没记录（老版本同步进来的，那时还没这套机制）就当作没改过 —— 升级一次，之后开始保护用户的修改
+        const untouched = prev ? userHash === prev : true
+        if (untouched && srcHash !== userHash) {
+          await rm(to, { recursive: true, force: true })
+          await cp(from, to, { recursive: true })
+          updated++
+          this.log?.('info', 'builtin skill updated', { dir })
+        }
+      }
+      // SKILL.md 的 name 可能与目录名不同，用解析出来的 name 记标记
+      let key = dir
+      try {
+        const p = parseSkillMd(await readFile(join(to, 'SKILL.md'), 'utf8'))
+        if (p.ok) key = p.meta.name
+      } catch { /* 读不了就按目录名记，list() 里会带 error */ }
+      st[key] = { ...st[key], builtin: true, builtinHash: srcHash }
+      if (key !== dir) st[dir] = { ...st[dir], builtinHash: srcHash }   // 下次按目录名也能比对
+    }
+    await this.saveState(st)
+    if (added || updated) this.changed()
+    return { added, updated }
+  }
+
+  /** 把某个内置 skill 重置成随应用发布的版本（覆盖用户改过的内容）；不是内置的会报错 */
+  async resetBuiltin(name: string, srcDir?: string): Promise<void> {
+    if (!isSkillName(name)) throw new Error(tr('skill 名不合法：{name}', { name }))
+    if (!srcDir) throw new Error(tr('当前环境没有内置 skill 目录'))
+    // dirOf 返回的是**完整路径**（<root>/<目录名>），这里不能再 join 一次
+    const dst = await this.dirOf(name)
+    const from = join(srcDir, basename(dst))
+    if (!existsSync(join(from, 'SKILL.md'))) throw new Error(tr('应用里没有「{name}」的内置源文件，无法重置', { name }))
+    await rm(dst, { recursive: true, force: true })
+    await cp(from, dst, { recursive: true })
+    const st = await this.state()
+    st[name] = { ...st[name], builtin: true, builtinHash: await hashDir(from) }
     await this.saveState(st)
     this.changed()
   }

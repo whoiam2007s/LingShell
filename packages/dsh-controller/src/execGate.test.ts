@@ -33,6 +33,20 @@ function deps(over: Partial<TerminalToolDeps> = {}): TerminalToolDeps & { audit:
 }
 
 describe('四档执行模式接进网关', () => {
+  it('run_skill_script 算写操作，但没有工作目录边界（auto 档首次要问、批过不再问）', () => {
+    const args = { skill: 'code-quality', script: 'check.sh' }
+    const facts = modeFacts({ name: 'run_skill_script', args, workDir: WD })
+    // 之前会被 execKindOf 判成 'read' → 「读操作永远放行」→ auto / trust 档不询问
+    expect(facts).toMatchObject({ kind: 'write', outsideWorkDir: false })
+    // 未批准：auto 档不放宽（首次必须问）
+    expect(relaxByMode('auto', { kind: 'ask' }, facts)).toBe(false)
+    // 批过一次（工具级记忆 run_skill_script@cwd）：不再问
+    const granted = (k: string) => k === 'run_skill_script@cwd'
+    expect(relaxByMode('auto', { kind: 'ask' }, modeFacts({ name: 'run_skill_script', args, workDir: WD, granted }))).toBe(true)
+    // 预演档：不能执行脚本（写操作在预演里一律拒）
+    expect(decideByMode('preview', facts)).toBe('deny')
+  })
+
   it('confirm（默认档）：模式层不放宽，write_file 照旧弹卡、允许后按主机记授权', () => {
     const d = deps()
     const args = { terminal_id: 'term_1', path: `${WD}/a.txt`, content: 'x' }

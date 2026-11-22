@@ -1,6 +1,6 @@
 // AI 领域：授权卡 / 计划卡、dsh 控制器、会话与对话、知识库、安全规则、用量、MCP、模板（从 ipc.ts 原样搬来，顺序不变）
 import { ipcMain, app, shell, dialog, clipboard } from 'electron'
-import { join, posix } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import type { ApprovalRequest, PlanRequest, DshController, LocalSkills } from '@lingshell/dsh-controller'
@@ -27,6 +27,23 @@ import { registerAiLink } from './aiLinkIpc.js'
 import { createAskBroker, registerChatPlus } from './chatPlusIpc.js'
 
 type Deps = { hostCheck: () => ReturnType<typeof registerHostCheck> }
+
+/**
+ * 找随应用打包的内置 skill 目录。
+ * 打包后固定在 resources/builtin-skills；开发时要往上找几层（electron-vite 的 app.getAppPath() / cwd
+ * 在不同启动方式下不一致），全部解析成绝对路径 —— 相对路径的 existsSync 依赖 cwd，换个时机就找不到。
+ */
+function findBuiltinSkills(): string | undefined {
+  if (app.isPackaged) return resolve(process.resourcesPath, 'builtin-skills')
+  const seeds = [app.getAppPath(), process.cwd(), resolve(app.getAppPath(), '..'), resolve(app.getAppPath(), '../..')]
+  for (const s of seeds) {
+    for (const rel of ['resources/builtin-skills', 'builtin-skills', '../../resources/builtin-skills', '../../../resources/builtin-skills']) {
+      const p = resolve(s, rel)
+      if (existsSync(p)) return p
+    }
+  }
+  return undefined
+}
 
 export function registerAiIpc(ctx: MainContext, deps: Deps) {
   const { paths, sessionStore, win, unattended, send, setClearCards, terminals, hostStore, hostOf, termHostKey, wireNewTerminal, auditRaw, liveTerminal,
@@ -200,6 +217,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     requestPlan,
     requestAsk: (r, s) => askBroker.request(r, s),
     execTimeoutMs: () => sys().execTimeoutSec * 1000,
+    skillsRoot: join(paths.root, 'skills'),
     contextLimitTokens: () => AUTO_COMPACT_CAP,   // 实际阈值 = min(600K, 模型上下文窗口 × 60%)，见 dsh-controller compaction.ts
     contextResetSteps: () => sys().contextResetSteps,
     subagentTimeoutSec: () => sys().subagentTimeoutSec,
@@ -479,6 +497,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   })
   // 设置 → Skills（见 skillsIpc.ts）：<数据目录>/skills，接到 dsh 的 ctx.skills
   skillsRef.current = registerSkills({ handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'skills'), attach: (lib) => controller.attachSkills(lib), openPath: (p) => shell.openPath(p), log: (lv, m, d) => log(lv, 'main', 'skills', m, d),
+    builtinDir: findBuiltinSkills(),
     pickPath: async (kind) => (await dialog.showOpenDialog(win, kind === 'folder' ? { title: tr('选择 Skill 文件夹（含 SKILL.md）'), properties: ['openDirectory'] } : { title: tr('选择 Skill 包'), properties: ['openFile'], filters: [{ name: tr('Skill 包'), extensions: ['zip', 'skill'] }] })).filePaths[0] })
 
   // AI 对话附件：选择文件 / 目录 / 图片、带附件发送、历史回放取图、打开附件（见 attachIpc.ts）

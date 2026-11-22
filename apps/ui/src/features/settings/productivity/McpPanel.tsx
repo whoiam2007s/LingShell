@@ -68,6 +68,14 @@ export function McpPanel() {
     setList((l) => l && l.map((x) => (x.id === s.id ? { ...x, autoApprove: next } : x)))
     client.mcp.setAutoApprove(s.id, next).catch((e) => setErr(errText(e)))
   }
+  // 批量：一次算出完整数组再提交。逐个调 toggleAuto 会每次都基于旧的 autoApprove 算，
+  // 后一次覆盖前一次，最后只剩一个工具生效
+  const toggleAutoMany = (s: McpServerSummary, tools: string[], on: boolean) => {
+    const cur = s.autoApprove ?? []
+    const next = on ? Array.from(new Set([...cur, ...tools])) : cur.filter((t) => !tools.includes(t))
+    setList((l) => l && l.map((x) => (x.id === s.id ? { ...x, autoApprove: next } : x)))
+    client.mcp.setAutoApprove(s.id, next).catch((e) => setErr(errText(e)))
+  }
   const doDelete = () => { if (delTarget) client.mcp.delete(delTarget.id).then(refresh).catch((e) => setErr(errText(e))); setDelTarget(null) }
   const create = () => { setForm({ ...empty }); setErr(''); setTest(undefined) }
 
@@ -158,7 +166,7 @@ export function McpPanel() {
                   <div className="border-t border-[var(--color-border-subtle)] px-3.5 py-2.5">
                     {st?.error && <pre className="mb-1.5 max-h-24 overflow-auto whitespace-pre-wrap break-all text-[11px] text-[var(--color-danger)]">{st.error}</pre>}
                     {st?.tools.length
-                      ? <ToolList tools={st.tools} title={tr('打开「免确认」的工具调用时不弹授权卡')} tip={tr('只读信任档、定时巡检里也只能用免确认的工具。')} auto={s.autoApprove ?? []} onToggle={(t, on) => toggleAuto(s, t, on)} />
+                      ? <ToolList tools={st.tools} title={tr('打开「免确认」的工具调用时不弹授权卡')} tip={tr('只读信任档、定时巡检里也只能用免确认的工具。')} auto={s.autoApprove ?? []} onToggle={(t, on) => toggleAuto(s, t, on)} onToggleAll={(on) => toggleAutoMany(s, st.tools.map((t) => t.name), on)} />
                       : <div className="text-[11px] text-[var(--color-text-muted)]">{st?.state === 'connected' ? tr('该服务没有提供工具') : tr('连上后在这里显示工具列表')}</div>}
                   </div>
                 )}
@@ -173,10 +181,19 @@ export function McpPanel() {
   )
 }
 
-function ToolList({ tools, title, tip, auto, onToggle }: { tools: McpToolInfo[]; title: string; tip?: string; auto?: string[]; onToggle?: (tool: string, on: boolean) => void }) {
+function ToolList({ tools, title, tip, auto, onToggle, onToggleAll }: { tools: McpToolInfo[]; title: string; tip?: string; auto?: string[]; onToggle?: (tool: string, on: boolean) => void; onToggleAll?: (on: boolean) => void }) {
+  // 标题右边的「全部」开关：一次把这一页的工具全打开 / 全关掉
+  const all = !!tools.length && tools.every((t) => auto?.includes(t.name))
   return (
     <div>
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">{title}{tip && <HelpTip>{tip}</HelpTip>}</div>
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
+        {title}{tip && <HelpTip>{tip}</HelpTip>}
+        {onToggleAll && (
+          <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px]" title={tr('一次把所有工具都设为免确认 / 都要确认')}>
+            {tr('全部免确认')}<Switch checked={all} onCheckedChange={onToggleAll} />
+          </label>
+        )}
+      </div>
       <div className="max-h-56 space-y-0.5 overflow-auto">
         {tools.map((t) => (
           <div key={t.name} className="flex items-center gap-2 rounded px-1 py-1 hover:bg-[var(--color-bg-hover)]">

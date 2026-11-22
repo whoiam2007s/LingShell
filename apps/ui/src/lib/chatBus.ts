@@ -23,3 +23,12 @@ export function onChatContext(h: (p: ChatContextPush) => void): () => void {
   window.addEventListener(CTX_EVT, f)
   return () => window.removeEventListener(CTX_EVT, f)
 }
+
+// 对话里点击文件路径 → 让上层（ChatPanel）弹出文件预览（本地文件）
+const PATH_EVT = 'lingshell:open-path-preview'
+export function openPathPreview(path: string): void { window.dispatchEvent(new CustomEvent<string>(PATH_EVT, { detail: path })) }
+export function onOpenPathPreview(h: (path: string) => void): () => void {
+  const f = (e: Event) => h((e as CustomEvent<string>).detail)
+  window.addEventListener(PATH_EVT, f)
+  return () => window.removeEventListener(PATH_EVT, f)
+}

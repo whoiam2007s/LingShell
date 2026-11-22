@@ -148,3 +148,52 @@ describe('导入', () => {
     expect(await lib.read('dup')).toMatchObject({ description: '新的' })
   })
 })
+
+describe('内置 skill 同步', () => {
+  const src = () => join(base, 'builtin')
+  const seed = (body: string) => { put(src(), { 'code-quality/SKILL.md': md('code-quality', '编码习惯', `when_to_use: x\n`), 'code-quality/notes.txt': body }) }
+
+  it('首次复制；用户没改过时随版本更新；用户改过就不动', async () => {
+    seed('v1')
+    expect(await lib.syncBuiltin(src())).toEqual({ added: 1, updated: 0 })
+    expect(readFileSync(join(root, 'code-quality', 'notes.txt'), 'utf8')).toBe('v1')
+    expect((await lib.list()).find((s) => s.name === 'code-quality')?.builtin).toBe(true)
+
+    // 版本变了、用户没改过 → 覆盖更新
+    seed('v2')
+    expect(await lib.syncBuiltin(src())).toEqual({ added: 0, updated: 1 })
+    expect(readFileSync(join(root, 'code-quality', 'notes.txt'), 'utf8')).toBe('v2')
+
+    // 用户改过 → 保留用户的版本
+    writeFileSync(join(root, 'code-quality', 'notes.txt'), 'mine')
+    seed('v3')
+    expect(await lib.syncBuiltin(src())).toEqual({ added: 0, updated: 0 })
+    expect(readFileSync(join(root, 'code-quality', 'notes.txt'), 'utf8')).toBe('mine')
+  })
+
+  it('内置 skill 不允许删除（主进程兜底，不只是界面上置灰）', async () => {
+    seed('v1')
+    await lib.syncBuiltin(src())
+    await expect(lib.remove('code-quality')).rejects.toThrow(/内置/)
+  })
+
+  // dirOf 返回的是 <root>/<目录名> 完整路径，早先 resetBuiltin 又 join 了一次导致永远找不到内置源，
+  // 这类「路径拼错」只有真跑一次才能发现，所以这里必须覆盖到实际复制。
+  it('resetBuiltin：把用户改过的内容重置回内置版本，且不会再被下次同步重复覆盖', async () => {
+    seed('v1')
+    await lib.syncBuiltin(src())
+    writeFileSync(join(root, 'code-quality', 'notes.txt'), 'mine')
+    await lib.resetBuiltin('code-quality', src())
+    expect(readFileSync(join(root, 'code-quality', 'notes.txt'), 'utf8')).toBe('v1')
+    expect((await lib.list()).find((s) => s.name === 'code-quality')?.builtin).toBe(true)
+    // 重置后记的 hash 与内置源一致 → 再同步一次是空操作（不会每次启动都覆盖）
+    expect(await lib.syncBuiltin(src())).toEqual({ added: 0, updated: 0 })
+  })
+
+  it('resetBuiltin：没有内置源目录 / 源里没有这个 skill 都报错', async () => {
+    seed('v1')
+    await lib.syncBuiltin(src())
+    await expect(lib.resetBuiltin('code-quality')).rejects.toThrow(/没有内置/)
+    await expect(lib.resetBuiltin('other', src())).rejects.toThrow()
+  })
+})

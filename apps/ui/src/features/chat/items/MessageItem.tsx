@@ -5,6 +5,7 @@ import { Copy, Check, Pencil, GitBranchPlus, RefreshCw } from 'lucide-react'
 import { tr } from '@lingshell/shared'
 import type { ConvItem } from '../useConversation.js'
 import { cn } from '../../../lib/cn.js'
+import { openPathPreview } from '../../../lib/chatBus.js'
 import { UserMsgTime } from './TurnTime.js'
 import { CodeBlock } from './CodeBlock.js'
 import { MdTable } from './MdTable.js'
@@ -92,6 +93,32 @@ const MarkdownBody = memo(function MarkdownBody({ text, streaming }: { text: str
       return <CodeBlock lang={langOf(code?.properties?.className)} text={hastText(code)} live={streaming}>{children}</CodeBlock>
     },
     table({ node, children }) { return <MdTable node={node}>{children}</MdTable> },
+    // 外链一律交给系统浏览器：绝不在应用内导航（否则会把整个页面冲掉）
+    a({ href, children, title }) {
+      // 只有真能打开的地址才渲染成链接：http(s) 走系统浏览器，mailto 交给系统邮件程序；
+      // 其它（# 锚点、相对路径）在应用里点了本来也没反应，渲染成普通文字，别让人以为能点
+      const web = !!href && /^https?:\/\//i.test(href)
+      const mail = !!href && /^mailto:/i.test(href)
+      if (!web && !mail) return <span title={title}>{children}</span>
+      return (
+        <a href={href} rel="noreferrer" title={title ?? (web ? tr('在系统浏览器中打开') : tr('用邮件程序打开'))}
+          className="text-[var(--color-accent)] underline decoration-dotted underline-offset-2 hover:decoration-solid"
+          onClick={(e) => { e.preventDefault(); window.open(href, '_blank', 'noopener') }}>
+          {children}
+        </a>
+      )
+    },
+    // 行内代码里看着像文件路径的，点一下直接看文件（不支持的格式会提示用系统程序打开）
+    code({ node, className, children }) {
+      const text = hastText(node as HNode)
+      if (className || !looksLikePath(text)) return <code className={className}>{children}</code>
+      return (
+        <code title={tr('打开文件预览')} onClick={() => openPathPreview(text)}
+          className="cursor-pointer rounded bg-[var(--color-bg-raised)] px-1 font-mono text-[0.92em] text-[var(--color-accent)] hover:underline">
+          {children}
+        </code>
+      )
+    },
   }), [streaming])
   return (
     <div className={cn('markdown-body break-words', streaming && 'stream-cursor')}>
@@ -101,6 +128,16 @@ const MarkdownBody = memo(function MarkdownBody({ text, streaming }: { text: str
 })
 
 type HNode = { type: string; value?: string; children?: HNode[]; properties?: Record<string, unknown> }
+/** 看着像文件路径才让点（排除 URL / 太长 / 没扩展名的）—— 只对行内代码用，避免误判普通文字 */
+const looksLikePath = (s: string): boolean => {
+  const t = s.trim()
+  if (t.length < 4 || t.length > 260) return false
+  if (/^[a-z]+:\/\//i.test(t)) return false          // http://、vscode:// 这类不是文件
+  if (/[\r\n]/.test(t)) return false
+  if (!/[\\/]/.test(t)) return false                  // 至少有个路径分隔符
+  const head = t.split(/[?#]/)[0]
+  return /\.\w{1,8}$/.test(head)                      // 结尾有扩展名
+}
 const hastText = (n?: HNode): string => (!n ? '' : n.type === 'text' ? n.value ?? '' : (n.children ?? []).map(hastText).join(''))
 
 const TB = 'flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--color-text-muted)]'

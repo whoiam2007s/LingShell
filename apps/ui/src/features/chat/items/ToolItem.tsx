@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Terminal, FileEdit, FileText, Download, Upload, Wrench, Timer, Loader2, Check, X, ChevronRight, Plug, LocateFixed } from 'lucide-react'
 import { LINGSHELL_TOOLS, gotoAiMark } from '../../terminals/index.js'
+import { openPathPreview } from '../../../lib/chatBus.js'
 import type { ConvItem } from '../useConversation.js'
 import { cn } from '../../../lib/cn.js'
 import { DiffView } from '../../../components/DiffView.js'
@@ -61,6 +62,8 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
   const preview0 = (name === 'propose_host_knowledge' || name === 'propose_runbook') && typeof input?.title === 'string' ? input.title
     : name === 'propose_quick_commands' && typeof input?.set_name === 'string' ? input.set_name
     : name === 'ask_user' && typeof input?.question === 'string' ? input.question
+    // run_skill_script 的入参只有 skill / script，不拼出来卡片那一行就是空的
+    : name === 'run_skill_script' && typeof input?.skill === 'string' ? `${input.skill}/scripts/${String(input.script ?? '')}`
     : name === 'run_on_hosts' && Array.isArray(input?.targets) && command ? `[${(input.targets as string[]).join(', ')}] ${command}` : command
   // spawn_subagent：卡片上只显示一句话标题（完整 task 收在展开的参数里，一眼看出在干什么）
   const subTitle = name === 'spawn_subagent'
@@ -91,7 +94,11 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
           {preparing ? (
             <span className="min-w-0 flex-1 truncate text-[11px] italic text-[var(--color-text-muted)] animate-pulse-dim">{tr('生成参数中…')}</span>
           ) : preview && (
-            <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-text-muted)]">{preview}</code>
+            // 参数摘要经常就是个文件路径：点它能直接看文件（点不动的话会冒泡把卡片收起来，所以 stopPropagation）
+            /^([A-Za-z]:[\\/]|[\\/]|~|\.{1,2}[\\/])/.test(preview) && /\.\w{1,8}$/.test(preview)
+              ? <code title={tr('点击查看文件')} onClick={(e) => { e.stopPropagation(); openPathPreview(preview) }}
+                  className="min-w-0 flex-1 cursor-pointer truncate font-mono text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:underline">{preview}</code>
+              : <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-text-muted)]">{preview}</code>
           )}
           <ToolElapsed item={item} live={live} />
           <StatusBadge status={item.status} preparing={preparing} />

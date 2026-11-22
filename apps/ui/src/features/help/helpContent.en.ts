@@ -355,6 +355,14 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'If the check fails or the model call times out, it keeps waiting — better to wait for the timeout than to kill a command that is still working.',
         'Normal long-running commands that keep printing are not misdetected; for really long tasks a background job is the better fit.',
       ] },
+      { h: 'Once a command is waiting: three ways to handle it', p: 'Settings → AI → "When a command waits for input". Pick one; it applies everywhere.', steps: [
+        '**AI decides** (default): the AI answers where it can — plain y/n, overwrite, continue. It keeps going (up to 5 answers per command). When it needs a specific value it only answers if the value is visible in the command output; for irreversible actions (delete / uninstall / format) it asks you with an option card and continues only after you allow it; passwords and the like always come back to you.',
+        '**Abort, hand back to the AI**: send Ctrl-C, then the AI rewrites the command into a non-interactive form and retries (good for re-runnable things like `apt install`).',
+        '**Keep it in place for you**: no interruption — the command stays in the terminal waiting for you (good for multi-step wizards, passwords, custom scripts). Once you answer, the AI can send that answer into the terminal and continue.',
+      ], tips: [
+        'When the AI answers for you, the tool result says "auto-answered N time(s): y", so you can see what it decided on your behalf.',
+        'All three modes share one limit: dangerous confirmations for delete / uninstall / overwrite are never bypassed with `-y`.',
+      ] },
     ],
   },
   {
@@ -778,6 +786,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Every call shows a permission card by default; only tools for which you turned on "No confirmation" in the expanded server card run directly.',
         'The read-only trust level and scheduled inspections can only use tools that don\'t need confirmation. All calls are recorded in the execution log.',
         'Environment variable and request header values are stored encrypted.',
+        'For code symbol / reference indexing, use the existing GitNexus (`npx gitnexus`, it ships with an MCP mode): add it as a local command with command `npx` and arguments `-y gitnexus`. Once saved, the AI can answer "where is this function defined, who calls it". The app itself does not index code.',
       ] },
     ],
   },

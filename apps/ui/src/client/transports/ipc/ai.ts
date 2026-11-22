@@ -65,6 +65,7 @@ export function createAiIpc(): AiApi {
       read: (name) => window.electronAPI.invoke('skills:read', name) as ReturnType<AppClient['skills']['read']>,
       save: (input, old) => window.electronAPI.invoke('skills:save', input, old) as Promise<void>,
       remove: (name) => window.electronAPI.invoke('skills:remove', name) as Promise<void>,
+      resetBuiltin: (name) => window.electronAPI.invoke('skills:resetBuiltin', name) as Promise<void>,
       setFlags: (name, flags) => window.electronAPI.invoke('skills:setFlags', name, flags) as Promise<void>,
       pickImport: (kind) => window.electronAPI.invoke('skills:pickImport', kind) as ReturnType<AppClient['skills']['pickImport']>,
       inspect: (p) => window.electronAPI.invoke('skills:inspect', p) as ReturnType<AppClient['skills']['inspect']>,

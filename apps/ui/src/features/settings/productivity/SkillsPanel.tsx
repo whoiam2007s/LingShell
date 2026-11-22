@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Pencil, Trash2, Plus, FolderOpen, Download, ChevronDown, Folder, FileArchive, Sparkles, AlertTriangle, X } from 'lucide-react'
+import { Pencil, Trash2, Plus, FolderOpen, Download, ChevronDown, Folder, FileArchive, Sparkles, AlertTriangle, X, RefreshCw } from 'lucide-react'
 import { tk, tr, type SkillInfo, type SkillImportPreview } from '@lingshell/shared'
 import { trx } from '../../../lib/trx.js'
 import { client } from '../../../client/index.js'
@@ -12,8 +12,8 @@ const PAGE_TIP = tk('Skill 是一份可复用的任务指令（SKILL.md，可附
 const ORIGIN: Record<SkillInfo['origin'], string> = { imported: tk('skill|导入'), created: tk('skill|新建'), manual: tk('目录里放入') }
 const NAME_HINT = tk('小写字母、数字和连字符，如 nginx-check')
 
-interface Form { old?: string; name: string; description: string; body: string }
-const empty: Form = { name: '', description: '', body: '' }
+interface Form { old?: string; name: string; description: string; body: string; version: string }
+const empty: Form = { name: '', description: '', body: '', version: '' }
 
 // 设置弹窗「Skills」页：导入（文件夹 / .zip / .skill）、新建、编辑、启停、「AI 可自动调用」、删除、打开目录
 export function SkillsPanel() {
@@ -21,6 +21,7 @@ export function SkillsPanel() {
   const [form, setForm] = useState<Form | null>(null)
   const [preview, setPreview] = useState<SkillImportPreview | null>(null)
   const [delTarget, setDelTarget] = useState<SkillInfo | null>(null)
+  const [resetTarget, setResetTarget] = useState<SkillInfo | null>(null)
   const [importMenu, setImportMenu] = useState(false)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
@@ -39,9 +40,10 @@ export function SkillsPanel() {
   }
   const edit = async (s: SkillInfo) => {
     setErr('')
-    try { const r = await client.skills.read(s.name); setForm({ old: s.name, ...r }) }
+    try { const r = await client.skills.read(s.name); setForm({ ...r, version: r.version ?? '', old: s.name }) }
     catch (e) { setErr(errText(e)) }
   }
+  const doReset = () => { if (resetTarget) { const n = resetTarget.name; client.skills.resetBuiltin(n).then(() => { setMsg(tr('已把「{name}」重置为当前内置版本', { name: n })); return refresh() }).catch((e) => setErr(errText(e))) } setResetTarget(null) }
   const doDelete = () => {
     if (delTarget) client.skills.remove(delTarget.name).then(refresh).catch((e) => setErr(errText(e)))
     setDelTarget(null)
@@ -50,7 +52,7 @@ export function SkillsPanel() {
   if (form) {
     const set = (p: Partial<Form>) => setForm({ ...form, ...p })
     const save = async () => {
-      try { await client.skills.save({ name: form.name.trim(), description: form.description, body: form.body }, form.old); setForm(null); setErr(''); refresh() }
+      try { await client.skills.save({ name: form.name.trim(), description: form.description, body: form.body, version: form.version.trim() || undefined }, form.old); setForm(null); setErr(''); refresh() }
       catch (e) { setErr(errText(e)) }
     }
     return (
@@ -62,6 +64,9 @@ export function SkillsPanel() {
           </Row>
           <Row label={tr('描述')} hint={tr('AI 靠它判断什么时候用')} wide tip={tr('会出现在 AI 看到的 skill 目录里（只有名称和描述）。写清楚做什么、什么情况下用，例如「排查 Linux 磁盘占用：找出大目录和大文件，给出清理建议」。')}>
             <input value={form.description} onChange={(e) => set({ description: e.target.value })} placeholder={tr('做什么、什么时候用')} className={`w-full ${INPUT}`} />
+          </Row>
+          <Row label={tr('版本')} hint={tr('可选，如 1.0.0；显示在列表里')} tip={tr('写在 SKILL.md 的 frontmatter（version），只是给人看的版本标记，不影响 AI 行为。内置 skill 升版本后用户能一眼看出是不是新版。')}>
+            <input value={form.version} onChange={(e) => set({ version: e.target.value })} placeholder="1.0.0" className={`w-40 font-mono ${INPUT}`} />
           </Row>
           <Row label={tr('指令正文')} hint={tr('Markdown，AI 加载后照做')} wide tip={tr('写步骤、注意事项、要用的命令。引用同目录的资源文件时写相对路径（如 scripts/check.sh），AI 会按 skill 目录去找。')}>
             <textarea value={form.body} onChange={(e) => set({ body: e.target.value })} rows={14} className={`${taCls} font-mono`}
@@ -92,6 +97,7 @@ export function SkillsPanel() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="truncate font-mono font-medium text-[var(--color-text-primary)]">{s.name}</span>
+                    {s.version && <span data-skill-version className="shrink-0 rounded bg-[var(--color-bg-raised)] px-1 text-[10.5px] text-[var(--color-text-muted)]" title={tr('SKILL.md 里的 version')}>v{s.version}</span>}
                     <span className="shrink-0 rounded border border-[var(--color-border-subtle)] px-1 text-[10.5px] text-[var(--color-text-muted)]">{tr(ORIGIN[s.origin])}</span>
                     {s.files.length > 0 && <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]" title={s.files.join('\n')}>{tr('{n} 个资源文件', { n: s.files.length })}</span>}
                     {!s.userInvocable && !s.error && <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]" title={tr('SKILL.md 里写了 user-invocable: false')}>{tr('不在「+」菜单')}</span>}
@@ -111,7 +117,10 @@ export function SkillsPanel() {
                     <button onClick={() => edit(s)} title={tr('编辑')} className={ICON_BTN}><Pencil className="h-3 w-3" /></button>
                   </>
                 )}
-                <button onClick={() => setDelTarget(s)} title={tr('删除')} className={ICON_DEL}><Trash2 className="h-3 w-3" /></button>
+                {/* 内置 skill：有版本更新机制（改过的不覆盖），所以不放删除，放「刷新同步」把它重置回内置版本 */}
+                {s.builtin
+                  ? <button onClick={() => setResetTarget(s)} title={tr('刷新同步：重置为当前版本内置的内容（会覆盖你的修改）')} className={ICON_BTN}><RefreshCw className="h-3 w-3" /></button>
+                  : <button onClick={() => setDelTarget(s)} title={tr('删除')} className={ICON_DEL}><Trash2 className="h-3 w-3" /></button>}
               </div>
             </div>
           ))}
@@ -121,6 +130,9 @@ export function SkillsPanel() {
       {msg && <div className="text-[12px] text-[var(--color-success)]">{msg}</div>}
       {preview && <ImportDialog preview={preview} onClose={() => { void client.skills.cancelImport(preview.token).catch(() => {}); setPreview(null) }}
         onDone={(name) => { setPreview(null); setMsg(tr('已导入 {name}，立即生效', { name })); refresh() }} />}
+      <ConfirmDialog open={!!resetTarget} title={tr('刷新同步')} confirmText={tr('重置')}
+        message={tr('把「{name}」重置为随应用内置的版本？你改过的内容会丢失。', { name: resetTarget?.name ?? '' })}
+        onConfirm={doReset} onCancel={() => setResetTarget(null)} />
       <ConfirmDialog open={!!delTarget} title={tr('删除 Skill')} message={tr('确定删除 {name}？会删除它的整个目录（含资源文件），不可恢复。', { name: delTarget?.name ?? '' })} onConfirm={doDelete} onCancel={() => setDelTarget(null)} />
     </Page>
   )

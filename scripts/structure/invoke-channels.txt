@@ -354,6 +354,7 @@ skills:openDir
 skills:pickImport
 skills:read
 skills:remove
+skills:resetBuiltin
 skills:save
 skills:setFlags
 sshAuth:answer

@@ -163,10 +163,11 @@ export function parseToolList(v: unknown): string[] | undefined {
   return out.length ? [...new Set(out)] : undefined
 }
 
-/** 写类工具（与 execGate 的判定保持一致的子集；只用于「只读子代理」的拦截） */
+/** 写类工具（与 execGate 的判定保持一致的子集；只用于「只读子代理」的拦截）
+ *  run_skill_script 也算：脚本内容不可控（可能写文件 / 删东西），只读子代理不能跑 */
 const WRITE_TOOLS = new Set([
   'write_file', 'upload_file', 'set_app_setting', 'save_skill', 'save_db_connection',
-  'save_model_profile', 'save_mcp_server', ...EXEC_COMMAND_TOOLS,
+  'save_model_profile', 'save_mcp_server', 'run_skill_script', ...EXEC_COMMAND_TOOLS,
 ])
 export const isWriteTool = (name: string): boolean => WRITE_TOOLS.has(name)
 

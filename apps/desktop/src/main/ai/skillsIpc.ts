@@ -12,6 +12,8 @@ export interface SkillsIpcDeps {
   pickPath(kind: 'folder' | 'file'): Promise<string | undefined>
   openPath(p: string): Promise<string>                         // shell.openPath：成功返回 ''
   log?: (level: 'info' | 'warn', msg: string, data?: unknown) => void
+  /** 随应用打包的内置 skill 目录：启动时缺哪个补哪个（已存在的不覆盖，保住用户改过的版本） */
+  builtinDir?: string
 }
 
 const str = (v: unknown, what: string): string => { if (typeof v !== 'string' || !v) throw new Error(tr('非法的{what}', { what: tr(what) })); return v }
@@ -19,6 +21,12 @@ const str = (v: unknown, what: string): string => { if (typeof v !== 'string' ||
 export function registerSkills(d: SkillsIpcDeps): LocalSkills {
   const lib = new LocalSkills(d.root, d.log)
   lib.watch()   // 用户在目录里手动改了文件也能及时生效
+  // 内置 skill：缺的补进来；版本变了且用户没改过就更新；失败不影响正常使用
+  if (d.builtinDir) {
+    void lib.syncBuiltin(d.builtinDir)
+      .then((r) => { if (r.added || r.updated) d.log?.('info', 'builtin skills synced', r) })
+      .catch((e) => d.log?.('warn', 'builtin skills sync failed', { err: String(e) }))
+  }
   d.attach(lib)
   d.handle('skills:list', (): Promise<SkillInfo[]> => lib.list())
   d.handle('skills:read', (_e, name) => lib.read(str(name, tk('arg| skill 名'))))
@@ -28,6 +36,8 @@ export function registerSkills(d: SkillsIpcDeps): LocalSkills {
     return lib.save(i, typeof old === 'string' && old ? old : undefined)
   })
   d.handle('skills:remove', (_e, name) => lib.remove(str(name, tk('arg| skill 名'))))
+  // 内置 skill：重置为随应用打包的版本（覆盖用户改过的内容）
+  d.handle('skills:resetBuiltin', (_e, name) => lib.resetBuiltin(str(name, tk('arg| skill 名')), d.builtinDir))
   d.handle('skills:setFlags', (_e, name, flags) => {
     const f = (flags ?? {}) as { enabled?: unknown; modelInvocable?: unknown }
     const pick = (v: unknown) => (typeof v === 'boolean' ? v : undefined)

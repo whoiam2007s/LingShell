@@ -10,6 +10,11 @@ describe('toWinPath (MSYS→Windows 路径归一)', () => {
   it('盘根 /c → C:\\', () => { expect(toWinPath('/c')).toBe('C:\\') })
   it('已是 Windows 路径原样返回', () => { expect(toWinPath('C:\\Users\\x')).toBe('C:\\Users\\x') })
   it('普通 Linux 路径原样返回（非单字母挂载点）', () => { expect(toWinPath('/root/app')).toBe('/root/app') })
+  it('混合形式（Git Bash 原生 cwd 报的 d:/x）也归一', () => {
+    expect(toWinPath('d:/work/x')).toBe('D:\\work\\x')
+    expect(toWinPath('d:/')).toBe('D:\\')
+    expect(toWinPath('/d/')).toBe('D:\\')
+  })
 })
 
 describe('TerminalManager local terminal', () => {

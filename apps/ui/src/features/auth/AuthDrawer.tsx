@@ -15,6 +15,8 @@ const LEVEL_LABEL: Record<AuthLevel, string> = { none: tk('无'), read: tk('读�
 // hostKey → 友好名：'local'→「本地」；hostId→主机 label（user@host）；host:port 临时连接→原样
 function hostKeyLabel(hostKey: string, hosts: HostSummary[]) {
   if (hostKey === 'local') return tr('本地')
+  // skill:<名字>：跑 skill 脚本的授权（不是主机），别显示成裸键
+  if (hostKey.startsWith('skill:')) return tr('Skill · {name}', { name: hostKey.slice('skill:'.length) })
   const h = hosts.find((x) => x.id === hostKey)
   return h ? tr('{label}（{user}@{host}）', { label: h.label, user: h.username, host: h.host }) : hostKey
 }

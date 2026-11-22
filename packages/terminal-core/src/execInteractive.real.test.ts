@@ -67,6 +67,8 @@ describe.skipIf(!REAL_SLOW)('execCapture（真实终端）', () => {
       expect(r.handedOff).toBeUndefined()
       expect(r.exitCode, `实际输出=${JSON.stringify(r.output)}`).toBe(0)
       expect(r.output).toContain('ANSWER=y')
+      // 替用户答过什么要随结果带上去（界面上显示「AI 替你答了 y」，模型也看得到）
+      expect(r.autoAnswered).toEqual(['y'])
     })
   }, 90000)
 

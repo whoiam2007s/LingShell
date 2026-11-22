@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Save, Sparkles, Search, Pilcrow, ScanEye, WrapText, Eraser, ChevronUp, ChevronDown, CaseSensitive, WholeWord, Replace, ReplaceAll, AlertTriangle } from 'lucide-react'
+import { X, Save, Sparkles, Search, Pilcrow, ScanEye, WrapText, Eraser, ChevronUp, ChevronDown, CaseSensitive, WholeWord, Replace, ReplaceAll, AlertTriangle, Pencil, ExternalLink } from 'lucide-react'
 import { configKind, syntaxLangOf, highlightText, HIGHLIGHT_MAX, SUDO_NEED_PW, tk, tr, type ExplainItem, type FsScope, type TokKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { DiffView } from '../../components/DiffView.js'
+import { PreviewBody } from './FilePreview.js'
 import { ConfigExplainPanel } from './ConfigExplainPanel.js'
 import {
   findSuspects, trailingSpaces, indentInfo, eolInfo, cleanText, findAll, replaceAll, lineCol, lineStart, indentLines, outdentLines, newlineKeepIndent,
@@ -37,18 +38,34 @@ const DECO_CLS: Record<number, string> = { [D.Space]: 'ed-sp', [D.Tab]: 'ed-tab'
 // 辅助：显示空白（空格 · / Tab →，行尾空白标红）、可疑字符检查（BOM / 零宽 / 不换行空格 / 全角空格 / 控制字符，一键清理）、
 // 查找替换（Ctrl+F / Ctrl+H）、跳到行（Ctrl+G）、自动换行、状态栏（行列 / 选中 / 缩进 / 换行符可切换）、
 // Tab / Shift+Tab 缩进、回车保持缩进、Ctrl+/ 注释、Alt+↑↓ 移动行、Shift+Alt+↓ 复制行、Ctrl+Shift+K 删除行、JSON / YAML 保存前检查
-export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number }) {
+/** 能渲染成「查看」形态的格式（md 渲染 / csv 表格 / pdf / 图片）；其余只读文本 */
+const PREVIEWABLE = /\.(md|markdown|csv|tsv|pdf|png|jpe?g|gif|webp|bmp|svg)$/i
+/** 其中浏览器预览器要自己读字节的（readText 对它们必报「二进制文件」）：查看这些格式时不下发读文本 */
+const BINARY_PREVIEW = /\.(pdf|png|jpe?g|gif|webp|bmp)$/i
+
+export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean }) {
   const sudo = scope !== 'local' && !!scope.sudo
   const fmtErr = (e: unknown) => { const m = errMsg(e); if (m.includes(SUDO_NEED_PW)) { onNeedPw?.(); return m.replace(SUDO_NEED_PW, '') } return m }
   const deniedMsg = (m?: string) => !!m && !sudo && !!onSudo && /Permission denied|没有权限|EACCES|权限不够/i.test(m)   // i18n-ignore 匹配报错文本
   const [sudoSave, setSudoSave] = useState(false)   // 点了「用 sudo 保存」：切到 sudo 后自动再存一次
+  const [readOnly, setReadOnly] = useState(!edit)   // 默认只读查看；右键「编辑文件」打开时直接可改
+  // 父组件把 edit 改掉时跟着同步（同一个弹窗内切模式，不靠 key 重挂载——那样会重新读文件闪一下）
+  useEffect(() => { setReadOnly(!edit) }, [edit])
+  const openExternal = () => { void (scope === 'local' ? client.fs.openLocal(path) : client.preview.openExternal(scope, path)).catch(() => {}) }
+  // 切换：查看 ↔ 编辑。查看模式的渲染由本组件负责（md 渲染 / csv 表格 / 代码只读文本），
+  // 所以直接切内部状态即可 —— 之前调父组件的 onSwitchToView，但父组件的 edit prop 没变，React 不重渲染，表现为「点了没反应」
+  const toggleEdit = () => {
+    if (readOnly) { setReadOnly(false); return }
+    if (dirty) { setAsk('view'); return }
+    setReadOnly(true)
+  }
   const [base, setBase] = useState<string>()      // 打开时（或上次保存后）的磁盘原文，用于并发修改检测
   const [text, setText] = useState('')
   const [loadErr, setLoadErr] = useState<string>()
   const [err, setErr] = useState<string>()
   const [note, setNote] = useState('')
   const [diff, setDiff] = useState<string>()       // 非 undefined = 显示保存确认
-  const [askClose, setAskClose] = useState(false)
+  const [ask, setAsk] = useState<'close' | 'view' | null>(null)   // 有未保存改动时的确认：关窗 or 切回查看
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [syntaxWarn, setSyntaxWarn] = useState<SyntaxProblem>()
@@ -79,16 +96,24 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
     const withNl = finalNewline && t !== '' && !t.endsWith('\n') ? `${t}\n` : t
     return eol === 'crlf' ? withNl.replace(/\n/g, '\r\n') : withNl
   }
-  const dirty = base !== undefined && toDisk(text) !== base
+  // 比较时统一成 LF：只差换行符（CRLF↔LF）不算改动，否则打开就显示「有未保存改动」、切不回查看。
+  // 但状态栏手动切「换行符」本身就是要保存的改动：只比内容会把「LF 文件切成 CRLF」判成没改动，
+  // 保存按钮直接变灰（requestSave 还会提示「没有改动」），所以换行符选择也一起比。
+  const same = (a: string, b: string) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n')
+  const baseEol = eol0 ? (eol0.crlf > eol0.lf ? 'crlf' : 'lf') : 'lf'
+  const dirty = base !== undefined && (!same(toDisk(text), base) || eol !== baseEol)
 
-  // 打开时读一次（父组件按 path 做 key 重挂载）；打不开的，切到 sudo 或验证完密码后再读
+  // 打开时读一次（父组件按 path 做 key 重挂载）；打不开的，切到 sudo 或验证完密码后再读。
+  // 图片 / PDF 在只读查看时由预览器自己读字节，readText 对它们必报「二进制文件」，所以不下发；
+  // 切到编辑模式（binaryView 变 false）时再读，读不了会走 loadErr 提示。
+  const binaryView = readOnly && BINARY_PREVIEW.test(path)
   useEffect(() => {
-    if (base !== undefined) return
+    if (base !== undefined || binaryView) return
     setLoadErr(undefined)
     client.fs.readText(scope, path)
       .then((t) => { setBase(t); setText(t.replace(/\r\n/g, '\n')) })
       .catch((e: unknown) => setLoadErr(fmtErr(e)))
-  }, [sudo, retry])
+  }, [sudo, retry, binaryView])
 
   // ── 保存 ──
   const requestSave = (force = false) => {
@@ -103,16 +128,25 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
       .catch((e: unknown) => setErr(fmtErr(e)))
       .finally(() => setBusy(false))
   }
-  const confirmSave = () => {
+  const confirmSave = (then?: () => void) => {
     if (base === undefined) return
     const next = toDisk(text)
     setBusy(true)
     client.fs.writeText(scope, path, base, next)
-      .then(() => { setBase(next); setDiff(undefined); setErr(undefined); setSaved(true) })
+      .then(() => { setBase(next); setDiff(undefined); setErr(undefined); setSaved(true); then?.() })
       .catch((e: unknown) => { setDiff(undefined); setErr(fmtErr(e)) })
       .finally(() => setBusy(false))
   }
-  const requestClose = () => (dirty ? setAskClose(true) : onClose())
+  // 关闭 / 切回查看：有改动先问（保存并继续 / 不保存 / 取消）
+  const goView = () => setReadOnly(true)
+  // 丢弃改动：把编辑区恢复成磁盘内容、换行符也回到磁盘那边的选择
+  // （否则切过 LF/CRLF 的话 dirty 仍为 true，关窗口时又弹一次「有未保存的改动」）
+  const discard = () => {
+    if (base === undefined) return
+    setText(base.replace(/\r\n/g, '\n')); setEol(baseEol)
+    setSaved(false); setErr(undefined); setSyntaxWarn(undefined)
+  }
+  const requestClose = () => (dirty ? setAsk('close') : onClose())
   useEffect(() => { if (sudoSave && sudo) { setSudoSave(false); confirmSave() } }, [sudo, sudoSave])
 
   // ── 编辑：按差异写回 textarea（浏览器原生插入，Ctrl+Z 能撤销），再设选区 ──
@@ -288,8 +322,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
   }, [text, big, showWs, showInv, suspects, trails, matches, curIdx])
 
   // 捕获阶段拦 Ctrl+S / Ctrl+F / Ctrl+H / Ctrl+G / F3 / Esc：抢在抽屉的 Esc 关闭（window 冒泡监听）和终端之前
-  const keys = useRef({ requestSave, requestClose, diff, askClose, openFind, find, gotoLine, goMatch, syntaxWarn })
-  keys.current = { requestSave, requestClose, diff, askClose, openFind, find, gotoLine, goMatch, syntaxWarn }
+  const keys = useRef({ requestSave, requestClose, diff, ask, openFind, find, gotoLine, goMatch, syntaxWarn })
+  keys.current = { requestSave, requestClose, diff, ask, openFind, find, gotoLine, goMatch, syntaxWarn }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const k = keys.current
@@ -303,7 +337,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
       else if (e.key === 'Escape') {
         stop()
         if (k.diff !== undefined) setDiff(undefined)
-        else if (k.askClose) setAskClose(false)
+        else if (k.ask) setAsk(null)
         else if (k.syntaxWarn) setSyntaxWarn(undefined)
         else if (k.find || k.gotoLine !== null) { setFind(null); setGotoLine(null); area.current?.focus() }
         else k.requestClose()
@@ -352,7 +386,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
           <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--color-text-primary)]" title={path}>{dirty ? '● ' : ''}{path}</span>
           {sudo && <span title={tr('以 root 身份读写（sudo）')} className="shrink-0 rounded bg-[var(--color-danger)] px-1.5 text-[10px] font-semibold leading-[18px] text-[var(--color-on-danger)]">sudo</span>}
           {saved && !dirty && <span className="shrink-0 text-[11px] text-[var(--color-success)]">{tr('已保存（人工编辑不备份，不能一键还原）')}</span>}
-          {base !== undefined && (
+          {/* 这几个只在编辑时有意义：查看模式隐藏 */}
+          {base !== undefined && !readOnly && (
             <>
               <button data-ed-find title={tr('查找 / 替换（Ctrl+F / Ctrl+H）\n跳到行：Ctrl+G')} onClick={() => openFind(false)} className={tool(!!find)}><Search className="h-3.5 w-3.5" /></button>
               <button data-ed-ws title={tr('显示空白字符\n空格显示为 ·、Tab 显示为 →，行尾多余的空白标红')} onClick={() => flip(LS.ws, setShowWs)} className={tool(showWs)}><Pilcrow className="h-3.5 w-3.5" /></button>
@@ -365,8 +400,10 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
             <button data-explain-toggle onClick={() => { setExplain((v) => !v); setHl(undefined) }} title={tr('AI 逐段解释这个配置文件并提示风险（按内容缓存）')}
               className={`${btn} ml-1 flex items-center gap-1 border ${explain ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)] text-[var(--color-accent)]' : 'border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}><Sparkles className="h-3.5 w-3.5" />{tr('解释')}</button>
           )}
-          <button onClick={() => requestSave()} disabled={!dirty || busy} title={tr('保存（Ctrl+S）')}
-            className={`${btn} flex items-center gap-1 border border-transparent bg-[var(--color-accent)] text-[var(--color-bg-base)] hover:opacity-90`}><Save className="h-3.5 w-3.5" />{tr('保存')}</button>
+          <button data-ed-edit onClick={toggleEdit} title={readOnly ? tr('切换到编辑') : tr('切回查看（有未保存的改动会提示先保存）')} className={tool(!readOnly)}><Pencil className="h-3.5 w-3.5" /></button>
+          <button data-ed-external onClick={openExternal} title={tr('用系统默认软件打开')} className={tool(false)}><ExternalLink className="h-3.5 w-3.5" /></button>
+          {!readOnly && <button onClick={() => requestSave()} disabled={!dirty || busy} title={tr('保存（Ctrl+S）')}
+            className={`${btn} flex items-center gap-1 border border-transparent bg-[var(--color-accent)] text-[var(--color-bg-base)] hover:opacity-90 disabled:opacity-40`}><Save className="h-3.5 w-3.5" />{tr('保存')}</button>}
           <button onClick={requestClose} title={tr('关闭（Esc）')} className="flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><X className="h-3.5 w-3.5" /></button>
         </div>
         {find && (
@@ -415,7 +452,11 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
             {deniedMsg(err) && <button data-sudo-save onClick={() => { setErr(undefined); setSudoSave(true); onSudo!() }} className="shrink-0 rounded border border-[var(--color-danger)] px-2 py-0.5 text-[11px] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)]">{tr('用 sudo 保存')}</button>}
           </div>
         )}
-        {loadErr ? (
+        {readOnly && PREVIEWABLE.test(path) && !loadErr ? (
+          // 查看模式优先走预览器：md / csv 把已经读好的正文传下去（切编辑还要用），不再重复读一次；
+          // 图片 / PDF 没读文本，由预览器自己读字节
+          <PreviewBody scope={scope} path={path} text={binaryView ? undefined : text} />
+        ) : loadErr ? (
           <div data-editor-loaderr className="p-4 text-[12.5px] text-[var(--color-danger)]">{tr('无法打开：{err}', { err: loadErr })}
             {deniedMsg(loadErr) && <button data-sudo-open onClick={onSudo} className="ml-3 rounded border border-[var(--color-danger)] px-2 py-0.5 text-[11px] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)]">{tr('用 sudo 打开')}</button>}</div>
         ) : base === undefined ? (
@@ -444,7 +485,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
                   <div className="h-4" />
                 </pre>
               )}
-              <textarea ref={area} value={text} autoFocus spellCheck={false} wrap={wrap && !big ? 'soft' : 'off'}
+              <textarea ref={area} value={text} readOnly={readOnly} autoFocus spellCheck={false} wrap={wrap && !big ? 'soft' : 'off'}
                 onChange={(e) => { setText(e.target.value); setSaved(false); setErr(undefined); setSyntaxWarn(undefined) }}
                 onKeyDown={onAreaKey} onSelect={updateCursor} onKeyUp={updateCursor} onClick={updateCursor}
                 onScroll={syncScroll}
@@ -477,19 +518,22 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
               <DiffView diff={diff} maxHeight="max-h-[55vh]" />
               <div className="mt-3 flex justify-end gap-2">
                 <button onClick={() => setDiff(undefined)} className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('取消')}</button>
-                <button onClick={confirmSave} disabled={busy} autoFocus className={`${btn} border border-transparent bg-[var(--color-accent)] font-medium text-[var(--color-bg-base)] hover:opacity-90`}>{busy ? tr('保存中…') : tr('保存')}</button>
+                <button onClick={() => confirmSave()} disabled={busy} autoFocus className={`${btn} border border-transparent bg-[var(--color-accent)] font-medium text-[var(--color-bg-base)] hover:opacity-90`}>{busy ? tr('保存中…') : tr('保存')}</button>
               </div>
             </div>
           </div>
         )}
-        {askClose && (
+        {ask && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
-            <div className="w-[340px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-5 shadow-2xl">
-              <div className="mb-2 text-[14px] font-semibold text-[var(--color-text-primary)]">{tr('放弃未保存的改动？')}</div>
-              <p className="mb-4 text-[12.5px] text-[var(--color-text-secondary)]">{tr('关闭后本次编辑的内容会丢失。')}</p>
+            <div className="w-[380px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-5 shadow-2xl">
+              <div className="mb-2 text-[14px] font-semibold text-[var(--color-text-primary)]">{tr('有未保存的改动')}</div>
+              <p className="mb-4 text-[12.5px] text-[var(--color-text-secondary)]">{ask === 'close' ? tr('关闭后本次编辑的内容会丢失。') : tr('切回查看前，本次编辑的内容需要处理。')}</p>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setAskClose(false)} autoFocus className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('继续编辑')}</button>
-                <button onClick={onClose} className={`${btn} border border-transparent bg-[var(--color-danger)] font-medium text-[var(--color-on-danger)] hover:opacity-90`}>{tr('放弃并关闭')}</button>
+                <button onClick={() => setAsk(null)} autoFocus className={`${btn} border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]`}>{tr('取消')}</button>
+                <button onClick={() => { const a = ask; setAsk(null); discard(); if (a === 'close') onClose(); else goView() }}
+                  className={`${btn} border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_12%,transparent)]`}>{tr('不保存')}</button>
+                <button onClick={() => { const a = ask; confirmSave(() => { setAsk(null); if (a === 'close') onClose(); else goView() }) }}
+                  className={`${btn} border border-transparent bg-[var(--color-accent)] font-medium text-[var(--color-bg-base)] hover:opacity-90`}>{tr('保存并继续')}</button>
               </div>
             </div>
           </div>
