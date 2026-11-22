@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ChevronRight, FilePen, RotateCcw, Undo2, Check, X, FileDiff, Loader2 } from 'lucide-react'
 import { tr, type HostSummary, type TurnChanges as TurnChangesData, type TurnFileChange, type TurnFileCheck, type TurnUndoResult } from '@lingshell/shared'
 import { client } from '../../client/index.js'
+import { openPathPreview } from '../../lib/chatBus.js'
 import { cn } from '../../lib/cn.js'
 import { ConfirmDialog } from '../common/index.js'
 import { DiffView } from '../../components/DiffView.js'
@@ -105,9 +106,10 @@ export function TurnChangesBar({ sessionId, data, onChanged }: { sessionId: stri
                     {f.created ? tr('file|新建') : tr('file|修改')}
                   </span>
                   <span className="shrink-0 text-[var(--color-text-muted)]">{host(f.hostKey)}</span>
-                  {/* 文件名在前、目录灰字在后（长路径截断时文件名仍看得见），悬停看完整路径 */}
-                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5 font-mono" title={f.path}>
-                    <span className="shrink-0 text-[var(--color-text-primary)]">{f.path.split(/[\\/]/).pop()}</span>
+                  {/* 文件名在前、目录灰字在后（长路径截断时文件名仍看得见），悬停看完整路径；点一下能直接看文件 */}
+                  <span className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 font-mono" title={f.path}
+                    onClick={() => openPathPreview(f.path)}>
+                    <span className="shrink-0 text-[var(--color-text-primary)] hover:underline">{f.path.split(/[\\/]/).pop()}</span>
                     <span className="min-w-0 truncate text-[10.5px] text-[var(--color-text-muted)]">{f.path.replace(/[\\/][^\\/]*$/, '')}</span>
                   </span>
                   {r ? (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Terminal, FileEdit, FileText, Download, Upload, Wrench, Timer, Loader2, Check, X, ChevronRight, Plug, LocateFixed } from 'lucide-react'
 import { LINGSHELL_TOOLS, gotoAiMark } from '../../terminals/index.js'
+import { openPathPreview } from '../../../lib/chatBus.js'
 import type { ConvItem } from '../useConversation.js'
 import { cn } from '../../../lib/cn.js'
 import { DiffView } from '../../../components/DiffView.js'
@@ -91,7 +92,11 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
           {preparing ? (
             <span className="min-w-0 flex-1 truncate text-[11px] italic text-[var(--color-text-muted)] animate-pulse-dim">{tr('生成参数中…')}</span>
           ) : preview && (
-            <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-text-muted)]">{preview}</code>
+            // 参数摘要经常就是个文件路径：点它能直接看文件（点不动的话会冒泡把卡片收起来，所以 stopPropagation）
+            /^([A-Za-z]:[\\/]|[\\/]|~|\.{1,2}[\\/])/.test(preview) && /\.\w{1,8}$/.test(preview)
+              ? <code title={tr('点击查看文件')} onClick={(e) => { e.stopPropagation(); openPathPreview(preview) }}
+                  className="min-w-0 flex-1 cursor-pointer truncate font-mono text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:underline">{preview}</code>
+              : <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-text-muted)]">{preview}</code>
           )}
           <ToolElapsed item={item} live={live} />
           <StatusBadge status={item.status} preparing={preparing} />

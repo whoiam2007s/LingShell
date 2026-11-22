@@ -133,9 +133,9 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
   const [menu, setMenu] = useState<{ x: number; y: number; entry: DirEntry } | null>(null)
   const [confirmDel, setConfirmDel] = useState<{ paths: string[]; plan: DeletePlan } | null>(null)
   const [chmodFor, setChmodFor] = useState<{ paths: string[]; mode: number; anyDir: boolean } | null>(null)
-  const [editing, setEditing] = useState<string | null>(null)   // 正在查看/编辑的文件路径
+  const [editing, setEditing] = useState<{ path: string; edit: boolean } | null>(null)   // 正在打开的文件：edit=true 直接进编辑模式（右键「编辑文件」），否则默认只读查看
   const [previewing, setPreviewing] = useState<string | null>(null)   // 正在预览的图片 / Markdown / CSV / PDF
-  const openFile = (p: string) => (previewKind(p) ? setPreviewing(p) : setEditing(p))   // 双击：能预览的预览，其余进编辑器
+  const openFile = (p: string) => (previewKind(p) ? setPreviewing(p) : setEditing({ path: p, edit: false }))   // 双击：能预览的预览，其余进编辑器（默认只读查看）
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [anchor, setAnchor] = useState<string>()
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -893,8 +893,8 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
             const e = menu.entry
             return (
               <>
-                {!e.isDir && previewKind(e.name) && <MI onClick={() => setPreviewing(e.path)}>{tr('预览')}</MI>}
-                {!e.isDir && <MI onClick={() => setEditing(e.path)} kbd="Enter">{tr('查看 / 编辑')}</MI>}
+                {!e.isDir && previewKind(e.name) && <MI onClick={() => setPreviewing(e.path)}>{tr('查看文件')}</MI>}
+                {!e.isDir && <MI onClick={() => setEditing({ path: e.path, edit: true })} kbd="Enter">{tr('编辑文件')}</MI>}
                 {isRemote && !e.isDir && <MI onClick={() => editExternal(e.path)}>{tr('用本地编辑器打开')}</MI>}
                 {isRemote && !winHost && !e.isDir && <MI onClick={() => { openLogViewer(scopeKey, { kind: 'file', path: e.path }); onClose() }}>{tr('实时查看（tail -f）')}</MI>}
                 {!isRemote && !e.isDir && <MI onClick={() => client.fs.openLocal(e.path)}>{tr('用系统程序打开')}</MI>}
@@ -994,11 +994,11 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
         <ChmodDialog names={chmodFor.paths.map((p) => byPath.get(p)?.name ?? p)} initial={chmodFor.mode} anyDir={chmodFor.anyDir} prod={prod}
           onConfirm={doChmod} onCancel={() => setChmodFor(null)} />
       )}
-      {editing && <FileEditor key={editing} scope={scope} path={editing} onClose={() => setEditing(null)} retry={sudoTick}
+      {editing && <FileEditor key={editing.path} scope={scope} path={editing.path} edit={editing.edit} onClose={() => setEditing(null)} retry={sudoTick}
         onSudo={isRemote && !sudoMode ? () => setSudoMode(true) : undefined} onNeedPw={() => setSudoAsk(true)} />}
       {sudoAsk && scope0 !== 'local' && <SudoDialog terminalId={scope0.terminalId} title={pane?.title} onCancel={() => setSudoAsk(false)}
         onDone={() => { setSudoAsk(false); setSudoTick((n) => n + 1); refreshAll(); setNote(tr('sudo 已验证：目录已按 root 身份刷新，刚才没做成的操作请再做一次')) }} />}
-      {previewing && <FilePreview key={previewing} scope={scope} path={previewing} onClose={() => setPreviewing(null)} onEdit={() => { setEditing(previewing); setPreviewing(null) }}
+      {previewing && <FilePreview key={previewing} scope={scope} path={previewing} onClose={() => setPreviewing(null)} onEdit={() => { setEditing({ path: previewing, edit: true }); setPreviewing(null) }}
         onDownload={isRemote && onDownload ? () => download([previewing]) : undefined} />}
     </div>
   )

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Save, Sparkles, Search, Pilcrow, ScanEye, WrapText, Eraser, ChevronUp, ChevronDown, CaseSensitive, WholeWord, Replace, ReplaceAll, AlertTriangle } from 'lucide-react'
+import { X, Save, Sparkles, Search, Pilcrow, ScanEye, WrapText, Eraser, ChevronUp, ChevronDown, CaseSensitive, WholeWord, Replace, ReplaceAll, AlertTriangle, Pencil, ExternalLink } from 'lucide-react'
 import { configKind, syntaxLangOf, highlightText, HIGHLIGHT_MAX, SUDO_NEED_PW, tk, tr, type ExplainItem, type FsScope, type TokKind } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { DiffView } from '../../components/DiffView.js'
@@ -37,11 +37,18 @@ const DECO_CLS: Record<number, string> = { [D.Space]: 'ed-sp', [D.Tab]: 'ed-tab'
 // 辅助：显示空白（空格 · / Tab →，行尾空白标红）、可疑字符检查（BOM / 零宽 / 不换行空格 / 全角空格 / 控制字符，一键清理）、
 // 查找替换（Ctrl+F / Ctrl+H）、跳到行（Ctrl+G）、自动换行、状态栏（行列 / 选中 / 缩进 / 换行符可切换）、
 // Tab / Shift+Tab 缩进、回车保持缩进、Ctrl+/ 注释、Alt+↑↓ 移动行、Shift+Alt+↓ 复制行、Ctrl+Shift+K 删除行、JSON / YAML 保存前检查
-export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number }) {
+export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean }) {
   const sudo = scope !== 'local' && !!scope.sudo
   const fmtErr = (e: unknown) => { const m = errMsg(e); if (m.includes(SUDO_NEED_PW)) { onNeedPw?.(); return m.replace(SUDO_NEED_PW, '') } return m }
   const deniedMsg = (m?: string) => !!m && !sudo && !!onSudo && /Permission denied|没有权限|EACCES|权限不够/i.test(m)   // i18n-ignore 匹配报错文本
   const [sudoSave, setSudoSave] = useState(false)   // 点了「用 sudo 保存」：切到 sudo 后自动再存一次
+  const [readOnly, setReadOnly] = useState(!edit)   // 默认只读查看；右键「编辑文件」打开时直接可改
+  const openExternal = () => { void (scope === 'local' ? client.fs.openLocal(path) : client.preview.openExternal(scope, path)).catch(() => {}) }
+  // 切换：编辑 ↔ 查看。有未保存改动时不允许切回查看（先提示保存）
+  const toggleEdit = () => {
+    if (!readOnly && dirty) { setNote(tr('有未保存的改动，先保存再切回查看')); return }
+    setReadOnly((v) => !v)
+  }
   const [base, setBase] = useState<string>()      // 打开时（或上次保存后）的磁盘原文，用于并发修改检测
   const [text, setText] = useState('')
   const [loadErr, setLoadErr] = useState<string>()
@@ -365,8 +372,10 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
             <button data-explain-toggle onClick={() => { setExplain((v) => !v); setHl(undefined) }} title={tr('AI 逐段解释这个配置文件并提示风险（按内容缓存）')}
               className={`${btn} ml-1 flex items-center gap-1 border ${explain ? 'border-[var(--color-accent)] bg-[var(--color-accent-bg)] text-[var(--color-accent)]' : 'border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'}`}><Sparkles className="h-3.5 w-3.5" />{tr('解释')}</button>
           )}
-          <button onClick={() => requestSave()} disabled={!dirty || busy} title={tr('保存（Ctrl+S）')}
-            className={`${btn} flex items-center gap-1 border border-transparent bg-[var(--color-accent)] text-[var(--color-bg-base)] hover:opacity-90`}><Save className="h-3.5 w-3.5" />{tr('保存')}</button>
+          <button data-ed-edit onClick={toggleEdit} title={readOnly ? tr('切换到编辑') : tr('切回查看（有未保存的改动会提示先保存）')} className={tool(!readOnly)}><Pencil className="h-3.5 w-3.5" /></button>
+          <button data-ed-external onClick={openExternal} title={tr('用系统默认软件打开')} className={tool(false)}><ExternalLink className="h-3.5 w-3.5" /></button>
+          <button onClick={() => requestSave()} disabled={readOnly || !dirty || busy} title={tr('保存（Ctrl+S）')}
+            className={`${btn} flex items-center gap-1 border border-transparent bg-[var(--color-accent)] text-[var(--color-bg-base)] hover:opacity-90 disabled:opacity-40`}><Save className="h-3.5 w-3.5" />{tr('保存')}</button>
           <button onClick={requestClose} title={tr('关闭（Esc）')} className="flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><X className="h-3.5 w-3.5" /></button>
         </div>
         {find && (
@@ -444,7 +453,7 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0 }
                   <div className="h-4" />
                 </pre>
               )}
-              <textarea ref={area} value={text} autoFocus spellCheck={false} wrap={wrap && !big ? 'soft' : 'off'}
+              <textarea ref={area} value={text} readOnly={readOnly} autoFocus spellCheck={false} wrap={wrap && !big ? 'soft' : 'off'}
                 onChange={(e) => { setText(e.target.value); setSaved(false); setErr(undefined); setSyntaxWarn(undefined) }}
                 onKeyDown={onAreaKey} onSelect={updateCursor} onKeyUp={updateCursor} onClick={updateCursor}
                 onScroll={syncScroll}

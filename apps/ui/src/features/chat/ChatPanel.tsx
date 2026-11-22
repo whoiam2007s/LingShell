@@ -103,12 +103,19 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const [flowOpen, setFlowOpen] = useState(false)
   // 对话里点文件路径 → 弹原生预览（本地文件；不支持的格式在预览里可「用系统程序打开」）
   const [peekPath, setPeekPath] = useState<string>()
+  const [peekNote, setPeekNote] = useState('')
+  const peekTimer = useRef<number | undefined>(undefined)
+  const flashPeek = (msg: string) => { setPeekNote(msg); window.clearTimeout(peekTimer.current); peekTimer.current = window.setTimeout(() => setPeekNote(''), 2600) }
   useEffect(() => onOpenPathPreview((p) => {
     // 相对路径按会话工作目录解析：主进程按应用自己的 cwd 找，会报「文件不存在」
     const abs = !/^([a-zA-Z]:[\\/]|[\\/]|~)/.test(p) && workDir
       ? `${workDir.replace(/[\\/]+$/, '')}/${p.replace(/^\.\//, '')}`
       : p
-    setPeekPath(abs)
+    // 不存在就别弹窗了：消息里的示例路径、还没创建的文件很常见，弹个错误框很吵
+    void client.fs.stats('local', [abs]).then((s) => {
+      if (s.files > 0) setPeekPath(abs)
+      else flashPeek(tr('文件不存在：{p}', { p: abs }))
+    }).catch(() => setPeekPath(abs))
   }), [workDir])
   // 流程图里展开子代理用：打开时拉一次这个会话派过的子代理（与导出会话同源）
   const [flowSubs, setFlowSubs] = useState<SubagentView[]>([])
@@ -754,6 +761,11 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
 
       {/* 点对话里的文件路径 → 原生预览（本地文件；图片/md/csv/pdf 在应用内看，其它可「用系统程序打开」） */}
       {peekPath && <FilePreview scope="local" path={peekPath} onClose={() => setPeekPath(undefined)} />}
+      {peekNote && (
+        <div className="pointer-events-none fixed left-1/2 top-14 z-[70] -translate-x-1/2 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] shadow-lg">
+          {peekNote}
+        </div>
+      )}
 
       {/* 时间线：按轮分组，中间步骤收进【执行过程】容器，用户消息+最终回复留容器外 */}
       <div className="relative flex min-h-0 flex-1 flex-col">
