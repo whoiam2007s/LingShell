@@ -1,6 +1,6 @@
 // AI 领域：授权卡 / 计划卡、dsh 控制器、会话与对话、知识库、安全规则、用量、MCP、模板（从 ipc.ts 原样搬来，顺序不变）
 import { ipcMain, app, shell, dialog, clipboard } from 'electron'
-import { join, posix } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import type { ApprovalRequest, PlanRequest, DshController, LocalSkills } from '@lingshell/dsh-controller'
@@ -480,9 +480,16 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   })
   // 设置 → Skills（见 skillsIpc.ts）：<数据目录>/skills，接到 dsh 的 ctx.skills
   skillsRef.current = registerSkills({ handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'skills'), attach: (lib) => controller.attachSkills(lib), openPath: (p) => shell.openPath(p), log: (lv, m, d) => log(lv, 'main', 'skills', m, d),
-    // 内置 skill：打包后在 resources/builtin-skills；开发时在仓库根的 resources/builtin-skills
-    builtinDir: (app.isPackaged ? [join(process.resourcesPath, 'builtin-skills')]
-      : [join(app.getAppPath(), '../../resources/builtin-skills'), join(app.getAppPath(), 'builtin-skills')]).find((p) => existsSync(p)),
+    // 内置 skill：打包后在 resources/builtin-skills；开发时在仓库根的 resources/builtin-skills。
+    // 全部 resolve 成绝对路径——相对路径的 existsSync 依赖 cwd，安装 / 重置时 cwd 可能不同会导致「找不到源文件」
+    builtinDir: (app.isPackaged
+      ? [resolve(process.resourcesPath, 'builtin-skills')]
+      : [
+          resolve(app.getAppPath(), '../../resources/builtin-skills'),
+          resolve(app.getAppPath(), 'resources/builtin-skills'),
+          resolve(process.cwd(), 'resources/builtin-skills'),
+          resolve(process.cwd(), '../../resources/builtin-skills'),
+        ]).find((p) => existsSync(p)),
     pickPath: async (kind) => (await dialog.showOpenDialog(win, kind === 'folder' ? { title: tr('选择 Skill 文件夹（含 SKILL.md）'), properties: ['openDirectory'] } : { title: tr('选择 Skill 包'), properties: ['openFile'], filters: [{ name: tr('Skill 包'), extensions: ['zip', 'skill'] }] })).filePaths[0] })
 
   // AI 对话附件：选择文件 / 目录 / 图片、带附件发送、历史回放取图、打开附件（见 attachIpc.ts）

@@ -47,6 +47,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
   const deniedMsg = (m?: string) => !!m && !sudo && !!onSudo && /Permission denied|没有权限|EACCES|权限不够/i.test(m)   // i18n-ignore 匹配报错文本
   const [sudoSave, setSudoSave] = useState(false)   // 点了「用 sudo 保存」：切到 sudo 后自动再存一次
   const [readOnly, setReadOnly] = useState(!edit)   // 默认只读查看；右键「编辑文件」打开时直接可改
+  // 父组件把 edit 改掉时跟着同步（同一个弹窗内切模式，不靠 key 重挂载——那样会重新读文件闪一下）
+  useEffect(() => { setReadOnly(!edit) }, [edit])
   const openExternal = () => { void (scope === 'local' ? client.fs.openLocal(path) : client.preview.openExternal(scope, path)).catch(() => {}) }
   // 切换：查看 ↔ 编辑。切回查看不是「就地只读」，而是由父组件换回真正的查看器（.md 渲染、CSV 表格、图片…）
   const toggleEdit = () => {
@@ -368,7 +370,8 @@ export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, 
           <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--color-text-primary)]" title={path}>{dirty ? '● ' : ''}{path}</span>
           {sudo && <span title={tr('以 root 身份读写（sudo）')} className="shrink-0 rounded bg-[var(--color-danger)] px-1.5 text-[10px] font-semibold leading-[18px] text-[var(--color-on-danger)]">sudo</span>}
           {saved && !dirty && <span className="shrink-0 text-[11px] text-[var(--color-success)]">{tr('已保存（人工编辑不备份，不能一键还原）')}</span>}
-          {base !== undefined && (
+          {/* 这几个只在编辑时有意义：查看模式隐藏 */}
+          {base !== undefined && !readOnly && (
             <>
               <button data-ed-find title={tr('查找 / 替换（Ctrl+F / Ctrl+H）\n跳到行：Ctrl+G')} onClick={() => openFind(false)} className={tool(!!find)}><Search className="h-3.5 w-3.5" /></button>
               <button data-ed-ws title={tr('显示空白字符\n空格显示为 ·、Tab 显示为 →，行尾多余的空白标红')} onClick={() => flip(LS.ws, setShowWs)} className={tool(showWs)}><Pilcrow className="h-3.5 w-3.5" /></button>

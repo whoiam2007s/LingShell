@@ -959,7 +959,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           return `skill ${skill} 的 scripts/${script} 跑完了（退出码 0）\n\n${r.stdout.slice(0, 20_000)}${r.stderr ? `\n\n[stderr]\n${r.stderr.slice(0, 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         } catch (e) {
           const err = e as { code?: number | string; stdout?: string; stderr?: string; message?: string; killed?: boolean }
-          if (err.killed) throw new Error(`skill ${skill} 的 scripts/${script} 超时（${ms / 1000} 秒）`)   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+          if (err.killed) throw new Error(`skill ${skill} 的 scripts/${script} 超时（${ms / 1000} 秒）`, { cause: e })   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
           deps.audit({ sessionId: sidOf(exec), terminalId: `skill:${skill}`, command: `${skill}/scripts/${script}`, decision: 'exec_failed' })
           return `skill ${skill} 的 scripts/${script} 失败（退出码 ${err.code ?? '?'}）\n\n${String(err.stdout ?? '').slice(0, 20_000)}${err.stderr ? `\n\n[stderr]\n${String(err.stderr).slice(0, 4_000)}` : ''}`   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         }
