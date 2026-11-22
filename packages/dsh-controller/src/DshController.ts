@@ -1624,12 +1624,17 @@ export class DshController {
     return text
   }
 
+  /** 会话当前用的模型配置 id（没切过就是 undefined = 默认）；会话内的判别调用要跟着它 */
+  private profileOfSession(sessionId?: string): string | undefined {
+    return sessionId ? (this.sessions.get(sessionId) as { profileId?: string } | undefined)?.profileId : undefined
+  }
+
   /**
    * 规则没识别出来时，用一次一次性小调用判断「命令是不是停在等输入」。
    * 只回 true/false：失败、超时、看不懂一律 false —— 宁可多等到超时，也不误杀正在跑的命令。
    * 每个命令由调用方保证最多问一次。
    */
-  async probeWaitingInput(tail: string): Promise<boolean> {
+  async probeWaitingInput(tail: string, sessionId?: string): Promise<boolean> {
     const text = tail.trim().slice(-600)
     if (!text) return false
     const ac = new AbortController()
@@ -1640,6 +1645,7 @@ export class DshController {
         '下面是一条命令最后一段输出。判断它是否停在这里等待用户输入（如 y/n、密码、选项、路径、按任意键）。只是普通日志、进度或已经跑完都算 false。\n只回答：{"waiting":true} 或 {"waiting":false}\n\n输出：\n' + '\n' + text,   // i18n-ignore 模型提示词（判别器）
         ac.signal,
         'probe-input',
+        this.profileOfSession(sessionId),
       )
       return /"waiting"\s*:\s*true/i.test(r)
     } catch {
@@ -1659,7 +1665,7 @@ export class DshController {
    * - 删除 / 卸载 / 格式化 / 清空 / 覆盖生产配置这类不可逆的 → 一律 null（交给用户决定）
    * - 密码、令牌、验证码 → null
    */
-  async decideInput(prompt: string, context?: string): Promise<string | undefined> {
+  async decideInput(prompt: string, context?: string, sessionId?: string): Promise<string | undefined> {
     const p = (prompt || '').trim().slice(-400)
     if (!p) return undefined
     const ctx = (context || '').trim().slice(-1200)
@@ -1671,6 +1677,7 @@ export class DshController {
         '一条命令停在等待输入，请判断该怎么回答。规则：1) 普通确认（y/n、[Y/n]、continue、overwrite、press any key）→ 直接给答案，如 "y"。2) 需要具体值（路径、版本号、名称）→ 只从下面给出的输出里能读到的才答，读不到就 null。3) 删除 / 卸载 / 格式化 / 清空 / 覆盖生产配置等不可逆操作 → 必须 null（交给用户决定）。4) 密码、令牌、验证码 → null。只回答两种之一：{"answer":"y"} 或 {"answer":null}\n\n命令最近的输出：\n' + ctx + '\n\n等待输入的提示行：\n' + p,   // i18n-ignore 模型提示词（答案决策）
         ac.signal,
         'decide-input',
+        this.profileOfSession(sessionId),
       )
       const m = /"answer"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(r)
       if (!m) return undefined

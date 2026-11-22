@@ -95,11 +95,12 @@ export interface TerminalToolDeps {
   /** Skill 库根目录（<数据目录>/skills）：run_skill_script 只允许跑它下面的 scripts/ */
   skillsRoot?: string
   // 规则识别不出「命令是不是在等输入」时的兜底判定（用一次小模型调用）；缺省则不判，只等超时
-  probeWaitingInput?(tail: string): Promise<boolean>
+  // 待输入判别 / 答案决策的接钩：带上会话 id，让它们用**这个会话**选的模型（不是默认配置）
+  probeWaitingInput?(tail: string, sessionId?: string): Promise<boolean>
   // 判定为等输入后怎么处理：abort（缺省，发 Ctrl-C 退回提示符）/ handoff（保留现场，命令留给用户敲答案）
   interactivePolicy?(): 'abort' | 'auto' | 'handoff'
   /** auto 模式：问模型「这条提示该怎么答」，返回要写入终端的一行；undefined = 交给用户 */
-  decideInput?(prompt: string, context?: string): Promise<string | undefined>
+  decideInput?(prompt: string, context?: string, sessionId?: string): Promise<string | undefined>
   // dsh agent id → 我方会话 id（上下文重置后两者不同；缺省视为相同）
   sessionIdOf?(agentId: string): string
   // 取走用户在授权卡上对这次调用的改动：deny=拒绝并附原因，command=改过的命令
@@ -931,16 +932,17 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
   const probe = deps.probeWaitingInput
   const policy = deps.interactivePolicy
   const decide = deps.decideInput
-  const capture = (id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }) => {
+  const capture = (exec: any, id: string, command: string, signal: AbortSignal | undefined, ms: number | undefined, wire?: { wire: string }) => {
+    const sid = sidOf(exec)
     const onStall = probe
-      ? async (tail: string) => ((await probe(tail).catch(() => false)) ? 'waiting' as const : 'continue' as const)
+      ? async (tail: string) => ((await probe(tail, sid).catch(() => false)) ? 'waiting' as const : 'continue' as const)
       : undefined
     const pol = policy?.() ?? 'abort'
     // handoff：判定为等输入时不中止，把终端和命令留给用户（设置 → AI 里选）
     const handoff = pol === 'handoff'
     // auto：判定为等输入后先问「该怎么答」，普通 y/n 自己答；答不了再保留现场交给用户
     const answerFor = pol === 'auto' && decide
-      ? async (tail: string) => decide(tail, tail).catch(() => undefined)
+      ? async (tail: string) => decide(tail, tail, sid).catch(() => undefined)
       : undefined
     // 三样都没有时保持原来的四参数调用（调用方/测试都按这个形状断言）
     if (!wire && !onStall && !handoff && !answerFor) return deps.terminals.execCapture(id, command, signal, ms)
@@ -1102,7 +1104,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
           : ''
         const wire = wireOf(deps.secretVault, tid, command)   // 范围不符抛错（用户在授权卡上改出来的引用也要查）
         await beforeChange(exec, [tid], command)
-        const r = await capture(tid, command, exec?.signal, deps.execTimeoutMs?.(), wire)
+        const r = await capture(exec, tid, command, exec?.signal, deps.execTimeoutMs?.(), wire)
         const callId = exec?.callId === undefined ? undefined : String(exec.callId)
         deps.audit({
           sessionId: sidOf(exec), terminalId: tid, command,
@@ -1157,7 +1159,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
         const runs = await Promise.all(ids.map(async (id) => {
           const base = { terminal_id: id, title: titles.get(id) ?? id, host: deps.resolveHostKey(id) }
           try {
-            const r = await capture(id, command, exec?.signal, timeoutMs, wireOf(deps.secretVault, id, command))
+            const r = await capture(exec, id, command, exec?.signal, timeoutMs, wireOf(deps.secretVault, id, command))
             deps.audit({ sessionId, terminalId: id, command, decision: 'exec_allowed:multi', exitCode: r.exitCode, truncated: r.truncated, ...ruleOf(rule) })
             // 先回写再截末尾：免得密钥被截成半截留在开头
             return { ...base, exit_code: r.exitCode, full: deps.secretVault ? deps.secretVault.mask(r.output) : r.output, truncated: !!r.truncated }
