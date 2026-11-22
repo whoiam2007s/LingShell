@@ -148,3 +148,32 @@ describe('导入', () => {
     expect(await lib.read('dup')).toMatchObject({ description: '新的' })
   })
 })
+
+describe('内置 skill 同步', () => {
+  const src = () => join(base, 'builtin')
+  const seed = (body: string) => { put(src(), { 'code-quality/SKILL.md': md('code-quality', '编码习惯', `when_to_use: x\n`), 'code-quality/notes.txt': body }) }
+
+  it('首次复制；用户没改过时随版本更新；用户改过就不动', async () => {
+    seed('v1')
+    expect(await lib.syncBuiltin(src())).toEqual({ added: 1, updated: 0 })
+    expect(readFileSync(join(root, 'code-quality', 'notes.txt'), 'utf8')).toBe('v1')
+    expect((await lib.list()).find((s) => s.name === 'code-quality')?.builtin).toBe(true)
+
+    // 版本变了、用户没改过 → 覆盖更新
+    seed('v2')
+    expect(await lib.syncBuiltin(src())).toEqual({ added: 0, updated: 1 })
+    expect(readFileSync(join(root, 'code-quality', 'notes.txt'), 'utf8')).toBe('v2')
+
+    // 用户改过 → 保留用户的版本
+    writeFileSync(join(root, 'code-quality', 'notes.txt'), 'mine')
+    seed('v3')
+    expect(await lib.syncBuiltin(src())).toEqual({ added: 0, updated: 0 })
+    expect(readFileSync(join(root, 'code-quality', 'notes.txt'), 'utf8')).toBe('mine')
+  })
+
+  it('内置 skill 不允许删除（主进程兜底，不只是界面上置灰）', async () => {
+    seed('v1')
+    await lib.syncBuiltin(src())
+    await expect(lib.remove('code-quality')).rejects.toThrow(/内置/)
+  })
+})

@@ -21,8 +21,12 @@ const str = (v: unknown, what: string): string => { if (typeof v !== 'string' ||
 export function registerSkills(d: SkillsIpcDeps): LocalSkills {
   const lib = new LocalSkills(d.root, d.log)
   lib.watch()   // 用户在目录里手动改了文件也能及时生效
-  // 内置 skill：缺的补进来（已存在的不覆盖），失败不影响正常使用
-  if (d.builtinDir) void lib.syncBuiltin(d.builtinDir).catch((e) => d.log?.('warn', 'builtin skills sync failed', { err: String(e) }))
+  // 内置 skill：缺的补进来；版本变了且用户没改过就更新；失败不影响正常使用
+  if (d.builtinDir) {
+    void lib.syncBuiltin(d.builtinDir)
+      .then((r) => { if (r.added || r.updated) d.log?.('info', 'builtin skills synced', r) })
+      .catch((e) => d.log?.('warn', 'builtin skills sync failed', { err: String(e) }))
+  }
   d.attach(lib)
   d.handle('skills:list', (): Promise<SkillInfo[]> => lib.list())
   d.handle('skills:read', (_e, name) => lib.read(str(name, tk('arg| skill 名'))))

@@ -9,13 +9,21 @@ import { existsSync, mkdirSync, watch, type FSWatcher } from 'node:fs'
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile, rename as mv } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, extname, join, relative, resolve, sep } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { buildSkillMd, isSkillName, parseSkillMd, type SkillMeta } from './skillFile.js'
 
 import { tr, type SkillInfo, type SkillImportPreview, type SkillOrigin, type SkillInput } from '@lingshell/shared'
 export type { SkillInfo, SkillImportPreview }
 
-interface State { [name: string]: { enabled?: boolean; modelInvocable?: boolean; origin?: SkillOrigin; builtin?: boolean } }
+interface State { [name: string]: { enabled?: boolean; modelInvocable?: boolean; origin?: SkillOrigin; builtin?: boolean; builtinHash?: string } }
+
+/** 目录内容 hash（相对路径 + 内容，按路径排序）：用来判断「用户改没改过这个内置 skill」 */
+async function hashDir(dir: string): Promise<string> {
+  const files = (await walk(dir)).sort()
+  const h = createHash('sha256')
+  for (const f of files) { h.update(f); h.update('\0'); h.update(await readFile(join(dir, f))) }
+  return h.digest('hex').slice(0, 16)
+}
 
 // 导入包的上限：防误导入整个大目录 / zip 炸弹
 const MAX_FILES = 500
@@ -202,24 +210,42 @@ export class LocalSkills {
   }
 
   /**
-   * 把随应用打包的内置 skill 同步到用户目录：缺哪个复制哪个，已存在的不覆盖（保住用户改过的版本）。
-   * srcDir 不存在（开发环境没打包）就什么都不做。返回本次新复制的个数。
+   * 把随应用打包的内置 skill 同步到用户目录，带版本更新：
+   *  - 没有 → 复制进来；
+   *  - 有、但用户没改过（内容与上次同步时记下的 hash 一致）、应用里的版本变了 → 覆盖更新；
+   *  - 有、且用户改过 → 保留用户的版本不再覆盖（想恢复原版就删掉那个目录，下次启动会重新复制）。
+   * srcDir 不存在（开发环境没打包）就什么都不做。
    */
-  async syncBuiltin(srcDir: string): Promise<number> {
+  async syncBuiltin(srcDir: string): Promise<{ added: number; updated: number }> {
     let names: string[]
     try {
       names = (await readdir(srcDir, { withFileTypes: true })).filter((d) => d.isDirectory() && !isHidden(d.name)).map((d) => d.name)
-    } catch { return 0 }
-    if (!names.length) return 0
+    } catch { return { added: 0, updated: 0 } }
+    if (!names.length) return { added: 0, updated: 0 }
     await mkdir(this.root, { recursive: true })
     const st = await this.state()
     let added = 0
+    let updated = 0
     for (const dir of names) {
+      const from = join(srcDir, dir)
       const to = join(this.root, dir)
+      const srcHash = await hashDir(from)
+      const prev = st[dir]?.builtinHash
       if (!existsSync(join(to, 'SKILL.md'))) {
-        await cp(join(srcDir, dir), to, { recursive: true })
+        await cp(from, to, { recursive: true })
         added++
         this.log?.('info', 'builtin skill installed', { dir })
+      } else {
+        const userHash = await hashDir(to)
+        // 判断「用户改没改过」：有上次记录的 hash 就比对它；
+        // 没记录（老版本同步进来的，那时还没这套机制）就当作没改过 —— 升级一次，之后开始保护用户的修改
+        const untouched = prev ? userHash === prev : true
+        if (untouched && srcHash !== userHash) {
+          await rm(to, { recursive: true, force: true })
+          await cp(from, to, { recursive: true })
+          updated++
+          this.log?.('info', 'builtin skill updated', { dir })
+        }
       }
       // SKILL.md 的 name 可能与目录名不同，用解析出来的 name 记标记
       let key = dir
@@ -227,11 +253,12 @@ export class LocalSkills {
         const p = parseSkillMd(await readFile(join(to, 'SKILL.md'), 'utf8'))
         if (p.ok) key = p.meta.name
       } catch { /* 读不了就按目录名记，list() 里会带 error */ }
-      st[key] = { ...st[key], builtin: true }
+      st[key] = { ...st[key], builtin: true, builtinHash: srcHash }
+      if (key !== dir) st[dir] = { ...st[dir], builtinHash: srcHash }   // 下次按目录名也能比对
     }
     await this.saveState(st)
-    if (added) this.changed()
-    return added
+    if (added || updated) this.changed()
+    return { added, updated }
   }
 
   async setFlags(name: string, flags: { enabled?: boolean; modelInvocable?: boolean }): Promise<void> {
