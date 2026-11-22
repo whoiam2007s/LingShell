@@ -994,7 +994,14 @@ export function ExplorerDrawer({ scope: scope0, rootPath, hostKey, prod, termCwd
         <ChmodDialog names={chmodFor.paths.map((p) => byPath.get(p)?.name ?? p)} initial={chmodFor.mode} anyDir={chmodFor.anyDir} prod={prod}
           onConfirm={doChmod} onCancel={() => setChmodFor(null)} />
       )}
-      {editing && <FileEditor key={editing.path} scope={scope} path={editing.path} edit={editing.edit} onClose={() => setEditing(null)} retry={sudoTick}
+      {editing && <FileEditor key={`${editing.path}:${editing.edit}`} scope={scope} path={editing.path} edit={editing.edit} onClose={() => setEditing(null)} retry={sudoTick}
+        onSwitchToView={() => {
+          // 切回查看：能预览的换回预览弹窗（.md 渲染 / CSV 表格 / 图片 / PDF），不能预览的（代码）回到只读文本
+          const p = editing.path
+          setEditing(null)
+          if (previewKind(p)) setPreviewing(p)
+          else setEditing({ path: p, edit: false })
+        }}
         onSudo={isRemote && !sudoMode ? () => setSudoMode(true) : undefined} onNeedPw={() => setSudoAsk(true)} />}
       {sudoAsk && scope0 !== 'local' && <SudoDialog terminalId={scope0.terminalId} title={pane?.title} onCancel={() => setSudoAsk(false)}
         onDone={() => { setSudoAsk(false); setSudoTick((n) => n + 1); refreshAll(); setNote(tr('sudo 已验证：目录已按 root 身份刷新，刚才没做成的操作请再做一次')) }} />}

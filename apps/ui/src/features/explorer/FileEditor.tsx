@@ -37,17 +37,18 @@ const DECO_CLS: Record<number, string> = { [D.Space]: 'ed-sp', [D.Tab]: 'ed-tab'
 // 辅助：显示空白（空格 · / Tab →，行尾空白标红）、可疑字符检查（BOM / 零宽 / 不换行空格 / 全角空格 / 控制字符，一键清理）、
 // 查找替换（Ctrl+F / Ctrl+H）、跳到行（Ctrl+G）、自动换行、状态栏（行列 / 选中 / 缩进 / 换行符可切换）、
 // Tab / Shift+Tab 缩进、回车保持缩进、Ctrl+/ 注释、Alt+↑↓ 移动行、Shift+Alt+↓ 复制行、Ctrl+Shift+K 删除行、JSON / YAML 保存前检查
-export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean }) {
+export function FileEditor({ scope, path, onClose, onSudo, onNeedPw, retry = 0, edit = false, onSwitchToView }: { scope: FsScope; path: string; onClose: () => void; onSudo?: () => void; onNeedPw?: () => void; retry?: number; edit?: boolean; onSwitchToView?: () => void }) {
   const sudo = scope !== 'local' && !!scope.sudo
   const fmtErr = (e: unknown) => { const m = errMsg(e); if (m.includes(SUDO_NEED_PW)) { onNeedPw?.(); return m.replace(SUDO_NEED_PW, '') } return m }
   const deniedMsg = (m?: string) => !!m && !sudo && !!onSudo && /Permission denied|没有权限|EACCES|权限不够/i.test(m)   // i18n-ignore 匹配报错文本
   const [sudoSave, setSudoSave] = useState(false)   // 点了「用 sudo 保存」：切到 sudo 后自动再存一次
   const [readOnly, setReadOnly] = useState(!edit)   // 默认只读查看；右键「编辑文件」打开时直接可改
   const openExternal = () => { void (scope === 'local' ? client.fs.openLocal(path) : client.preview.openExternal(scope, path)).catch(() => {}) }
-  // 切换：编辑 ↔ 查看。有未保存改动时不允许切回查看（先提示保存）
+  // 切换：查看 ↔ 编辑。切回查看不是「就地只读」，而是由父组件换回真正的查看器（.md 渲染、CSV 表格、图片…）
   const toggleEdit = () => {
     if (!readOnly && dirty) { setNote(tr('有未保存的改动，先保存再切回查看')); return }
-    setReadOnly((v) => !v)
+    if (!readOnly) { if (onSwitchToView) onSwitchToView(); else setReadOnly(true); return }
+    setReadOnly(false)
   }
   const [base, setBase] = useState<string>()      // 打开时（或上次保存后）的磁盘原文，用于并发修改检测
   const [text, setText] = useState('')
