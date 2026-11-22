@@ -40,6 +40,9 @@ describe('subagentToolDeny', () => {
   it('只读子代理不能写文件类工具；exec 类按命令内容判（问题 11）', () => {
     expect(subagentToolDeny('write_file', 'read')).toMatch(/只授了只读权限/)
     expect(subagentToolDeny('upload_file', 'read')).toMatch(/只授了只读权限/)
+    // 跑 skill 脚本同样是写类：脚本内容不可控（可能写文件 / 删东西），只读子代理不能跑
+    expect(subagentToolDeny('run_skill_script', 'read')).toMatch(/只授了只读权限/)
+    expect(subagentToolDeny('run_skill_script', 'write')).toBeUndefined()
     // 只读命令放行——以前这里按工具名一刀切，连 `nginx -v` 都被拒
     const ro = (c: string) => /^(nginx -v|ps|cat |ls|grep |df |systemctl status)/.test(c)
     expect(subagentToolDeny('exec_in_terminal', 'read', undefined, { command: 'nginx -v' }, ro)).toBeUndefined()
