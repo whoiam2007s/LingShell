@@ -814,6 +814,7 @@ export const chat: Record<string, string> = {
   '{n} 个后台任务在跑（完成会自动继续）': '{n} background task(s) running (it will continue automatically when they finish)',
   '后台 {n}': 'Background {n}',
   '后台': 'Background',
+  '停止这个任务（进程会被杀掉）': 'Stop this task (the process is really killed)',
   '停止这个会话的后台任务（进程真的会被杀掉）': 'Stop this session\u2019s background tasks (the processes are really killed)',
   // 常用任务参数：主机选择器
   '选择主机…': 'Choose a host…',

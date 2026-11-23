@@ -108,7 +108,7 @@ export function createAiIpc(): AiApi {
     },
     bg: {
       list: (sid) => window.electronAPI.invoke('bg:list', sid) as ReturnType<AppClient['bg']['list']>,
-      cancel: (sid) => window.electronAPI.invoke('bg:cancel', sid) as Promise<void>,
+      cancel: (sid, jobId) => window.electronAPI.invoke('bg:cancel', sid, jobId) as Promise<void>,
     },
     chatPlus: {
       digest: (sid) => window.electronAPI.invoke('chatPlus:digest', sid) as Promise<string>,

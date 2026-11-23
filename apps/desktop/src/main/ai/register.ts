@@ -411,7 +411,7 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('subagent:list', (_e, sessionId: string) => controller.subagentsOf(String(sessionId ?? '')))
   // 后台任务（start_background 起的）：状态条 / 任务面板按会话拉还在跑的；取消=真的停掉进程
   ipcMain.handle('bg:list', (_e, sessionId: string) => controller.bgTasksOf(String(sessionId ?? '')))
-  ipcMain.handle('bg:cancel', (_e, sessionId: string) => controller.cancelBgOfSession(String(sessionId ?? '')))
+  ipcMain.handle('bg:cancel', (_e, sessionId: string, jobId?: string) => controller.cancelBgOfSession(String(sessionId ?? ''), jobId ? String(jobId) : undefined))
   ipcMain.handle('agent:listSessions', () => controller.listSessions())
   // 兜底：输入框已限长（INPUT_MAX），这里防绕过界面直接把几 MB 文本塞进模型请求
   const guardPrompt = (p: string): string => {

@@ -926,8 +926,8 @@ export class DshController {
    * 同步清登记、把杀进程扔到后台 —— 停命令本身要等 TERM→KILL（最多几秒），
    * 在这里 await 的话用户点「停止」要等好几秒回合才真的停（0.1.20 自评审发现）。
    */
-  cancelBgOfSession(sessionId: string): void {
-    const tasks = this.bg.of(sessionId)
+  cancelBgOfSession(sessionId: string, jobId?: string): void {
+    const tasks = jobId ? this.bg.of(sessionId).filter((t) => t.jobId === jobId) : this.bg.of(sessionId)
     if (!tasks.length) return
     const deps = this.toolDeps
     for (const t of tasks) this.bg.remove(t.jobId)

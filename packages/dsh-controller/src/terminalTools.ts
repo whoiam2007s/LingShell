@@ -580,13 +580,24 @@ export function parseBgStatusOutput(output: string): Map<string, { status: Backg
  * 停掉一个后台任务：先 TERM，5 秒内没退再 KILL。
  * 只用 pid 文件里的号，且先确认它还活着（进程早没了就什么也不做 —— pid 可能已被复用）。
  */
+/**
+ * 停掉一个后台任务：把**整棵进程树**先 TERM、5 秒内没退再 KILL。
+ *
+ * 为什么不能只 kill 记录的 pid：`nohup bash -c …` 在 MSYS/Windows 上会再套一层，
+ * pid 文件里记的是外层包装，真正跑命令的是它的子进程。只杀外层的话，命令会被 init
+ * 接管继续跑（手测实录：点停止后 `sleep 300` 还活着，退出码文件也永远不出现）。
+ * 所以按 `ps -ef` 的 PPID 关系从叶子往上收 —— MSYS 与 Linux 的前两列都是 PID/PPID，通用。
+ */
 export function buildStopBackgroundCommand(jobId: string): string {
   if (!isJobId(jobId)) throw new Error(tr('非法 job_id：{id}', { id: jobId }))
   const b = `${JOB_DIR}/${jobId}`
+  // 递归：先收子进程（叶子先死，父进程不会重新拉起），再杀自己。
+  // ps -ef 的前三列是 UID PID PPID（MSYS 与 Linux 一致），$3==父 即子进程。
+  const tree = 'kt() { for c in $(ps -ef 2>/dev/null | awk -v pp="$2" \'$3==pp {print $2}\'); do kt "$1" "$c"; done; kill "-$1" "$2" 2>/dev/null; }; '
   return `( p=$(cat ${b}.pid 2>/dev/null);`
     + ` if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then`
-    + ` kill "$p" 2>/dev/null; i=0; while kill -0 "$p" 2>/dev/null && [ $i -lt 10 ]; do sleep 0.5; i=$((i+1)); done;`
-    + ` kill -9 "$p" 2>/dev/null; echo "${JOBS_MARK} ${jobId} cancelled";`
+    + ` ${tree} kt TERM "$p"; i=0; while kill -0 "$p" 2>/dev/null && [ $i -lt 10 ]; do sleep 0.5; i=$((i+1)); done;`
+    + ` kt KILL "$p"; echo "${JOBS_MARK} ${jobId} cancelled";`
     + ` else echo "${JOBS_MARK} ${jobId} gone"; fi )`
 }
 

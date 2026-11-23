@@ -155,8 +155,8 @@ export interface AiApi {
   // 后台任务（start_background 起的）：该会话**还在跑**的（状态条 / 任务面板用；跑完即从列表移除）
   bg: {
     list(sessionId: string): Promise<{ jobId: string; command: string; startedAt: number; terminalId: string }[]>
-    /** 用户点停止：把该会话名下所有后台任务真的停掉（先 TERM 后 KILL），且不叫醒模型 */
-    cancel(sessionId: string): Promise<void>
+    /** 用户点停止：停掉该会话的后台任务（先 TERM 后 KILL，整棵进程树），且不叫醒模型；给 jobId 就只停那一条 */
+    cancel(sessionId: string, jobId?: string): Promise<void>
   }
   // 左侧对话增强（见 desktop/main/ai/chatPlusIpc.ts）：digest 历史会话摘要（@ 引用）；search 跨会话全文检索；
   // runShell 输入框 `!命令` 在终端里执行并取回结果（输出已按脱敏设置处理、只留末尾 4KB）；answerAsk 回答 AI 提问卡（null = 跳过）
