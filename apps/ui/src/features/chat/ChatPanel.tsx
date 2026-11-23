@@ -477,16 +477,15 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   useEffect(() => {
     if (!activeSessionId) return
     let alive = true
-    // 内容没变就保持同一个数组引用：否则每一轮（2.5 秒）都会触发一次整块对话重渲染，
-    // 流式输出时会明显卡顿
+    // 内容没变就保持同一个数组引用：否则每一轮都会触发一次整块对话重渲染，流式输出时会明显卡顿
     const same = (a: { jobId: string }[], b: { jobId: string }[]) =>
       a.length === b.length && a.every((x, i) => x.jobId === b[i].jobId)
-    const tick = () => { void client.bg.list(activeSessionId).then((l) => { if (alive) setBgTasks((cur) => (same(cur, l) ? cur : l)) }).catch(() => { /* 会话已关：下次轮询自然停 */ }) }
-    // 空闲时也补查一次：回合很短的话（起完任务马上就结束）最后一轮轮询可能还没看到它，
-    // 直接停会让「N 个后台任务在跑」永远不出现、也没地方点停止。查到就自动转为持续轮询。
+    const tick = () => { void client.bg.list(activeSessionId).then((l) => { if (alive) setBgTasks((cur) => (same(cur, l) ? cur : l)) }).catch(() => { /* 会话已关：下一轮再试 */ }) }
     tick()
-    if (!bgPolling) return () => { alive = false }
-    const t = setInterval(tick, 2500)
+    // **常驻轮询**（忙 2.5 秒 / 闲 5 秒）：以前只在「忙或已有任务」时轮询，短回合里起完任务
+    // 立刻就结束的话，最后一次轮询可能还没看到它，busy 一变 false 就停了 —— 状态行永远不出现。
+    // 只是读主进程内存表，配合上面的 same() 不会引起重渲染，没必要为这点开销牺牲正确性。
+    const t = setInterval(tick, bgPolling ? 2500 : 5000)
     return () => { alive = false; clearInterval(t) }
   }, [activeSessionId, bgPolling])
   // 切会话：保存上一个会话的草稿，恢复当前会话的草稿；Skill 属于具体一条消息，不跨会话
