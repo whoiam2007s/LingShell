@@ -476,14 +476,16 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   const bgPolling = busy || bgTasks.length > 0
   useEffect(() => {
     if (!activeSessionId) return
-    if (!bgPolling) { setBgTasks((cur) => (cur.length ? [] : cur)); return }
     let alive = true
     // 内容没变就保持同一个数组引用：否则每一轮（2.5 秒）都会触发一次整块对话重渲染，
     // 流式输出时会明显卡顿
     const same = (a: { jobId: string }[], b: { jobId: string }[]) =>
       a.length === b.length && a.every((x, i) => x.jobId === b[i].jobId)
     const tick = () => { void client.bg.list(activeSessionId).then((l) => { if (alive) setBgTasks((cur) => (same(cur, l) ? cur : l)) }).catch(() => { /* 会话已关：下次轮询自然停 */ }) }
+    // 空闲时也补查一次：回合很短的话（起完任务马上就结束）最后一轮轮询可能还没看到它，
+    // 直接停会让「N 个后台任务在跑」永远不出现、也没地方点停止。查到就自动转为持续轮询。
     tick()
+    if (!bgPolling) return () => { alive = false }
     const t = setInterval(tick, 2500)
     return () => { alive = false; clearInterval(t) }
   }, [activeSessionId, bgPolling])
@@ -848,7 +850,11 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
         })()}
         </ToolFocusContext.Provider></ToolSessionContext.Provider></MsgActionsContext.Provider>
         {busy && <WorkingIndicator bg={bgTasks.length} />}
-        {!busy && bgTasks.length > 0 && <BgOnlyIndicator bg={bgTasks.length} />}
+        {!busy && bgTasks.length > 0 && <BgOnlyIndicator bg={bgTasks.length} onStop={() => {
+          // 先清显示，再让主进程杀进程（它同步清登记、杀进程在后台跑，不会卡）
+          setBgTasks([])
+          void client.bg.cancel(activeSessionId).catch(() => {})
+        }} />}
         {/* 待发送：本轮进行中补发的消息，不进时间线（否则本轮后续步骤会被归到它名下），真正发出时才入 items */}
         {steering.length > 0 && <SteeringMessages items={steering} authWaiting={busy && items.some((x) => (x.kind === 'auth_request' || x.kind === 'plan_request' || x.kind === 'ask_request') && x.status === 'in_progress')}
           onWithdraw={(k) => void withdrawSteer(k).then((r) => { if (r) { setInput((v) => (v.trim() ? `${v}
@@ -1625,12 +1631,16 @@ function WorkingIndicator({ bg }: { bg: number }) {
   )
 }
 
-/** 会话空闲但还有后台任务在跑：继续显示一行（否则用户以为任务已经没了） */
-function BgOnlyIndicator({ bg }: { bg: number }) {
+/** 会话空闲但还有后台任务在跑：继续显示一行（否则用户以为任务已经没了），并给一个明确的停止入口 */
+function BgOnlyIndicator({ bg, onStop }: { bg: number; onStop: () => void }) {
   return (
     <div data-working-indicator className="flex items-center gap-2 px-5 py-1.5 text-[12px] text-[var(--color-text-muted)]">
       <Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />
       <span>{tr('{n} 个后台任务在跑（完成会自动继续）', { n: bg })}</span>
+      <button data-bg-stop onClick={onStop} title={tr('停止这个会话的后台任务（进程真的会被杀掉）')}
+        className="rounded px-1.5 py-0.5 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]">
+        {tr('停止')}
+      </button>
     </div>
   )
 }
