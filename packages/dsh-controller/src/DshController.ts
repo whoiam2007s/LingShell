@@ -1379,9 +1379,23 @@ export class DshController {
   // ── turn ────────────────────────────────────────────
   // attachments：文件 / 目录只把路径追加到消息末尾（见 shared/ai/attachments.ts 的路径块）；
   // 图片存进附件存档，作为图片内容块随消息发送——会话所用配置没开「支持图片」时拒绝（不悄悄丢图）
+  /**
+   * 分叉会话的第一次发言：把「上一会话摘要」拼进这条消息（只拼一次，之后不再占上下文）。
+   * 为什么不塞进种子：种子里的 <context> 块在重放/发送时会被丢掉（实测），拼在真正的第一条消息上才可靠。
+   */
+  private forkDigestAttachment(sessionId: string): ContextAttachment | undefined {
+    const meta = this.cfg.sessionStore?.list().find((m) => m.id === sessionId)
+    if (!meta?.contextDigest || meta.digestSent) return undefined
+    this.cfg.sessionStore?.upsert({ ...meta, digestSent: true })
+    return { kind: 'context', ctx: 'session', name: tr('上一会话摘要'), text: meta.contextDigest }
+  }
+
   async sendTurn(sessionId: string, prompt: string, attachments: TurnAttachment[] = []): Promise<void> {
     this.retryBudget.reset(sessionId)   // 用户自己发了消息：自动重试预算清零
-    this.drive(sessionId, await this.userContent(sessionId, prompt, attachments))
+    // 分叉会话的第一次发言：把「上一会话摘要」作为上下文附件挂在消息上（只挂一次）。
+    // 不直接拼进正文：userContent 会重排 <context> 块，拼在正文里会被丢掉（实测）。
+    const dg = this.forkDigestAttachment(sessionId)
+    this.drive(sessionId, await this.userContent(sessionId, prompt, dg ? [...attachments, dg] : attachments))
   }
 
   /**
@@ -2123,14 +2137,17 @@ export class DshController {
       }
       if (!digest.trim()) digest = continuationDigest(upTo, live.lastSummary)
       // 「摘要 + 最近几轮」重组成种子事件：新会话打开就是真实历史（消息 / 工具卡都在），不用重新输入。
-      // 没有可拷的历史（从第一条消息分叉）时退回只带 digest 的旧行为。
+      // 摘要优先用刚生成的详细摘要（模型可见的 <context> 块 + 界面显示成 chip），
+      // 拿不到时才退回上一次压缩摘要。没有可拷的历史（从第一条消息分叉）时退回只带 digest 的旧行为。
       const ds = digestSeed(upTo, {
-        summary: live.lastSummary ?? '',
+        summary: '',
         buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
       })
       const meta: SessionMeta = {
         ...rest, id, threadId: id, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
-        ...(ds || !digest.trim() ? {} : { contextDigest: digest }),
+        // 摘要记在 meta 上：界面显示成只读历史块，且由主进程在**第一次发言时**拼进消息
+        // （放进种子那条路不可靠：重放时 <context> 块会丢）
+        ...(digest.trim() ? { contextDigest: digest, digestSent: false } : {}),
       }
       // 种子建不起来（dsh 校验没过等）就退一步：换个新 id 用 digest 建，绝不让分叉直接失败
       if (ds && !seedHasEarlierRefs(ds.seed)) {
@@ -2148,11 +2165,12 @@ export class DshController {
       const plainId = `sess_${randomUUID().slice(0, 8)}`
       const plainMeta: SessionMeta = {
         ...rest, id: plainId, threadId: plainId, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
-        ...(digest.trim() ? { contextDigest: digest } : {}),
+        ...(digest.trim() ? { contextDigest: digest, digestSent: false } : {}),
       }
       const info = await this.spawn(plainId, plainMeta, false)
       this.cfg.sessionStore?.upsert({ ...plainMeta, title: info.title })
-      return { session: info, text: p.text, digest }
+      // digest 记在 meta 上，由 sendTurn 在第一次发言时挂进消息；这里返回空串，免得界面再拼一遍
+      return { session: info, text: p.text, digest: '' }
     }
     const meta = { ...src, dshId: `${sessionId}_${randomUUID().slice(0, 8)}` }
     await this.times.copy(live.dshId, meta.dshId, p.turns, p.calls)

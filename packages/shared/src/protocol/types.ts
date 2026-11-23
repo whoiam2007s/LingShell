@@ -860,6 +860,8 @@ export interface SessionMeta {
   modelProfileId?: string   // 会话级模型覆盖（模型配置 id）；缺省 / 配置已删 = 默认配置
   thinking?: ThinkingLevel  // 会话级思考深度（覆盖模型配置里的默认值）；缺省 = 跟随配置。重启后要还在
   contextDigest?: string    // 分叉 / 接续带过来的上下文（上一会话摘要 + 最近几轮）；界面显示成只读历史块
+  /** 摘要是否已经随第一次发言带给模型（分叉会话用：只拼一次，之后不再重复占上下文） */
+  digestSent?: boolean
 }
 export interface TerminalLayoutItem {
   kind: 'local' | 'ssh'
