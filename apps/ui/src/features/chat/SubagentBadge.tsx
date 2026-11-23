@@ -101,7 +101,11 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
               <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-warn)]"><Loader2 className="h-3 w-3 animate-spin-slow" />{tr('后台')}</span>
               <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]" title={t.command}>{t.command}</span>
               <span className="shrink-0 font-mono text-[10.5px] text-[var(--color-text-muted)]">{fmtMs(Date.now() - t.startedAt)}</span>
-              <button onClick={() => void client.bg.cancel(sessionId, t.jobId).catch(() => {})} title={tr('停止这个任务（进程会被杀掉）')}
+              <button onClick={() => {
+                // 先从本地列表摘掉这一行（否则要等下一轮轮询才消失，最多 3 秒，看着像没反应），再让主进程杀进程
+                setBg((cur) => cur.filter((x) => x.jobId !== t.jobId))
+                void client.bg.cancel(sessionId, t.jobId).catch(() => {})
+              }} title={tr('停止这个任务（进程会被杀掉）')}
                 className="shrink-0 rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"><X className="h-3 w-3" /></button>
             </div>
           ))}
