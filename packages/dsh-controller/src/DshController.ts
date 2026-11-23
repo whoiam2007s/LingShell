@@ -858,7 +858,7 @@ export class DshController {
           if (r.status === 'running') continue
           this.bg.remove(t.jobId)
           if (!shouldNotify(t, now)) continue          // 模型刚自己查过：不再重复推
-          ended.push({ task: t, end: r.status === 'finished' ? 'finished' : 'unknown', ...(r.exitCode === undefined ? {} : { exitCode: r.exitCode }) })
+          ended.push({ task: t, end: r.status === 'finished' ? 'finished' : r.status === 'cancelled' ? 'cancelled' : 'unknown', ...(r.exitCode === undefined ? {} : { exitCode: r.exitCode }) })
         }
       }))
       if (ended.length) this.deliverBgNotices(ended)
@@ -870,7 +870,7 @@ export class DshController {
     }
   }
 
-  private async bgQuery(terminalId: string, jobIds: string[]): Promise<Map<string, { status: 'running' | 'finished' | 'unknown'; exitCode?: number }> | undefined> {
+  private async bgQuery(terminalId: string, jobIds: string[]): Promise<Map<string, { status: 'running' | 'finished' | 'cancelled' | 'unknown'; exitCode?: number }> | undefined> {
     const deps = this.toolDeps
     if (!deps) return undefined
     const cmd = buildBgStatusCommand(jobIds)

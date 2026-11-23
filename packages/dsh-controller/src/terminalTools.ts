@@ -539,10 +539,11 @@ export function buildCheckBackgroundCommand(jobId: string, lines = 80, waitSec =
   return `(${wait} if [ -f ${b}.exit ]; then s="finished $(cat ${b}.exit)";`
     + ` elif kill -0 "$(cat ${b}.pid 2>/dev/null)" 2>/dev/null; then s=running;`
     + ` elif [ -f ${b}.exit ]; then s="finished $(cat ${b}.exit)";`
+    + ` elif [ -f ${b}.cancelled ]; then s=cancelled;`
     + ` else s=unknown; fi; echo "${STATUS_MARK} $s"; tail -n ${n} ${b}.log 2>/dev/null )`
 }
 
-export interface BackgroundStatus { job_id: string; status: 'running' | 'finished' | 'unknown'; exit_code?: number; tail: string }
+export interface BackgroundStatus { job_id: string; status: 'running' | 'finished' | 'cancelled' | 'unknown'; exit_code?: number; tail: string }
 
 /**
  * 宿主侧观察者用的**批量**状态查询：一次连上就把该终端所有在跑的任务一起问完。
@@ -587,6 +588,7 @@ export function parseBgStatusOutput(output: string): Map<string, { status: Backg
  * pid 文件里记的是外层包装，真正跑命令的是它的子进程。只杀外层的话，命令会被 init
  * 接管继续跑（手测实录：点停止后 `sleep 300` 还活着，退出码文件也永远不出现）。
  * 所以按 `ps -ef` 的 PPID 关系从叶子往上收 —— MSYS 与 Linux 的前两列都是 PID/PPID，通用。
+ * 杀完留一个 .cancelled 标记：否则 check_background 只能报 unknown，模型会以为「根本没跑起来」并想重跑。
  */
 export function buildStopBackgroundCommand(jobId: string): string {
   if (!isJobId(jobId)) throw new Error(tr('非法 job_id：{id}', { id: jobId }))
@@ -597,13 +599,13 @@ export function buildStopBackgroundCommand(jobId: string): string {
   return `( p=$(cat ${b}.pid 2>/dev/null);`
     + ` if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then`
     + ` ${tree} kt TERM "$p"; i=0; while kill -0 "$p" 2>/dev/null && [ $i -lt 10 ]; do sleep 0.5; i=$((i+1)); done;`
-    + ` kt KILL "$p"; echo "${JOBS_MARK} ${jobId} cancelled";`
+    + ` kt KILL "$p"; : > ${b}.cancelled; echo "${JOBS_MARK} ${jobId} cancelled";`
     + ` else echo "${JOBS_MARK} ${jobId} gone"; fi )`
 }
 
 export function parseCheckBackgroundOutput(jobId: string, output: string): BackgroundStatus {
   const text = output.replace(/\r/g, '')
-  const m = new RegExp(`${STATUS_MARK} (running|finished|unknown)(?: (\\d+))?[^\\n]*\\n?`).exec(text)
+  const m = new RegExp(`${STATUS_MARK} (running|finished|cancelled|unknown)(?: (\\d+))?[^\\n]*\\n?`).exec(text)
   if (!m) return { job_id: jobId, status: 'unknown', tail: text }
   const status = m[1] as BackgroundStatus['status']
   const tail = text.slice(m.index + m[0].length).replace(/\n$/, '')
@@ -1231,7 +1233,7 @@ export function terminalToolDefs(deps: TerminalToolDeps) {
     },
     {
       name: 'check_background',
-      description: '查询 start_background 启动的后台任务：status=running/finished/unknown，finished 时带 exit_code，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      description: '查询 start_background 启动的后台任务：status=running/finished/cancelled/unknown，finished 时带 exit_code，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '并返回日志末尾 80 行。会先在远端等任务结束最多 wait_seconds 秒（默认 30，任务结束立即返回），'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '**只等一次**：没等到就别连珠炮式轮询（每次都是完整请求，历史里全是没有信息量的记录），结束这一轮说明「在后台跑，完成会自动通知」即可。需该主机的读取授权。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
         + '须在启动该任务的同一主机的终端上查询。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
