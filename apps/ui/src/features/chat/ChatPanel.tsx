@@ -1638,8 +1638,8 @@ function BgOnlyIndicator({ bg, onStop }: { bg: number; onStop: () => void }) {
       <Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />
       <span>{tr('{n} 个后台任务在跑（完成会自动继续）', { n: bg })}</span>
       <button data-bg-stop onClick={onStop} title={tr('停止这个会话的后台任务（进程真的会被杀掉）')}
-        className="rounded px-1.5 py-0.5 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]">
-        {tr('停止')}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--color-danger)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--color-danger)_14%,transparent)]">
+        <Square className="h-2.5 w-2.5 fill-current" />{tr('停止')}
       </button>
     </div>
   )
