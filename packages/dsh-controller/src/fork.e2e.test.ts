@@ -1,5 +1,5 @@
 // 端到端：真实 DshController + 真实 dsh 运行时 + 本地假模型（OpenAI 兼容，回「答:<最后一条用户消息>」），验证
-//  - fork：从第 1 条消息之前分叉 = 新的空会话（标题「原标题（分叉）」、工作目录照搬），发改后的内容，请求里没有原会话的内容；
+//  - fork：从第 1 条消息之前分叉 = 新的空会话（标题「原标题 · 2」、工作目录照搬），发改后的内容，请求里没有原会话的内容；
 //  - fork：从第 2 条消息之前分叉 = 继承第 1 轮，回放给界面；
 //  - regenerate：原地重跑最后一轮——前面的轮不变，请求里第 2 条消息只出现一次；
 //  - 重启（新控制器读同一目录）后原会话、分叉会话都能恢复并回放。
@@ -101,7 +101,7 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
     expect(r.text).toBe('问一')
     expect(r.session.id).not.toBe(sid)
     const m = store.get(r.session.id)!
-    expect(m.title).toBe('排查（分叉）')
+    expect(m.title).toBe('排查 · 2')   // 新命名：原标题 · 第几个分支（不再追加（分叉））
     expect(m.workDir).toBe(dir)
     expect(msgsOf(r.session.id)).toEqual([])
     reqs.length = 0

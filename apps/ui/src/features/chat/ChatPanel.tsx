@@ -472,6 +472,8 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   }
   // 后台任务（start_background 起的）：有回合在跑、或还有任务没结束时才轮询；两边都空就完全停（不空转）
   // 注意：这里**只用于显示**，绝不参与「能不能输入」的判断 —— 输入框始终可用（追问机制）
+  // 分叉进行中（正在用模型总结历史）：期间禁用所有消息操作，并在输入框上方显示进度
+  const [forking, setForking] = useState<{ startedAt: number } | null>(null)
   const [bgTasks, setBgTasks] = useState<{ jobId: string; command: string; startedAt: number; terminalId: string }[]>([])
   const bgPolling = busy || bgTasks.length > 0
   useEffect(() => {
@@ -534,22 +536,27 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   // 要「换个地方继续聊」，不是「重新发这条」。「编辑后重发」已移除（语义与分叉混淆，见规划文档 F3）。
   const forkRef = useRef<(msgId: string, includeTurn?: boolean) => void>(() => {})
   forkRef.current = (msgId, includeTurn) => {
+    if (forking) return   // 分叉进行中：所有分叉入口都点不动（见下面 msgActions）
     const sid = activeSessionId
+    setForking({ startedAt: Date.now() })
     client.agent.forkSession(sid, msgId, 'fork', { includeTurn }).then(async (r) => {
       await onOpenSession?.(r.session.id)
       const dg = (r.digest ?? '').trim()
       if (dg) pendingDigest.current.set(r.session.id, dg)   // 只带摘要的兜底路径：用户接着输入时附上
     }, (e) => fail(sid, tr('分叉失败：{msg}', { msg: String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') })))
+      .finally(() => setForking(null))
   }
   const regenRef = useRef(regenerate)
   regenRef.current = regenerate
   const msgActions = useMemo<MsgActions>(() => ({
-    busy,
+    // 分叉进行中把 busy 一起置真：所有消息操作（分叉 / 重新生成 / 复制）临时禁用，
+    // 避免用户连点几次分叉出好几个会话
+    busy: busy || !!forking,
     // includeTurn 必须透传：之前写成 (id) => forkRef.current(id)，把 AI 回复按钮传的 true 吞掉了，
     // 结果「从最后一条回复分叉」也切在这一轮之前，最后一轮整个丢失（TS 不会报：少接可选参数是合法的）
     onFork: (id, includeTurn) => forkRef.current(id, includeTurn),
     onRegenerate: (id) => regenRef.current(id),
-  }), [busy, activeSessionId])
+  }), [busy, forking, activeSessionId])
 
   // queue：本轮在跑时排到本轮结束后再发（Alt+Enter），默认是在下一步前插入
   // 发送前要问「要不要用摘要开新会话」时，先把待发的状态存这里，用户选完再真正发出
@@ -849,6 +856,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
         })()}
         </ToolFocusContext.Provider></ToolSessionContext.Provider></MsgActionsContext.Provider>
         {busy && <WorkingIndicator bg={bgTasks.length} />}
+        {forking && <ForkProgress startedAt={forking.startedAt} />}
         {!busy && bgTasks.length > 0 && <BgOnlyIndicator bg={bgTasks.length} onStop={() => {
           // 先清显示，再让主进程杀进程（它同步清登记、杀进程在后台跑，不会卡）
           setBgTasks([])
@@ -1640,6 +1648,22 @@ function BgOnlyIndicator({ bg, onStop }: { bg: number; onStop: () => void }) {
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--color-danger)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--color-danger)_14%,transparent)]">
         <Square className="h-2.5 w-2.5 fill-current" />{tr('停止')}
       </button>
+    </div>
+  )
+}
+
+/** 分叉进行中：在旧会话的输入框上方显示进度（新会话还不存在，不能切过去转圈） */
+function ForkProgress({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
+  const sec = Math.max(0, Math.round((now - startedAt) / 1000))
+  const stage = sec < 3 ? tr('读取历史…') : tr('调用模型总结历史…')
+  return (
+    <div data-fork-progress className="flex items-center gap-2 px-5 py-1.5 text-[12px] text-[var(--color-text-muted)]">
+      <Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />
+      <span>{tr('正在分叉：{stage}', { stage })}</span>
+      <span className="tabular-nums text-[var(--color-text-muted)]">{sec}s</span>
+      <span className="text-[11px] text-[var(--color-text-muted)]">· {tr('期间消息操作已暂时禁用')}</span>
     </div>
   )
 }

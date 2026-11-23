@@ -824,6 +824,11 @@ export const chat: Record<string, string> = {
   '没有匹配的 Skill': 'No matching skill',
   // 分叉：完整带到新会话
   '从这里分叉：把当前对话完整带到新会话（含这一条），输入框留空': 'Fork from here: carry the whole conversation (including this message) into a new session and leave the composer empty',
+  // 分叉：进行中的进度（在旧会话里显示）
+  '正在分叉：{stage}': 'Forking: {stage}',
+  '读取历史…': 'reading history…',
+  '调用模型总结历史…': 'summarizing with the model…',
+  '期间消息操作已暂时禁用': 'message actions are disabled meanwhile',
   // 会话流程图：导出图片
   '导出为 SVG（矢量，文字可选中）': 'Export as SVG (vector; text stays selectable)',
   '导出为 PNG（2 倍分辨率）': 'Export as PNG (2× resolution)',

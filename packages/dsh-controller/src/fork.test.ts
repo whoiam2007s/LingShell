@@ -33,9 +33,13 @@ describe('forkPoint（分叉切点）', () => {
     expect(() => forkPoint(log, 'p1')).toThrow(/message_not_found/)
     expect(() => forkPoint(log, 'nope')).toThrow(/message_not_found/)
   })
-  it('分叉标题不叠加', () => {
-    expect(forkTitle('排查')).toBe('排查（分叉）')
-    expect(forkTitle('排查（分叉）')).toBe('排查（分叉）')
+  it('分叉标题：剥掉历史累加的后缀，只留原名（编号由 forkTitleOf 按 · N 重排）', () => {
+    expect(forkTitle('排查')).toBe('排查')
+    expect(forkTitle('排查（分叉）')).toBe('排查')
+    // 旧版会滚成「排查（分叉）5（分叉）」这种：这里要能一路剥干净
+    expect(forkTitle('排查（分叉）5（分叉）')).toBe('排查')
+    expect(forkTitle('排查（分叉） 5（分叉）')).toBe('排查')
+    expect(forkTitle('排查 · 3')).toBe('排查')
   })
 })
 

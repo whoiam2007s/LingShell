@@ -1970,6 +1970,51 @@ export class DshController {
   }
 
   /**
+   * 分叉标题：剥掉历史累加的后缀后，按「原标题 · 2 / · 3」编号（同一父会话的第几个分支）。
+   * 以前是无限追加「（分叉）」，而且计数接在后缀后面（`X（分叉）5`），下次分叉认不出又加一遍。
+   */
+  private forkTitleOf(title: string): string {
+    const base = forkTitle(title)
+    const taken = new Set((this.cfg.sessionStore?.list() ?? []).map((s) => s.title))
+    for (let i = 2; i < 1000; i++) {
+      const t = `${base} · ${i}`
+      if (!taken.has(t)) return t
+    }
+    return `${base} · ${Date.now()}`
+  }
+
+  /**
+   * 分叉前给旧会话做一份「交接摘要」：用当前会话的模型生成结构化摘要，供新会话接着干活。
+   *
+   * 输入 = 已有压缩摘要 + 切点之后的**全部**尾部。尾部本来就是「上次压缩之后没被压过的对话」，
+   * 天然不超过上下文窗口，所以**不设人为字数上限**；只有窗口未知时才给个保守预算。
+   * 输出限 4000 字，结构固定（目标进展 / 关键事实 / 已完成改动 / 未决与下一步 / 用户约束），
+   * 并明确要求保留路径、端口、job id、命令与错误原文，避免摘要变成「相关配置已调整」这种废话。
+   */
+  private async summarizeForFork(o: { events: readonly DshEvent[]; lastSummary?: string; signal: AbortSignal; profileId?: string }): Promise<string | undefined> {
+    const window = this.cfg.contextLimitTokens?.() ?? 0
+    // 字符预算按窗口算（CJK 大致 1 字≈1 token，留 4 成给系统提示与输出）；窗口未知时按 6 万兜底
+    const budget = window > 0 ? Math.max(20_000, Math.round(window * 0.6)) : 60_000
+    const tail = recentContext(o.events as DshEvent[], budget)
+    const prev = (o.lastSummary ?? '').trim()
+    if (!tail && !prev) return undefined
+    const truncated = tail.length >= budget
+    const sys = '你是对话摘要器。把下面这段运维排障对话压成一份"能直接接着干活"的交接摘要，结构固定：'  // i18n-ignore 发给模型的提示词（分叉摘要）
+      + '①目标与当前进展 ②关键事实（主机 / 路径 / 端口 / 版本 / job id / 命令原文 / 错误原文，必须保留具体值，禁止"相关配置文件""已经修好"这类模糊说法）'  // i18n-ignore 发给模型的提示词（分叉摘要）
+      + '③已完成的改动（改了哪个文件、提交号、配置项）④未决问题与下一步 ⑤用户明确表达的偏好、约束与禁止项。'  // i18n-ignore 发给模型的提示词（分叉摘要）
+      + '只输出摘要本身，不要客套话，不要重复原话。'   // i18n-ignore 发给模型的提示词（分叉摘要）
+    const user = [
+      prev ? `【更早内容的压缩摘要（已有，可直接引用）】\n${prev}` : '',  // i18n-ignore 发给模型的提示词（分叉摘要）
+      tail ? `【之后继续的对话】\n${tail}` : '',  // i18n-ignore 发给模型的提示词（分叉摘要）
+      truncated ? '注意：更早的部分已按长度省略，摘要里不要臆测缺失内容。' : '',  // i18n-ignore 发给模型的提示词（分叉摘要）
+    ].filter(Boolean).join('\n\n')   // i18n-ignore 发给模型的上下文（分叉摘要）
+    const raw = await this.complete(sys, user, o.signal, 'fork-summary', o.profileId)
+    const text = raw.trim()
+    if (!text) return undefined
+    return text.length > 4000 ? `${text.slice(0, 4000)}…` : text
+  }
+
+  /**
    * 接续：把源会话的上下文带进一个**新会话**，源会话原样留在列表里（不换 thread、不清历史）。
    *
    * 0.1.6 修（B3）：以前是把源会话的整段事件前缀原样拷过去（buildForkSeed）——压缩过的会话
@@ -2059,29 +2104,24 @@ export class DshController {
     if (mode === 'fork') {
       const id = `sess_${randomUUID().slice(0, 8)}`
       const { dshId: _d, ...rest } = src
-      // 切点之前的上下文压成 digest：随新会话第一条消息发出去（界面负责附上）
       const idx = p.boundary === undefined ? -1 : events.findIndex((e) => e.seq === p.boundary)
       const upTo = events.slice(0, idx + 1)
-      const digest = continuationDigest(upTo, live.lastSummary)
-      // 主路径：**完整带过去**（与「重新生成」同一套整段前缀种子）。
-      // 用户点「从这里分叉」的预期是「把当前对话原样搬到新会话继续」，而不是「只搬最近两轮 + 一段摘要」；
-      // 0.1.6 为控 token 改成摘要，实际表现是「历史少了一大截」。
-      // 种子引用不自洽 / dsh 拒绝时，下面照旧退回「摘要 + 最近几轮」，绝不让分叉失败。
-      if (p.boundary !== undefined) {
-        try {
-          const seed = buildForkSeed(events as any, p.boundary as any)
-          if (seedHasEarlierRefs(seed)) {
-            const metaFull: SessionMeta = { ...rest, id, threadId: id, title: this.uniqueTitle(forkTitle(src.title)), createdAt: now, lastActiveAt: now }
-            const info = await this.spawn(id, metaFull, false, { seed: seed as any, inherited: p.boundary + 1, parent: live.dshId })
-            this.cfg.sessionStore?.upsert({ ...metaFull, title: info.title })
-            return { session: info, text: p.text, digest: '' }
-          }
-          this.cfg.log?.('warn', 'fork full seed rejected by local check, using digest', { sessionId: id, events: seed.length })
-        } catch (e) {
-          this.cfg.log?.('warn', 'fork with full seed failed, fallback to digest', { sessionId: id, err: String(e).slice(0, 300) })
-          this.sessions.delete(id)
-        }
+      // 带过去的是「一份详细摘要 + 最近几轮原文」，不再整段复制：
+      // 几十轮的长会话整段搬过去，新会话一开局就背着几十万 token，之后每句话都按它计费，
+      // 而且建会话那一下要回放全部事件（用户实测要等十几秒）。
+      // 摘要用**当前会话的模型**生成，输入 = 已有压缩摘要 + 压缩点之后的全部尾部
+      // （尾部天然不超过上下文窗口，所以不设人为字数上限）；超时 / 模型不可用退回本地拼接，分叉永不失败。
+      const ac = new AbortController()
+      const timer = setTimeout(() => ac.abort(), 90_000)
+      let digest = ''
+      try {
+        digest = (await this.summarizeForFork({ events: upTo, lastSummary: live.lastSummary, signal: ac.signal, profileId: this.profileOfSession(sessionId) })) ?? ''
+      } catch (e) {
+        this.cfg.log?.('warn', 'fork summary failed, fallback to local digest', { sessionId, err: String(e).slice(0, 300) })
+      } finally {
+        clearTimeout(timer)
       }
+      if (!digest.trim()) digest = continuationDigest(upTo, live.lastSummary)
       // 「摘要 + 最近几轮」重组成种子事件：新会话打开就是真实历史（消息 / 工具卡都在），不用重新输入。
       // 没有可拷的历史（从第一条消息分叉）时退回只带 digest 的旧行为。
       const ds = digestSeed(upTo, {
@@ -2089,7 +2129,7 @@ export class DshController {
         buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
       })
       const meta: SessionMeta = {
-        ...rest, id, threadId: id, title: this.uniqueTitle(forkTitle(src.title)), createdAt: now, lastActiveAt: now,
+        ...rest, id, threadId: id, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
         ...(ds || !digest.trim() ? {} : { contextDigest: digest }),
       }
       // 种子建不起来（dsh 校验没过等）就退一步：换个新 id 用 digest 建，绝不让分叉直接失败
@@ -2107,7 +2147,7 @@ export class DshController {
       }
       const plainId = `sess_${randomUUID().slice(0, 8)}`
       const plainMeta: SessionMeta = {
-        ...rest, id: plainId, threadId: plainId, title: this.uniqueTitle(forkTitle(src.title)), createdAt: now, lastActiveAt: now,
+        ...rest, id: plainId, threadId: plainId, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
         ...(digest.trim() ? { contextDigest: digest } : {}),
       }
       const info = await this.spawn(plainId, plainMeta, false)

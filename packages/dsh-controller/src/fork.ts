@@ -8,7 +8,7 @@
 //     以前一律取「之前」，导致从最新一条回复分叉会把刚刚那一轮整个切掉（用户反馈「丢了最新的一轮对话」）。
 // 找不到更早的 turn/end（第一条消息）→ 不带历史。
 // 一轮里补发的第二条消息（排队消息被并进同一轮）在 includeTurn=false 时按整轮切：同轮的前一条消息一并不带（少见，接受）。
-import { tr, tk } from '@lingshell/shared'
+import { tr } from '@lingshell/shared'
 import { userMessageView, type DshEvent } from './relay.js'
 
 export interface ForkPoint {
@@ -44,11 +44,24 @@ export function forkPoint(events: readonly DshEvent[], messageId: string, opts?:
   return { boundary: cut >= 0 ? events[cut].seq : undefined, content, text: userMessageView(content).text, turns, calls }
 }
 
-/** 分叉会话的标题：「原标题（分叉）」，已是分叉的不再叠加（中英两种后缀都认：切换过界面语言的旧标题也不叠加） */
-const FORK_SUFFIX = tk('（分叉）')
+/**
+ * 分叉会话的标题：把历史上累加的后缀都剥掉（`（分叉）` / `（fork）` / ` · N`），
+ * 只留原会话名；编号由调用方按「原标题 · 2 / · 3」重排，不会越滚越长。
+ * 中英两种后缀都认（切过界面语言的旧标题也要能剥）。
+ */
+const FORK_MARKS = ['（分叉）', '（fork）', '(fork)']   // i18n-ignore 标题后缀，不是界面文案
+const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 export const forkTitle = (title: string): string => {
-  const suffix = tr(FORK_SUFFIX)
-  return title.endsWith(FORK_SUFFIX) || title.endsWith(suffix) ? title : `${title}${suffix}`
+  let s = title.trim()
+  const marks = [tr('（分叉）'), ...FORK_MARKS].filter(Boolean)
+  for (let i = 0; i < 8; i++) {
+    const before = s
+    // 后缀后面可能还跟着计数（旧版会滚成「排查（分叉）5（分叉）」），所以连数字一起剥
+    for (const m of marks) s = s.replace(new RegExp(`${escRe(m)}\\s*\\d{0,3}$`, 'i'), '').trim()
+    s = s.replace(/\s·\s\d{1,3}$/, '').trim()   // 我们自己的分支序号「原标题 · 2」
+    if (s === before) break
+  }
+  return s || title.trim()
 }
 
 /**
