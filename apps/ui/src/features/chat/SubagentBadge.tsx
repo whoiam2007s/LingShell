@@ -4,7 +4,7 @@
 // 一行只显示「标题」（模型给的一句话，或 task 首句截 40 字）：完整 prompt 收进详情，
 // 下拉与悬停提示都出在按钮正下方居中（与对话区 hover 模型的 tooltip 一致），不再用原生 title。
 import { useEffect, useRef, useState } from 'react'
-import { Bot, ChevronDown, Loader2, Check, X, MessageCircleQuestion } from 'lucide-react'
+import { Bot, ChevronDown, Loader2, Check, X, MessageCircleQuestion, Terminal } from 'lucide-react'
 import { fmtMs, tr, type SubagentView } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
@@ -71,12 +71,23 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
       <button onClick={() => setOpen((o) => !o)} aria-label={tip} aria-expanded={open}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         onFocus={() => setHover(true)} onBlur={() => setHover(false)}
-        className={cn('flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] transition-colors hover:bg-[var(--color-bg-hover)]',
-          running ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]')}>
-        {running ? <Loader2 className="h-3 w-3 animate-spin-slow" /> : <Bot className="h-3 w-3" />}
-        {!!list.length && <span>{tr('子代理 {n}', { n: list.length })}</span>}
-        {!!bg.length && <span className="text-[var(--color-accent)]">{tr('后台 {n}', { n: bg.length })}</span>}
-        <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+        className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] transition-colors hover:bg-[var(--color-bg-hover)]">
+        {/* 图标跟名字同一个主题色；正在跑的在名字后面挂一个转圈（一眼看出还在动） */}
+        {!!list.length && (
+          <span data-badge-subagent className={cn('flex items-center gap-1', running ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]')}>
+            <Bot className="h-3 w-3" />
+            {tr('子代理 {n}', { n: list.length })}
+            {running > 0 && <Loader2 className="h-3 w-3 animate-spin-slow" />}
+          </span>
+        )}
+        {!!bg.length && (
+          <span data-badge-bg className="flex items-center gap-1 text-[var(--color-accent)]">
+            <Terminal className="h-3 w-3" />
+            {tr('后台 {n}', { n: bg.length })}
+            <Loader2 className="h-3 w-3 animate-spin-slow" />
+          </span>
+        )}
+        <ChevronDown className={cn('h-3 w-3 text-[var(--color-text-muted)] transition-transform', open && 'rotate-180')} />
       </button>
       {hover && !open && (
         <div data-subagent-tip className={`${BELOW_CENTER} pointer-events-none whitespace-nowrap rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] shadow-lg`}>
