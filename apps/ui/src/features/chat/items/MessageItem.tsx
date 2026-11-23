@@ -173,8 +173,8 @@ function MsgToolbar({ item, isUser, regenFrom, turnUserMsgId }: { item: ConvItem
           title={tip(tr('从这里分叉：把当前对话完整带到新会话（含这一条），输入框留空'))}><GitBranchPlus className="h-3.5 w-3.5" /></button>
       )}
       {!isUser && forkFrom && act && (
-        <button data-msg-fork-reply onClick={() => act.onFork(forkFrom, true)} disabled={!act || act.busy}
-          title={act.busy ? tr('从这里分叉：从这一轮之前分叉出新会话（本轮进行中，结束后再操作）') : tr('从这里分叉：以这一轮的提问为切点新建会话，后面的对话不带过去（原会话保留）')}><GitBranchPlus className="h-3.5 w-3.5" /></button>
+        <button data-msg-fork-reply onClick={() => act.onFork(forkFrom, true)} disabled={!act || act.busy} className={TB}
+          title={tip(tr('从这里分叉：把当前对话完整带到新会话（含这一条），输入框留空'))}><GitBranchPlus className="h-3.5 w-3.5" /></button>
       )}
       {!isUser && regenFrom && act && (
         <button data-msg-regen onClick={() => act.onRegenerate(regenFrom)} disabled={off} className={TB}
