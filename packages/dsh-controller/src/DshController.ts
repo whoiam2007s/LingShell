@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
-import { readFile, rm, mkdir, writeFile } from 'node:fs/promises'
+import { readFile, rm, mkdir, writeFile, appendFile } from 'node:fs/promises'
 import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
 import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
@@ -1048,6 +1048,8 @@ export class DshController {
     this.setExecMode(sid, this.execModeOf(req.parentSessionId))
     // 记一笔给界面看（运行中）；结束时更新同一条
     const rec: SubagentRecord = { subagentId: sid, title: subagentTitleOf(t.value, req.title), task: t.value, permission: req.permission, status: 'running', startedAt: new Date(t0).toISOString() }
+    // 落一条日志：并行派多个子代理时，事后能对上「谁什么时候真正开始跑」（排查界面只显示一个的情况）
+    this.cfg.log?.('info', 'subagent started', { parent: req.parentSessionId, subagent: sid, permission: req.permission, at: rec.startedAt })
     const log = this.subagentLog.get(req.parentSessionId) ?? []
     this.subagentLog.set(req.parentSessionId, [...log, rec])
     this.persistSubagentLog(req.parentSessionId)
@@ -1081,11 +1083,34 @@ export class DshController {
         : [...prev, one]
       settle({ step: one, steps: merged.slice(-50) })
     }
+    // 子代理的**明文**执行记录：dsh 的会话日志是自定义 zstd 分块（主代理读不了、也不适合边跑边读），
+    // 这里同步落一份 live.jsonl（一行一个事件，不压缩不加密）。子代理跑很久 / 超时了，
+    // 主会话可以据此知道它做到哪一步，接着做，不至于白跑。
+    const liveDir = await this.subagentDirOf(sid)
+    const livePath = join(liveDir, 'live.jsonl')
+    let liveBuf: string[] = []
+    let liveTimer: ReturnType<typeof setTimeout> | undefined
+    const flushLive = () => {
+      if (!liveBuf.length) return
+      const chunk = `${liveBuf.join('\n')}\n`
+      liveBuf = []
+      void appendFile(livePath, chunk, 'utf8').catch(() => { /* 落盘失败不影响子代理本身 */ })
+    }
+    const pushLive = (row: Record<string, unknown>) => {
+      liveBuf.push(JSON.stringify({ at: new Date().toISOString(), ...row }))
+      if (!liveTimer) liveTimer = setTimeout(() => { liveTimer = undefined; flushLive() }, 500)
+    }
+    pushLive({ type: 'task', task: t.value, permission: req.permission })
     const finished = new Promise<void>((resolve) => {
       const off = this.onEvent((ev) => {
         if (ev.sessionId !== sid) return
         if (ev.type === 'agent:itemStarted') {
           if (ev.tool?.name) bumpStep('tool', tr('调用 {tool}', { tool: ev.tool.name }))
+        }
+        // 明文记录：工具调用一行、助手输出一行（超时后主会话靠它定位做到哪一步）
+        if (ev.type === 'agent:itemStarted' && ev.tool?.name) pushLive({ type: 'tool', name: ev.tool.name })
+        if (ev.type === 'agent:itemUpdated' && ev.kind === 'agent_message' && ev.status === 'completed' && ev.text?.trim()) {
+          pushLive({ type: 'text', text: ev.text.slice(0, 4000) })
         }
         if ((ev.type === 'agent:itemDelta' || ev.type === 'agent:itemUpdated') && ev.text?.trim()) {
           const tail = ev.text.trim().slice(-80)
@@ -1120,15 +1145,18 @@ export class DshController {
     this.subagentStopNote.delete(sid)
 
     const elapsedMs = Date.now() - t0
+    flushLive()   // 下面要读它：把还没落盘的行先写下去
     // 子会话存档：真实路径在 dsh-sessions/<工作目录>/<id>/ 下（以前只拼 dsh-sessions/<id>，
     // 主代理照着这个路径去找必然找不到）。顺手写一份可读的 transcript.md：
     // 会话日志是 zstd 二进制，模型用 read_file 读不了。
     const logPath = await this.writeSubagentTranscript(sid, t.value)
     if (timedOut) {
-      const r: SubagentResult = {
-        subagentId: sid, status: 'failed', summary: tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value }), error: 'timeout', elapsedMs, logPath,
-      }
-      settle({ status: 'failed', elapsedMs, summary: r.summary })
+      // 超时：把「做到哪一步」一起带回去，别让主会话白等一场再整段重派
+      const tail = await this.tailOf(livePath, 30, 1800)
+      const head = tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value })
+      const summary = tail ? `${head}\n\n${tr('超时前最后执行到（完整记录见 {path}）：', { path: livePath })}\n${tail}` : head
+      const r: SubagentResult = { subagentId: sid, status: 'failed', summary, error: 'timeout', elapsedMs, logPath }
+      settle({ status: 'failed', elapsedMs, summary })
       return r
     }
     if (turnError) {
@@ -1160,14 +1188,7 @@ export class DshController {
    */
   private async writeSubagentTranscript(dshId: string, task: string): Promise<string> {
     const rec = [...this.subagentLog.values()].flat().find((r) => r.subagentId === dshId)
-    let dir: string | undefined
-    try {
-      const store = (await this.boot() as any).sessionPersistence
-      const found = await store.findLog(dshId)   // 0.2 起返回 { sourcePath, currentPath }，按版本分代
-      const log: string | undefined = typeof found === 'string' ? found : found?.sourcePath
-      if (log) dir = dirname(resolve(log))
-    } catch { /* 解析不到就退回旧目录形状，至少能让主代理 ls 到 */ }
-    const out = join(dir ?? join(this.cfg.baseDir, 'dsh-sessions', dshId), 'transcript.md')
+    const out = join(await this.subagentDirOf(dshId), 'transcript.md')
     try {
       const lines: string[] = [
         `# 子代理执行记录`,   // i18n-ignore 写给模型 / 用户看的记录文件
@@ -1184,8 +1205,30 @@ export class DshController {
       await writeFile(out, lines.join('\n'), 'utf8')
       return out
     } catch {
-      return dir ?? join(this.cfg.baseDir, 'dsh-sessions', dshId)
+      return out
     }
+  }
+
+  /** 子会话真实目录（dsh-sessions/<工作目录>/<id>）：findLog 解析，解析不到退回 <baseDir>/dsh-sessions/<id> */
+  private async subagentDirOf(dshId: string): Promise<string> {
+    let dir = join(this.cfg.baseDir, 'dsh-sessions', dshId)
+    try {
+      const store = (await this.boot() as any).sessionPersistence
+      const found = await store.findLog(dshId)   // 0.2 起返回 { sourcePath, currentPath }，按版本分代
+      const log: string | undefined = typeof found === 'string' ? found : found?.sourcePath
+      if (log) dir = dirname(resolve(log))
+    } catch { /* 解析不到就用兜底目录 */ }
+    try { await mkdir(dir, { recursive: true }) } catch { /* 建不出来就让后面的写失败，不影响执行 */ }
+    return dir
+  }
+
+  /** 读文本文件最后几行（子代理超时后给主会话看进度）；读不到返回空串 */
+  private async tailOf(path: string, maxLines: number, maxChars: number): Promise<string> {
+    try {
+      const text = await readFile(path, 'utf8')
+      const out = text.split('\n').filter(Boolean).slice(-maxLines).join('\n')
+      return out.length > maxChars ? `…${out.slice(-maxChars)}` : out
+    } catch { return '' }
   }
 
   // 起一个 agent。dsh 的 sessionId 默认就是我方 id；上下文重置后换成 meta.dshId

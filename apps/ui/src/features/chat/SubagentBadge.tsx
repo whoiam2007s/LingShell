@@ -49,8 +49,9 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
   useEffect(() => {
     let alive = true
     // 内容没变就保持原引用，别让轮询把界面每几秒重渲一次
-    type Row = { jobId?: string; id?: string; status?: string; steps?: unknown[] }
-    const keyOf = (x: Row) => `${x.jobId ?? x.id ?? ''}|${x.status ?? ''}|${x.steps?.length ?? 0}`
+    type Row = { jobId?: string; id?: string; status?: string; steps?: { at?: string }[]; elapsedMs?: number }
+    // 步骤内容变了也要刷新：文本合并后 steps.length 不变，只按长度比对会一直显示旧的那一行
+    const keyOf = (x: Row) => `${x.jobId ?? x.id ?? ''}|${x.status ?? ''}|${x.steps?.length ?? 0}|${x.steps?.at(-1)?.at ?? ''}|${x.elapsedMs ?? ''}`
     const same = (a: Row[], b: Row[]) => a.length === b.length && a.every((x, i) => keyOf(x) === keyOf(b[i]))
     const load = () => {
       void client.subagent.list(sessionId).then((l: SubagentView[]) => { if (alive) setList((cur) => (same(cur, l) ? cur : l)) }).catch(() => {})
