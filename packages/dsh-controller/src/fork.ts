@@ -201,8 +201,8 @@ export function forkPreview(
   opts?: { turns?: number; maxChars?: number; maxEach?: number },
 ): ForkTurnPreview[] {
   const want = Math.max(1, opts?.turns ?? 3)
-  const maxChars = Math.max(200, opts?.maxChars ?? 3000)
-  const maxEach = Math.max(120, opts?.maxEach ?? 900)
+  const maxChars = Math.max(200, opts?.maxChars ?? 8000)
+  const maxEach = Math.max(120, opts?.maxEach ?? 2000)
   const clip = (s: string): string => (s.length > maxEach ? `${s.slice(0, maxEach)}…` : s)
   const rows: ForkTurnPreview[] = []
   for (const ev of events) {

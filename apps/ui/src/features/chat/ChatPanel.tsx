@@ -6,7 +6,7 @@ import { SessionFlowDrawer } from './SessionFlowDrawer.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
 import { onOpenPathPreview } from '../../lib/chatBus.js'
 import { FileEditor } from '../explorer/index.js'
-import { MessageItem, MsgActionsContext, type MsgActions } from './items/MessageItem.js'
+import { MessageItem, MsgActionsContext, MarkdownBody, type MsgActions } from './items/MessageItem.js'
 import { ToolSessionContext } from '../auth/index.js'
 import { ReasoningItem } from './items/ReasoningItem.js'
 import { ToolItem } from './items/ToolItem.js'
@@ -1245,7 +1245,10 @@ function ForkHistoryPreview({ turns }: { turns: ForkTurnPreview[] }) {
           {turns.map((t, i) => (
             <div key={i} className="flex gap-2">
               <span className={`mt-[2px] w-6 shrink-0 text-[11px] ${t.role === 'user' ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}`}>{t.role === 'user' ? tr('你') : 'AI'}</span>
-              <div className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-[var(--color-text-secondary)]">{t.text}</div>
+              {/* 和正常消息一样渲染 Markdown（粗体 / 代码块 / 列表），只是没有消息操作按钮 */}
+              <div className="min-w-0 flex-1 text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
+                <MarkdownBody text={t.text} streaming={false} />
+              </div>
             </div>
           ))}
         </div>

@@ -95,7 +95,7 @@ export const MessageItem = memo(function MessageItem({ item, streaming, regenFro
 })
 
 // Markdown 正文单独 memo：消息操作（context）变化时不重新解析。代码块换成带按钮的 CodeBlock
-const MarkdownBody = memo(function MarkdownBody({ text, streaming }: { text: string; streaming: boolean }) {
+export const MarkdownBody = memo(function MarkdownBody({ text, streaming }: { text: string; streaming: boolean }) {
   const components = useMemo<Components>(() => ({
     pre({ node, children }) {
       const code = (node as unknown as HNode | undefined)?.children?.find((c) => c.type === 'element')
