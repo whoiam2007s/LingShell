@@ -724,6 +724,7 @@ export const settings: Record<string, string> = {
   '1–6，默认 3': '1–6, default 3',
   '同时最多几个子代理在跑。调大能并行更多子任务，但会同时占更多模型配额和终端；超了会提示等一个结束再派。': 'How many subagents may run at once. Raising it allows more parallel subtasks but uses more model quota and terminals at the same time; beyond the limit you are asked to wait for one to finish.',
   '执行轨迹（{n} 步）：': 'Execution trace ({n} steps):',
+  '执行轨迹（最近 {n} 步）：': 'Execution trace (most recent {n} steps):',
   '秒，默认 600（10 分钟）': 'Seconds, default 600 (10 minutes)',
   '派子代理时没显式指定超时就按这个算；跑到时间上限会被中断并返回已有结论。范围 60–1800 秒。': 'Applied when a subagent is spawned without an explicit timeout; at the limit it is interrupted and returns what it has so far. Range 60–1800 seconds.',
   '新建的本地终端才生效，已打开的终端要关掉重开。': 'Applies to local terminals created from now on; close and reopen existing ones to pick it up.',

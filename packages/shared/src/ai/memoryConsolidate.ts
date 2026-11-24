@@ -100,12 +100,10 @@ export function validateConsolidateActions(actions: ConsolidateAction[], cards: 
       else if (a.title.length > MEMORY_TITLE_MAX) errs.push(`${label}：标题超过 ${MEMORY_TITLE_MAX} 字`)
       if (!a.content?.trim()) errs.push(`${label}：缺内容`)
       else {
-        // 合并的是「几张卡的内容」，所以上限跟着来源走：最多等于它们原文之和（再长就是模型在编），
-        // 同时留一个绝对封顶；单卡改写至少给到 MEMORY_CONTENT_MAX。
-        const srcLen = a.ids.reduce((n, id) => n + (byId.get(id)?.content.length ?? 0), 0)
-        const cap = Math.min(MEMORY_CONSOLIDATE_MAX, Math.max(MEMORY_CONTENT_MAX, srcLen))
+        // 单卡改写按单卡上限；合并按写死的合并上限（不再按来源卡片内容之和推算）
+        const cap = a.kind === 'merge' ? MEMORY_CONSOLIDATE_MAX : Math.max(MEMORY_CONTENT_MAX, byId.get(a.ids[0])?.content.length ?? 0)
         if (a.content.length > cap) {
-          errs.push(`${label}：内容 ${a.content.length} 字，超过上限 ${cap} 字（${a.kind === 'merge' ? '合并后的内容不能超过原卡内容之和' : '改写后不能比原卡更长'}）`)
+          errs.push(`${label}：内容 ${a.content.length} 字，超过上限 ${cap} 字（${a.kind === 'merge' ? '合并最多 5000 字' : '单卡最多 3000 字，原卡更长时不能改得更长'}）`)
         }
       }
       if (a.scope && !SCOPES.includes(a.scope)) errs.push(`${label}：scope 不合法`)
@@ -133,7 +131,7 @@ export function buildConsolidatePrompt(cards: MemoryCard[], hostLabel: (key: str
     '2. **绝不能凭空新增知识**——合并后的内容必须来自被合并的卡片，不能编造原文没有的事实；',
     '3. 宁可少整理，不要把不同主题的卡硬合到一起；',
     '4. 每张卡最多被一个动作引用；',
-    `5. 标题不超过 ${MEMORY_TITLE_MAX} 字；内容单张不超过 ${MEMORY_CONTENT_MAX} 字，合并多张时可以写到它们原文之和（但绝不能比原文更长，也不超过 ${MEMORY_CONSOLIDATE_MAX} 字）。`,
+    `5. 标题不超过 ${MEMORY_TITLE_MAX} 字；内容单张不超过 ${MEMORY_CONTENT_MAX} 字，合并（merge）后不超过 ${MEMORY_CONSOLIDATE_MAX} 字。`,
     '',
     '只输出 JSON，不要解释：',
     '{"actions":[{"kind":"merge","ids":["id1","id2"],"title":"...","content":"...","category":"ops","scope":"host","target":"hostKey","reason":"两张卡都在讲 nginx 日志位置，合并"}]}',

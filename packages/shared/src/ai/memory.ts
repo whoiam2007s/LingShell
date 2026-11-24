@@ -27,12 +27,12 @@ export interface MemoryCard {
 export type MemoryInput = Omit<MemoryCard, 'id' | 'updatedAt'> & { id?: string }
 
 export const MEMORY_TITLE_MAX = 80
-export const MEMORY_CONTENT_MAX = 2000   // 手写 / AI 单张上限：一张卡就是一小块可照做的知识，超了请拆成多张
+export const MEMORY_CONTENT_MAX = 3000   // 单张卡上限（手写 / AI 保存 / 整理时单卡改写）
 /**
- * 整理（合并多张卡）时的绝对上限。合并后的长度还要求「不超过来源卡片内容之和」，
- * 这里只是防止模型吐出一张巨无霸卡把上下文顶爆（以前合并两张 2000 字的卡必然失败）。
+ * 整理（合并多张卡）时的上限：**写死 5000**，不再按来源卡片数量或内容之和推算
+ * （以前的规则既难解释，也让模型算不准；直接给一个固定数，提示词和校验用同一个值）。
  */
-export const MEMORY_CONSOLIDATE_MAX = 6000
+export const MEMORY_CONSOLIDATE_MAX = 5000
 export const MEMORY_CONTEXT_LIMIT = 4000   // 注入系统提示的总字数上限
 
 /** 保存前校验规整：标题 / 内容必填，分类非法回落「其他」；scope 与 target 要配得上 */

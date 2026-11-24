@@ -38,7 +38,7 @@ function AskCard({ ask: a }: { ask: NonNullable<ConvItem['ask']> }) {
           <MessageCircleQuestion className="h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0 flex-1 truncate">{a.question}</span>
           {resolved === 'answered'
-            ? <span className="flex shrink-0 items-center gap-1 text-[var(--color-success)]"><Check className="h-3.5 w-3.5" />{tr('已选：{picked}', { picked })}</span>
+            ? <span title={picked} className="flex min-w-0 max-w-[55%] items-center gap-1 text-[var(--color-success)]"><Check className="h-3.5 w-3.5 shrink-0" /><span className="min-w-0 truncate">{tr('已选：{picked}', { picked })}</span></span>
             : <span className="shrink-0">{resolved === 'timeout' ? tr('已超时，未回答') : tr('已跳过')}</span>}
         </div>
       </div>
@@ -77,8 +77,8 @@ function AskCard({ ask: a }: { ask: NonNullable<ConvItem['ask']> }) {
                     (resolved || sent) && 'cursor-default')}>
                   <span className="mt-0.5">{mark(on, o.label)}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[12px] text-[var(--color-text-primary)]">{o.label}</span>
-                    {o.description && <span className="block text-[11px] leading-snug text-[var(--color-text-muted)]">{o.description}</span>}
+                    <span className="block break-words text-[12px] text-[var(--color-text-primary)]">{o.label}</span>
+                    {o.description && <span className="block whitespace-pre-wrap break-words text-[11px] leading-snug text-[var(--color-text-muted)]">{o.description}</span>}
                   </span>
                 </label>
               )

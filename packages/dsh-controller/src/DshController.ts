@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
-import { readFile, rm } from 'node:fs/promises'
+import { readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
 import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
@@ -1070,9 +1070,16 @@ export class DshController {
       if (now - stepAt < 400) return
       stepAt = now
       const one = { kind, label: label.replace(/\s+/g, ' ').trim().slice(0, 120), at: new Date(now).toISOString() }
-      // 最近一步给下拉用；同时记进轨迹（最多 50 条），展开子代理时能看到它都做了什么
+      // 最近一步给下拉用；同时记进轨迹（最多 50 条），展开子代理时能看到它都做了什么。
+      // 文字是 SSE 一段段推来的：并进上一条「✎」里，别让轨迹被几十条文本碎片塞满
+      // （用户反馈：每条文本都成了独立的一条记录）。
       const cur = (this.subagentLog.get(req.parentSessionId) ?? []).find((r) => r.subagentId === sid)
-      settle({ step: one, steps: [...(cur?.steps ?? []), one].slice(-50) })
+      const prev = cur?.steps ?? []
+      const last = prev[prev.length - 1]
+      const merged = kind === 'text' && last?.kind === 'text'
+        ? [...prev.slice(0, -1), { ...last, label: one.label, at: one.at }]
+        : [...prev, one]
+      settle({ step: one, steps: merged.slice(-50) })
     }
     const finished = new Promise<void>((resolve) => {
       const off = this.onEvent((ev) => {
@@ -1113,7 +1120,10 @@ export class DshController {
     this.subagentStopNote.delete(sid)
 
     const elapsedMs = Date.now() - t0
-    const logPath = join(this.cfg.baseDir, 'dsh-sessions', sid)
+    // 子会话存档：真实路径在 dsh-sessions/<工作目录>/<id>/ 下（以前只拼 dsh-sessions/<id>，
+    // 主代理照着这个路径去找必然找不到）。顺手写一份可读的 transcript.md：
+    // 会话日志是 zstd 二进制，模型用 read_file 读不了。
+    const logPath = await this.writeSubagentTranscript(sid, t.value)
     if (timedOut) {
       const r: SubagentResult = {
         subagentId: sid, status: 'failed', summary: tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value }), error: 'timeout', elapsedMs, logPath,
@@ -1139,6 +1149,43 @@ export class DshController {
     }
     settle({ status: parsed.status, elapsedMs, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}) })
     return { subagentId: sid, status: parsed.status, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}), elapsedMs, logPath }
+  }
+
+  /**
+   * 子代理跑完落一份**可读**的执行记录，返回它的路径（给主代理在结果被截断时翻细节）。
+   *
+   * 为什么不是会话日志本身：`session.v4.jsonl.zstd` 是 dsh 的自定义分块格式（不是裸 zstd），
+   * 模型用 read_file 读出来是二进制垃圾；而且真实目录还多一层「工作目录转义」
+   * （dsh-sessions/<工作目录>/<id>/），以前只拼 dsh-sessions/<id>，照着找必然找不到。
+   */
+  private async writeSubagentTranscript(dshId: string, task: string): Promise<string> {
+    const rec = [...this.subagentLog.values()].flat().find((r) => r.subagentId === dshId)
+    let dir: string | undefined
+    try {
+      const store = (await this.boot() as any).sessionPersistence
+      const found = await store.findLog(dshId)   // 0.2 起返回 { sourcePath, currentPath }，按版本分代
+      const log: string | undefined = typeof found === 'string' ? found : found?.sourcePath
+      if (log) dir = dirname(resolve(log))
+    } catch { /* 解析不到就退回旧目录形状，至少能让主代理 ls 到 */ }
+    const out = join(dir ?? join(this.cfg.baseDir, 'dsh-sessions', dshId), 'transcript.md')
+    try {
+      const lines: string[] = [
+        `# 子代理执行记录`,   // i18n-ignore 写给模型 / 用户看的记录文件
+        '',
+        `任务：${task}`,   // i18n-ignore
+        `状态：${rec?.status ?? 'unknown'}`,   // i18n-ignore
+        '',
+      ]
+      if (rec?.steps?.length) {
+        lines.push('## 执行步骤', ...rec.steps.map((s) => `- [${s.at}] ${s.kind === 'tool' ? '工具' : '输出'}：${s.label}`), '')   // i18n-ignore
+      }
+      if (rec?.summary) lines.push('## 结论', rec.summary)   // i18n-ignore
+      await mkdir(dirname(out), { recursive: true })
+      await writeFile(out, lines.join('\n'), 'utf8')
+      return out
+    } catch {
+      return dir ?? join(this.cfg.baseDir, 'dsh-sessions', dshId)
+    }
   }
 
   // 起一个 agent。dsh 的 sessionId 默认就是我方 id；上下文重置后换成 meta.dshId

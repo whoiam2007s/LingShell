@@ -25,6 +25,14 @@ function StatusIcon({ status }: { status: SubagentView['status'] }) {
 /** 浮层统一位置：按钮正下方居中（窗口再窄也不出屏） */
 const BELOW_CENTER = 'absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2'
 
+/** 记录里的时间是 ISO（UTC）：必须转成本地时区再显示，否则东八区会差 8 小时 */
+const clockOf = (iso: string): string => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(11, 19)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
 export function SubagentBadge({ sessionId, live = false }: { sessionId: string; live?: boolean }) {
   const [list, setList] = useState<SubagentView[]>([])
   // 后台任务（start_background 起的）：只显示还在跑的，跑完自动消失（不持久化）
@@ -138,13 +146,13 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
                   )}
                   {!!x.steps?.length && (
                     <div className="rounded border border-[var(--color-border-subtle)] px-2 py-1 text-[11px]">
-                      <div className="text-[var(--color-text-muted)]">{tr('执行轨迹（{n} 步）：', { n: x.steps.length })}</div>
+                      <div className="text-[var(--color-text-muted)]">{x.steps.length >= 50 ? tr('执行轨迹（最近 {n} 步）：', { n: 50 }) : tr('执行轨迹（{n} 步）：', { n: x.steps.length })}</div>
                       <div className="mt-0.5 max-h-40 space-y-0.5 overflow-auto">
                         {x.steps.map((s, i) => (
                           <div key={i} className="flex items-start gap-1">
                             <span className="shrink-0 text-[var(--color-text-muted)]">{s.kind === 'tool' ? '⚙' : '✎'}</span>
                             <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]" title={s.label}>{s.label}</span>
-                            <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{s.at.slice(11, 19)}</span>
+                            <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{clockOf(s.at)}</span>
                           </div>
                         ))}
                       </div>
