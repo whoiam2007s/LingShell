@@ -875,8 +875,8 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
         }} />}
        </div>
       </div>
-      {/* 离开底部时显示「回到底部」 */}
-      {!atBottom && (
+      {/* 离开底部时显示「回到底部」。加载 / 出错遮罩也要盖住它（同一个 z-10 时按钮在 DOM 更靠后会压上去） */}
+      {!atBottom && sessionPhase.phase === 'ready' && (
         <button onClick={toBottom} title={tr('回到底部')}
           className="absolute bottom-3 right-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] text-[var(--color-text-secondary)] shadow-lg transition-colors hover:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)] hover:text-[var(--color-accent)]">
           <ArrowDown className="h-4 w-4" />
@@ -1707,15 +1707,26 @@ function SystemNotice({ text }: { text: string }) {
 }
 
 // 覆盖层从 header 下面开始（top-10 = header 高度）：出错/加载时「新建会话」「历史会话」等入口仍可点，不会把人困住
-function Overlay({ phase, onOpenSettings, onRetry, onNew, onBack, onOpenHistory }: { phase: { phase: string; message?: string }; onOpenSettings?: () => void; onRetry: () => void; onNew?: () => void; onBack?: () => void; onOpenHistory?: () => void }) {
+function Overlay({ phase, onOpenSettings, onRetry, onNew, onBack, onOpenHistory }: { phase: { phase: string; message?: string; note?: string }; onOpenSettings?: () => void; onRetry: () => void; onNew?: () => void; onBack?: () => void; onOpenHistory?: () => void }) {
   const btn = 'rounded-md border border-[var(--color-border-default)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)]'
+  // 等模型总结上一会话时给个秒数：慢模型可能要一两分钟，不给反馈看着像卡死
+  const note = phase.phase === 'starting' ? phase.note : undefined
+  const [waited, setWaited] = useState(0)
+  useEffect(() => {
+    if (!note) return
+    setWaited(0)
+    const t = setInterval(() => setWaited((n) => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [note])
   return (
-    <div className="absolute inset-x-0 bottom-0 top-10 z-10 flex flex-col items-center justify-center bg-[color:color-mix(in_srgb,var(--color-bg-panel)_95%,transparent)] backdrop-blur-sm">
+    <div className="absolute inset-x-0 bottom-0 top-10 z-30 flex flex-col items-center justify-center bg-[color:color-mix(in_srgb,var(--color-bg-panel)_95%,transparent)] backdrop-blur-sm">
       {phase.phase === 'starting' && (
         <>
           <Loader2 className="h-7 w-7 animate-spin-slow text-[var(--color-accent)]" />
-          <div className="mt-3.5 text-[13px] text-[var(--color-text-primary)]">{tr('正在加载会话…')}</div>
-          <div className="mt-1 text-[11px] text-[var(--color-text-muted)]">{tr('读取对话历史并连接终端工具')}</div>
+          <div className="mt-3.5 text-[13px] text-[var(--color-text-primary)]">{note ? tr('正在准备新会话…') : tr('正在加载会话…')}</div>
+          <div className="mt-1 max-w-[420px] px-6 text-center text-[11px] leading-relaxed text-[var(--color-text-muted)]">
+            {note ? <>{note}{waited > 0 ? ` · ${waited}s` : ''}</> : tr('读取对话历史并连接终端工具')}
+          </div>
         </>
       )}
       {phase.phase === 'no-key' && (

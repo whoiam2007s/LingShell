@@ -194,9 +194,11 @@ function AppShell() {
   // 接续：用旧会话的摘要开一个新会话（旧会话原样留在会话列表里，工作目录 / 模型配置照搬）
   const continueSession = async (fromId: string, title: string): Promise<{ id: string; digest: string } | undefined> => {
     const seq = ++selectSeq.current
-    setPhase({ phase: 'starting' })
+    // 主进程要先让模型把上一会话总结成摘要（最长 5 分钟），这段时间给个准确提示，
+    // 别让人以为是在「读取对话历史」。
+    setPhase({ phase: 'starting', note: tr('正在用模型总结上一会话，可能要等一会儿…') })
     try {
-      // 新会话不播种子：带过去的上下文（摘要 + 最近几轮）由界面作为第一条消息的附件发出去，token 可控
+      // 摘要 + 最近几轮记在新会话 meta 上，由主进程在你第一条消息时挂上（界面不再自己拼）
       const r = await client.agent.continueSession(fromId, { title })
       const s = r.session
       await refreshSessions()

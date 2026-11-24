@@ -2068,7 +2068,8 @@ export class DshController {
     // 再取最近几轮做只读展示；原文随第一条消息作为上下文带给模型。
     // 不再拷真事件：长会话里压缩检查点 / 图片引用会让 dsh 拒收种子，退回的截断文字又难读又喂不准。
     const ac = new AbortController()
-    const timer = setTimeout(() => ac.abort(), 90_000)
+    // 慢模型总结长会话可能要几分钟：给足 5 分钟，超时才退回本地拼接（接续不会失败）
+    const timer = setTimeout(() => ac.abort(), 300_000)
     let digest = ''
     try {
       digest = (await this.summarizeForFork({ events, lastSummary: live.lastSummary, signal: ac.signal, profileId: this.profileOfSession(srcId) })) ?? ''
@@ -2137,7 +2138,8 @@ export class DshController {
       // 摘要用**当前会话的模型**生成，输入 = 已有压缩摘要 + 压缩点之后的全部尾部
       // （尾部天然不超过上下文窗口，所以不设人为字数上限）；超时 / 模型不可用退回本地拼接，分叉永不失败。
       const ac = new AbortController()
-      const timer = setTimeout(() => ac.abort(), 90_000)
+      // 慢模型总结长会话可能要几分钟：给足 5 分钟，超时才退回本地拼接（不会卡死分叉）
+      const timer = setTimeout(() => ac.abort(), 300_000)
       let digest = ''
       try {
         digest = (await this.summarizeForFork({ events: upTo, lastSummary: live.lastSummary, signal: ac.signal, profileId: this.profileOfSession(sessionId) })) ?? ''

@@ -643,6 +643,8 @@ export const chat: Record<string, string> = {
   '待发送（本轮结束后依次发出，可撤回）': 'Queued (sent in order after this turn; can be withdrawn)',
   'AI 工作中…': 'AI is working…',
   '正在加载会话…': 'Loading session…',
+  '正在准备新会话…': 'Preparing a new session…',
+  '正在用模型总结上一会话，可能要等一会儿…': 'Summarizing the previous session with the model — this can take a while…',
   '读取对话历史并连接终端工具': 'Reading chat history and connecting terminal tools',
   '还没配置 API Key': 'No API key configured yet',
   '打开设置': 'Open settings',

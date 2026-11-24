@@ -58,7 +58,7 @@ export interface ConvItem {
 export interface OutgoingAttachments { send: TurnAttachment[]; view: MsgAttachment[] }
 
 export type SessionPhase =
-  | { phase: 'starting' }
+  | { phase: 'starting'; note?: string }   // note：等模型总结上一会话时的说明（普通建会话没有）
   | { phase: 'ready' }
   | { phase: 'no-key' }
   | { phase: 'error'; message: string }
