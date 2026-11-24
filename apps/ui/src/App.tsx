@@ -26,6 +26,7 @@ import { SessionProvider, useSession } from './lib/sessionContext.js'
 import { useResizable } from './lib/useResizable.js'
 import { isAction, loadKeybindings } from './lib/keybindings.js'
 import { closePalette, paletteCtx, paletteSend } from './lib/paletteBus.js'
+import { emitPanelOpened, onPanelOpened } from './lib/panelBus.js'
 import { onSendToChat, onSendToNewChat, takeNewChatSend, sendToChat } from './lib/sendToChat.js'
 import type { SessionPhase } from './features/chat/index.js'
 import { tr, type SessionMeta, type TerminalInfo } from '@lingshell/shared'
@@ -85,6 +86,10 @@ function AppShell() {
   const [delTarget, setDelTarget] = useState<{ id: string; title: string } | null>(null)
   const [historyQuery, setHistoryQuery] = useState<string>()   // 命令面板「搜索历史会话内容」带进历史抽屉的词
   useEffect(() => { if (drawer !== 'history') setHistoryQuery(undefined) }, [drawer])
+  // 左右抽屉互斥：左侧打开时广播一声（TerminalView 收到会把右侧收起）；
+  // 右侧打开时这里把自己关掉。只广播「打开」，避免两边互相触发。
+  useEffect(() => { if (drawer) emitPanelOpened('left') }, [drawer])
+  useEffect(() => onPanelOpened((side) => { if (side === 'right') setDrawer(null) }), [])
   const [uploadPaths, setUploadPaths] = useState<string[] | null>(null)   // 会话侧资源管理器（本地 FS）要上传的项，同终端本地侧逻辑
 
   const setActiveId = (id: string) => { setActiveIdState(id); setCtxSession(id) }

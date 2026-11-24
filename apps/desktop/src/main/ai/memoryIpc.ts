@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { MemoryStore } from '@lingshell/config'
 import {
-  buildMemoryContext, normalizeMemory, memoryScopeText, MEMORY_CATEGORIES, CONSOLIDATE_SIZE_THRESHOLD, shouldConsolidate,
+  buildMemoryContext, normalizeMemory, MEMORY_CONSOLIDATE_MAX, memoryScopeText, MEMORY_CATEGORIES, CONSOLIDATE_SIZE_THRESHOLD, shouldConsolidate,
   buildConsolidatePrompt, countAfter, parseConsolidateReply, validateConsolidateActions,
   type ConsolidateAction, type ConsolidatePlan,
   type HostSummary, type MemoryCard, type MemoryHost, type MemoryInput, type MemoryCategory, tr,
@@ -68,8 +68,8 @@ export function registerMemory(d: {
     try { mkdirSync(d.dir, { recursive: true }); writeFileSync(stateFile, JSON.stringify(s, null, 2)) } catch { /* 状态存不下不影响主流程 */ }
   }
 
-  /** 一次整理最多等这么久：模型要读完全部卡片，超过就是卡住了（以前没超时，关掉弹窗请求还在跑） */
-  const CONSOLIDATE_TIMEOUT_MS = 60_000
+  /** 一次整理最多等这么久：模型要读完全部卡片，慢模型 / 卡片多时要给足（以前 60 秒，长卡片库经常被掐） */
+  const CONSOLIDATE_TIMEOUT_MS = 180_000
   // 同时只跑一路：后台 tick 与手动点击很容易撞在一起，撞上就复用在跑的那次，不并发烧 token
   let inflight: Promise<ConsolidatePlan> | null = null
 
@@ -163,12 +163,12 @@ export function registerMemory(d: {
       const first = byId.get(a.ids[0])
       if (!first) continue
       if (a.kind === 'update') {
-        store.save({ ...first, title: a.title ?? first.title, content: a.content ?? first.content, ...patchOf() })
+        store.save({ ...first, title: a.title ?? first.title, content: a.content ?? first.content, ...patchOf() }, MEMORY_CONSOLIDATE_MAX)
         applied++
         continue
       }
-      // merge：先建合并后的新卡，再删掉被合并的旧卡
-      store.save({ ...first, id: undefined, title: a.title ?? first.title, content: a.content ?? first.content, ...patchOf() })
+      // merge：先建合并后的新卡，再删掉被合并的旧卡（合并后的长度按整理上限写入，不受单卡 2000 字限制）
+      store.save({ ...first, id: undefined, title: a.title ?? first.title, content: a.content ?? first.content, ...patchOf() }, MEMORY_CONSOLIDATE_MAX)
       for (const id of a.ids) store.delete(id)
       applied++
     }

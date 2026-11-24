@@ -27,11 +27,16 @@ export interface MemoryCard {
 export type MemoryInput = Omit<MemoryCard, 'id' | 'updatedAt'> & { id?: string }
 
 export const MEMORY_TITLE_MAX = 80
-export const MEMORY_CONTENT_MAX = 2000   // 写入上限：一张卡就是一小块可照做的知识，超了请拆成多张
+export const MEMORY_CONTENT_MAX = 2000   // 手写 / AI 单张上限：一张卡就是一小块可照做的知识，超了请拆成多张
+/**
+ * 整理（合并多张卡）时的绝对上限。合并后的长度还要求「不超过来源卡片内容之和」，
+ * 这里只是防止模型吐出一张巨无霸卡把上下文顶爆（以前合并两张 2000 字的卡必然失败）。
+ */
+export const MEMORY_CONSOLIDATE_MAX = 12000
 export const MEMORY_CONTEXT_LIMIT = 4000   // 注入系统提示的总字数上限
 
 /** 保存前校验规整：标题 / 内容必填，分类非法回落「其他」；scope 与 target 要配得上 */
-export function normalizeMemory(input: MemoryInput): MemoryInput {
+export function normalizeMemory(input: MemoryInput, max = MEMORY_CONTENT_MAX): MemoryInput {
   const scope: MemoryScope = input.scope === 'group' || input.scope === 'global' ? input.scope : 'host'
   const target = scope === 'global' ? '' : String(input.target ?? '').trim()
   if (scope !== 'global' && !target) throw new Error(scope === 'host' ? tr('请选择主机') : tr('请选择分组'))
@@ -39,7 +44,7 @@ export function normalizeMemory(input: MemoryInput): MemoryInput {
   const content = String(input.content ?? '').trim()
   if (!title) throw new Error(tr('标题不能为空'))
   if (!content) throw new Error(tr('内容不能为空'))
-  if (content.length > MEMORY_CONTENT_MAX) throw new Error(tr('内容太长（{n} 字，上限 {max} 字）：只留可照做的结论（命令、路径、判据），细节拆成另一张卡', { n: content.length, max: MEMORY_CONTENT_MAX }))
+  if (content.length > max) throw new Error(tr('内容太长（{n} 字，上限 {max} 字）：只留可照做的结论（命令、路径、判据），细节拆成另一张卡', { n: content.length, max }))
   const category = MEMORY_CATEGORIES.some((c) => c.id === input.category) ? input.category : 'other'
   return { ...(input.id ? { id: input.id } : {}), scope, target, title, content, category, source: input.source === 'ai' ? 'ai' : 'manual' }
 }

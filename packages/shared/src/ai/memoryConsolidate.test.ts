@@ -57,6 +57,21 @@ describe('记忆库梳理', () => {
     expect(countAfter([{ kind: 'update', ids: ['a'], title: 't', content: 'c', reason: 'r' }], 3)).toBe(3)
   })
 
+  it('合并后的内容可以超过单卡 2000 字，但不能超过来源卡片内容之和', () => {
+    // 两张 1500 字的卡合并成 2800 字是合理的（以前会被 2000 字硬上限挡掉，就是用户看到的那条报错）
+    const long = (id: string): MemoryCard => ({ ...card(id), content: 'x'.repeat(1500) })
+    const two = [long('a'), long('b')]
+    const ok = validateConsolidateActions([{ kind: 'merge', ids: ['a', 'b'], title: '合并', content: 'y'.repeat(2800), reason: 'r' }], two)
+    expect(ok).toEqual([])
+    // 超过两张卡原文之和（3000）= 模型在编，必须拒
+    const bad = validateConsolidateActions([{ kind: 'merge', ids: ['a', 'b'], title: '合并', content: 'y'.repeat(3001), reason: 'r' }], two)
+    expect(bad.join('\n')).toContain('超过上限')
+    // 单卡改写：长度跟着原卡走（原卡本来就长时，不能改得比它更长）
+    const big = [{ ...card('a'), content: 'x'.repeat(3000) }]
+    expect(validateConsolidateActions([{ kind: 'update', ids: ['a'], title: 't', content: 'y'.repeat(3000), reason: 'r' }], big)).toEqual([])
+    expect(validateConsolidateActions([{ kind: 'update', ids: ['a'], title: 't', content: 'y'.repeat(3001), reason: 'r' }], big).join('\n')).toContain('超过上限')
+  })
+
   it('提示词里明确禁止凭空新增，并带上全部卡片', () => {
     const { system, user } = buildConsolidatePrompt(cards, () => '主机一')
     expect(system).toContain('绝不能凭空新增知识')

@@ -27,8 +27,8 @@ export class MemoryStore {
 
   list(): MemoryCard[] { return this.read().cards }
 
-  save(input: MemoryInput): MemoryCard {
-    const n = normalizeMemory(input)
+  save(input: MemoryInput, max?: number): MemoryCard {
+    const n = normalizeMemory(input, max)
     const f = this.read()
     const card: MemoryCard = { ...n, id: n.id ?? `kb_${randomUUID().slice(0, 8)}`, updatedAt: this.now().toISOString() }
     const i = f.cards.findIndex((x) => x.id === card.id)
