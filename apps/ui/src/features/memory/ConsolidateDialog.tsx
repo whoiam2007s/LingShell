@@ -41,11 +41,16 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
     return () => clearInterval(t)
   }, [loading])
 
+  // 「重试」计数：失败后点重试就 +1，让下面的 effect 重跑一次（不用把请求逻辑再抄一份）
+  const [attempt, setAttempt] = useState(0)
+  // 关掉弹窗就复位，下次打开重新从「有后台清单先展示」开始
+  useEffect(() => { if (!open) setAttempt(0) }, [open])
+
   // 打开即就绪：有后台清单直接展示，否则让模型读一遍（要几秒到十几秒）；关掉后丢弃结果
   useEffect(() => {
     if (!open) return
     setErr('')
-    if (pending) {
+    if (pending && !attempt) {
       setPlan(pending.plan)
       setChecked(new Set(pending.plan.actions.map((_, i) => i)))   // 默认全选，用户自己取消不要的
       setLoading(false)
@@ -62,7 +67,7 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
       .catch((e) => { if (alive) setErr(errText(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [open, pending])
+  }, [open, pending, attempt])
 
   if (!open) return null
 
@@ -130,7 +135,13 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
               {picked.length !== plan.actions.length && tr('（已选 {k} 项）', { k: picked.length })}
             </span>
           )}
-          <button onClick={onClose} className={cn('ml-auto', BTN2)}>{tr('取消')}</button>
+          {/* 模型没给出可用清单（格式不对 / 超时 / 网络）时给个重试，省得关掉再重开一次 */}
+          <div className="ml-auto flex items-center gap-2">
+            {err && !loading && !plan && (
+              <button onClick={() => setAttempt((n) => n + 1)} className={BTN2}>{tr('重试')}</button>
+            )}
+            <button onClick={onClose} className={BTN2}>{tr('取消')}</button>
+          </div>
           {plan && plan.actions.length > 0 && (
             <button onClick={apply} disabled={applying || !picked.length}
               className="rounded-md border border-transparent bg-[var(--color-accent)] px-4 py-1.5 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:opacity-40">

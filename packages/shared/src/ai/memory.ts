@@ -32,7 +32,7 @@ export const MEMORY_CONTENT_MAX = 2000   // 手写 / AI 单张上限：一张卡
  * 整理（合并多张卡）时的绝对上限。合并后的长度还要求「不超过来源卡片内容之和」，
  * 这里只是防止模型吐出一张巨无霸卡把上下文顶爆（以前合并两张 2000 字的卡必然失败）。
  */
-export const MEMORY_CONSOLIDATE_MAX = 12000
+export const MEMORY_CONSOLIDATE_MAX = 6000
 export const MEMORY_CONTEXT_LIMIT = 4000   // 注入系统提示的总字数上限
 
 /** 保存前校验规整：标题 / 内容必填，分类非法回落「其他」；scope 与 target 要配得上 */
