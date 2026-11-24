@@ -133,6 +133,9 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
     // 本地兜底会以【上一会话的压缩摘要】开头，不应出现
     const body = JSON.stringify(reqs[0])
     expect(body).toContain('上一会话摘要')   // 摘要作为上下文块挂在这条消息上（JSON 里会转义引号，所以按名字断言）
+    // 最近几轮原文也一起带给模型（只给界面看气泡的话，模型还得重新翻一遍）
+    expect(body).toContain('【上一会话最近几轮原文】')
+    expect(body).toContain('答:问一')
     expect(body).not.toContain('【上一会话的压缩摘要】')
   }, 60_000)
 

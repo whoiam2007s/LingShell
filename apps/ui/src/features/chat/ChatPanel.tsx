@@ -1236,7 +1236,7 @@ function ForkHistoryPreview({ turns }: { turns: ForkTurnPreview[] }) {
     <div data-fork-history className="mx-3 mb-2 rounded-md border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
       <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
         <History className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
-        <span className="flex-1 text-[12px] text-[var(--color-text-muted)]">{tr('上一会话最近几轮（只读，模型看到的是上面的摘要）')}</span>
+        <span className="flex-1 text-[12px] text-[var(--color-text-muted)]">{tr('上一会话最近几轮（会随下一条消息一起带给模型，这里只读）')}</span>
         <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{open ? tr('收起') : tr('展开')}</span>
         <ChevronUp className={`h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? '' : 'rotate-180'}`} />
       </button>

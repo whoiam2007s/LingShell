@@ -1385,9 +1385,18 @@ export class DshController {
    */
   private forkDigestAttachment(sessionId: string): ContextAttachment | undefined {
     const meta = this.cfg.sessionStore?.list().find((m) => m.id === sessionId)
-    if (!meta?.contextDigest || meta.digestSent) return undefined
+    if (!meta || meta.digestSent) return undefined
+    // 摘要 + 最近几轮**原文**一起带给模型：只给界面看气泡、模型看不到的话，它还得重新翻一遍
+    // （用户实测反馈：分叉后模型又问「你现在是哪个分支、改完了吗」）。
+    // 两者都只挂这一次：发完置 digestSent，之后不再重复占上下文。
+    const turns = (meta.forkPreview ?? [])
+      .map((t) => `${t.role === 'user' ? '你' : 'AI'}：${t.text}`)   // i18n-ignore 发给模型的上下文
+      .join('\n\n')
+    const text = [meta.contextDigest?.trim() ?? '', turns ? `【上一会话最近几轮原文】\n${turns}` : '']   // i18n-ignore 发给模型的上下文
+      .filter(Boolean).join('\n\n')
+    if (!text) return undefined
     this.cfg.sessionStore?.upsert({ ...meta, digestSent: true })
-    return { kind: 'context', ctx: 'session', name: tr('上一会话摘要'), text: meta.contextDigest }
+    return { kind: 'context', ctx: 'session', name: tr('上一会话摘要'), text }
   }
 
   async sendTurn(sessionId: string, prompt: string, attachments: TurnAttachment[] = []): Promise<void> {
