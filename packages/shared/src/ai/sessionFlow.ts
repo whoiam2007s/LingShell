@@ -104,7 +104,8 @@ const SHORT: Record<string, string> = {
   list_terminals: 'list',
   propose_plan: 'plan',
   ask_user: 'ask',
-  propose_host_knowledge: 'note',
+  propose_host_memory: 'note',
+  propose_host_knowledge: 'note',   // 0.1.20 前的旧工具名：老会话历史里记的还是它，流程图节点别降级成普通工具
 }
 
 const WRITE_TOOLS = new Set(['write_file'])

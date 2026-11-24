@@ -13,7 +13,7 @@ import { trx } from '../../../lib/trx.js'
 
 // 主进程报错形如「wrong_password: 密码不正确…」，前缀错误码给程序判断用，不给用户看
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '').replace(/^[a-z_]+:\s*/, '')
-const MERGEABLE = new Set<ConfigSection>(['hosts', 'templates', 'quickCommands', 'schedules', 'webhooks', 'autoReplies', 'knowledge', 'secrets'])
+const MERGEABLE = new Set<ConfigSection>(['hosts', 'templates', 'quickCommands', 'schedules', 'webhooks', 'autoReplies', 'memory', 'secrets'])
 type Choice = MergeMode | 'skip'
 // 「系统设置」页已拆成 终端 / AI 与安全 / 通用 三页，这一节对外叫「应用设置」
 const SECTIONS = CONFIG_SECTIONS.map((s) => (s.id === 'system' ? { ...s, label: tk('应用设置（终端 / AI 与安全 / 通用）') } : s))
@@ -93,7 +93,7 @@ export function ConfigBackup() {
       schedules: on('schedules') ? choice.schedules as MergeMode : undefined,
       webhooks: on('webhooks') ? choice.webhooks as MergeMode : undefined,
       autoReplies: on('autoReplies') ? choice.autoReplies as MergeMode : undefined,
-      knowledge: on('knowledge') ? choice.knowledge as MergeMode : undefined,
+      memory: on('memory') ? choice.memory as MergeMode : undefined,
       secrets: on('secrets') ? choice.secrets as MergeMode : undefined,
       knownHosts: on('knownHosts'), system: on('system'), model: on('model'),
     }
@@ -115,7 +115,7 @@ export function ConfigBackup() {
     const skip: [Choice, string] = ['skip', tr('不导入')]
     if (MERGEABLE.has(id)) {
       const tip = id === 'hosts' ? tr('合并：同地址 + 端口 + 用户的保留本机；覆盖：同地址 + 端口 + 用户的用文件里的替换。其余都新增。')
-        : id === 'knowledge' ? tr('合并：同卡片（同一张）的保留本机；覆盖：同卡片（同一张）的用文件里的替换。其余都新增。')
+        : id === 'memory' ? tr('合并：同卡片（同一张）的保留本机；覆盖：同卡片（同一张）的用文件里的替换。其余都新增。')
         : tr('合并：同名称的保留本机；覆盖：同名称的用文件里的替换。其余都新增。')
       return { options: [skip, ['merge', tr('合并')], ['overwrite', tr('覆盖')]], tip }
     }
@@ -202,7 +202,7 @@ function ImportReport({ r }: { r: ConfigImportReport }) {
       {r.schedules && <div>{line(tr('定时巡检'), r.schedules)}{r.schedules.droppedTargets > 0 && tr('；{n} 个目标主机在本机找不到已去掉', { n: r.schedules.droppedTargets })}</div>}
       {r.webhooks && <div>{line(tr('告警机器人'), r.webhooks)}</div>}
       {r.autoReplies && <div>{line(tr('自动应答'), r.autoReplies)}{r.autoReplies.needResponse.length > 0 && <span className="text-[var(--color-warn)]">{tr('；密钥应答未随文件导出、已停用待重填：{names}', { names: r.autoReplies.needResponse.join(sep) })}</span>}</div>}
-      {r.knowledge && <div>{line(tr('知识库'), r.knowledge)}{r.knowledge.dropped > 0 && tr('；{n} 张主机卡的主机在本机找不到已丢弃（可同时导入主机）', { n: r.knowledge.dropped })}</div>}
+      {r.memory && <div>{line(tr('记忆库'), r.memory)}{r.memory.dropped > 0 && tr('；{n} 张主机卡的主机在本机找不到已丢弃（可同时导入主机）', { n: r.memory.dropped })}</div>}
       {r.secrets && <div>{line(tr('密钥保险箱'), r.secrets)}{r.secrets.needValue.length > 0 && <span className="text-[var(--color-warning)]">{tr('；值未随文件导出、需在「密钥保险箱」里替换值：{names}', { names: r.secrets.needValue.join(sep) })}</span>}</div>}
       {r.system && <div>{tr('应用设置：已替换')}</div>}
       {r.model && <div>{r.apiKeys ? tr('模型设置：已替换，导入 API Key {n} 个（新建会话生效）', { n: r.apiKeys }) : tr('模型设置：已替换（新建会话生效）')}</div>}

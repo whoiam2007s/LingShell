@@ -10,11 +10,12 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, sep } from 'node:path'
-import { readFile, rm } from 'node:fs/promises'
+import { readFile, rm, mkdir, writeFile, appendFile } from 'node:fs/promises'
 import { DEFAULT_EXEC_MODE } from '@lingshell/shared'
 import type { SessionInfo, AgentEvent, SessionMeta, ApprovalAnswer, ApprovalTarget, McpCallView, TrustLevel, ModelProtocol, ThinkingLevel, ExecMode } from '@lingshell/shared'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
+import { BG_MAX_MISS, BgTaskRegistry, NoticeLimiter, noticeOverflowText, noticeText, shouldNotify, type BgEnded } from './bgWatch.js'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SessionStore, { buildForkSeed } from '@deepseek-ai/dsh-session'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
@@ -40,6 +41,7 @@ import * as LlmRetry from '@deepseek-ai/dsh-llm-retry'
 import { createRelay, createStreamAdapter, contextTokensOf, requestUsageOf, searchableTexts, isNormalEnd, turnIdOf, type DshEvent } from './relay.js'
 import {
   terminalToolDefs, decideFor, commitGrant, neededForCall, describeCall, approvalView, targetTerminalsOf, planWrite, explainOf, EXPLAIN_GUIDANCE, rollbackDeny, hostsTouchedBy, fleetTargetsOf, alwaysAskTool,
+  buildBgStatusCommand, parseBgStatusOutput, buildStopBackgroundCommand,
   type TerminalToolDeps, type UserOverride,
 } from './terminalTools.js'
 import { unifiedDiff } from './diff.js'
@@ -49,7 +51,7 @@ import {
 } from './subagent.js'
 import { loadSubagentLog, saveSubagentLog, SUBAGENT_LOG_MAX } from './subagentStore.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
-import { installPromptSection, installTerminalsSection, installWorkDirSection, installKnowledgeSection, installFleetSection, installLanguageSection } from './prompt.js'
+import { installPromptSection, installTerminalsSection, installWorkDirSection, installMemorySection, installFleetSection, installLanguageSection, installTodayContext } from './prompt.js'
 import { compactionConfig, effectiveLimit, clampCompactRatio, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
 import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, RETRY_POLICY, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
 import { mcpDecision, mcpArgsView, stripExplain, MCP_GUIDANCE, type McpManager, type McpToolRef } from './mcp.js'
@@ -63,7 +65,7 @@ import { withPathsBlock, withContextBlocks, type TurnAttachment, type ContextAtt
 import { askUserToolDef, ASK_GUIDANCE } from './askUser.js'
 import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
-import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs } from './fork.js'
+import { forkPoint, forkTitle, seedHasEarlierRefs, forkPreview } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
 import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
 import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
@@ -130,8 +132,8 @@ export interface DshControllerConfig extends TerminalToolDeps {
   subagentMaxConcurrent?(): number
   // 全局自定义规则（系统设置），每次模型请求现读注入系统提示词
   customRules?(): string
-  // 主机知识库：这些主机（hostKey）相关的知识卡注入文本（已截断），没有返回 ''。每次模型请求现求值
-  hostKnowledge?(hostKeys: string[], window?: number): string
+  // 主机记忆库：这些主机（hostKey）相关的记忆卡注入文本（已截断），没有返回 ''。每次模型请求现求值
+  hostMemory?(hostKeys: string[], window?: number): string
   // MCP：连接管理器（boot 时把已连上的服务工具注册进来）；授权要看会话信任档与是否无人值守巡检
   mcp?: McpManager
   trustOf?(sessionId: string): TrustLevel
@@ -263,7 +265,11 @@ export class DshController {
         isPreview: (sid: string) => this.preview.has(sid),   // 预演模式：propose_plan 不弹审批，只出「方案步骤」
         // 子代理：主代理派单一任务出去（工具里已校验 task / 超时，这里只管编排）
         spawnSubagent: (req) => this.spawnSubagent(req),
+        // 后台任务观察者：起好 / 被查过都通知一声（见 bgWatch.ts）
+        onBgStarted: (i) => this.onBgStarted(i),
+        onBgChecked: (i) => this.onBgChecked(i),
       }
+      this.toolDeps = deps   // 观察者 / 取消任务要用同一套旁路通道
       // 发给 AI 前脱敏：终端工具在 terminalToolDefs 里已包好；plan / MCP 在这里包（见 redaction.ts）
       const secrets = () => this.cfg.aiSecrets?.()
       const vault = this.cfg.secretVault
@@ -301,6 +307,8 @@ export class DshController {
       // 密钥保险箱：可用密钥的名称 / 说明 / 范围（没有值）。文本里有 {{secret:…}}，不能让 dsh 当模板插值
       if (vault) (ctx as any).systemPrompt.section({ name: 'lingshell:secrets', order: 154, interpolate: false, text: () => vault.prompt() })
       // 全局段：主机备注用法 + 用户自定义规则（每次组装现读，改设置不用重启会话）
+      // 当前日期走运行时上下文（不是系统提示正文）：改了正文会让后面整段历史缓存失效
+      installTodayContext(ctx)
       installPromptSection(ctx, () => this.cfg.customRules?.() ?? '')
       // 界面语言提示：英文界面才出现（中文界面为空段，提示词不变）
       installLanguageSection(ctx)
@@ -309,12 +317,12 @@ export class DshController {
         return { ...t, env: this.cfg.hostMeta?.(t.id)?.env, ...(cwd ? { cwd } : {}) }
       }))
       installWorkDirSection(ctx, (agentId) => this.getWorkDir(this.dshToOurs.get(agentId) ?? agentId))
-      // 主机知识库（按会话：只注入本会话用到过的主机）+ 跨主机提问的用法与主机清单
-      installKnowledgeSection(ctx, (agentId) => {
+      // 主机记忆库（按会话：只注入本会话用到过的主机）+ 跨主机提问的用法与主机清单
+      installMemorySection(ctx, (agentId) => {
         const keys = this.touched.get(this.dshToOurs.get(agentId) ?? agentId)
         const sid = this.dshToOurs.get(agentId) ?? agentId
         // 带上窗口：注入上限按模型窗口算（大窗口多给，小窗口少给）
-        return keys?.size ? this.cfg.hostKnowledge?.([...keys], this.sessions.get(sid)?.window) ?? '' : ''
+        return keys?.size ? this.cfg.hostMemory?.([...keys], this.sessions.get(sid)?.window) ?? '' : ''
       })
       installFleetSection(ctx, () => this.cfg.fleetHosts?.() ?? [])
       // 分层规则（分组 / 主机按本会话用到过的主机，工作目录按会话绑定的目录）+ 预演模式的做法（只在开着时出现）
@@ -632,7 +640,7 @@ export class DshController {
   }
   private pendingAsk = new Map<string, { sessionId: string; name: string; args: unknown; reason?: string; rule?: string }>()
 
-  // 会话用到过的主机（hostKey）：AI 打开 / 使用了该主机的终端、或 run_on_hosts 访问了它。知识库段据此注入（只在内存，重启后再用到再记）
+  // 会话用到过的主机（hostKey）：AI 打开 / 使用了该主机的终端、或 run_on_hosts 访问了它。记忆库段据此注入（只在内存，重启后再用到再记）
   private touched = new Map<string, Set<string>>()
   private touch(sessionId: string, name: string, args: unknown): void {
     const keys = hostsTouchedBy(this.cfg, String(name), args)
@@ -784,7 +792,161 @@ export class DshController {
   private dshToOurs = new Map<string, string>()
 
   // 子代理：这些会话是主代理派出来的，工具受限、不弹授权卡、不写进会话列表
+  // ── 后台任务观察者（见 bgWatch.ts）────────────────────────────
+  // 模型起完后台任务就能结束回合：这里每 5 秒问一次远端状态，跑完把结果推进会话。
+  // 只在该会话真有待跟踪任务时转，没有任务时定时器直接停（不空转、不耗 SSH 连接）。
+  private bg = new BgTaskRegistry()
+  private bgLimiter = new NoticeLimiter()
+  private bgTimer: ReturnType<typeof setInterval> | null = null
+  private bgTicking = false
+  private toolDeps?: TerminalToolDeps
+
+  /** 某会话还在跑的后台任务（状态条 / 任务面板用） */
+  bgTasksOf(sessionId: string): { jobId: string; command: string; startedAt: number; terminalId: string }[] {
+    return this.bg.of(sessionId).map((t) => ({ jobId: t.jobId, command: t.command, startedAt: t.startedAt, terminalId: t.terminalId }))
+  }
+  bgRunningCount(sessionId: string): number { return this.bg.of(sessionId).length }
+
+  /** 会话当前回合号（判「这个回合是不是在等它」）；没在跑 / 取不到就是 undefined */
+  private turnOfSession(sessionId: string): number | undefined {
+    const t = (this.sessions.get(sessionId) as { turn?: unknown } | undefined)?.turn
+    return typeof t === 'number' ? t : undefined
+  }
+
+  private onBgStarted(info: { jobId: string; sessionId: string; terminalId: string; command: string }): void {
+    const turn = this.turnOfSession(info.sessionId)
+    this.bg.add({ ...info, startedAt: Date.now(), ...(turn === undefined ? {} : { startedTurn: turn }) })
+    if (!this.bgTimer) {
+      this.bgTimer = setInterval(() => { void this.bgTick() }, 5_000)
+      this.bgTimer.unref?.()
+    }
+  }
+
+  private onBgChecked(info: { jobId: string; sessionId: string }): void {
+    this.bg.markChecked(info.jobId, Date.now(), this.turnOfSession(info.sessionId))
+  }
+
+  private stopBgTimer(): void {
+    if (!this.bgTimer) return
+    clearInterval(this.bgTimer)
+    this.bgTimer = null
+  }
+
+  /** 跑一次状态查询：按终端分组，一个终端只连一次（5 个任务也是 1 次） */
+  private async bgTick(): Promise<void> {
+    if (this.bgTicking) return
+    if (this.bg.size === 0) { this.stopBgTimer(); return }
+    this.bgTicking = true
+    try {
+      const ended: BgEnded[] = []
+      const now = Date.now()
+      await Promise.all([...this.bg.byTerminal()].map(async ([terminalId, tasks]) => {
+        const st = await this.bgQuery(terminalId, tasks.map((t) => t.jobId))
+        if (!st) {
+          // 整台终端查不到（关了 / 连不上）：累计失败，攒够了就放弃跟踪，别让定时器永远转下去
+          for (const t of tasks) if (this.bg.miss(t.jobId) >= BG_MAX_MISS) this.bg.remove(t.jobId)
+          return
+        }
+        for (const t of tasks) {
+          const r = st.get(t.jobId)
+          if (!r) {
+            // 这个 job 查不到（job 文件被清了之类）：同样按失败累计，不无限等
+            if (this.bg.miss(t.jobId) >= BG_MAX_MISS) this.bg.remove(t.jobId)
+            continue
+          }
+          this.bg.seen(t.jobId)
+          if (r.status === 'running') continue
+          this.bg.remove(t.jobId)
+          if (!shouldNotify(t, now)) continue          // 模型刚自己查过：不再重复推
+          ended.push({ task: t, end: r.status === 'finished' ? 'finished' : r.status === 'cancelled' ? 'cancelled' : 'unknown', ...(r.exitCode === undefined ? {} : { exitCode: r.exitCode }) })
+        }
+      }))
+      if (ended.length) this.deliverBgNotices(ended)
+    } catch (e) {
+      this.cfg.log?.('debug', 'bg watch tick failed', { err: String(e).slice(0, 200) })
+    } finally {
+      this.bgTicking = false
+      if (this.bg.size === 0) this.stopBgTimer()
+    }
+  }
+
+  private async bgQuery(terminalId: string, jobIds: string[]): Promise<Map<string, { status: 'running' | 'finished' | 'cancelled' | 'unknown'; exitCode?: number }> | undefined> {
+    const deps = this.toolDeps
+    if (!deps) return undefined
+    const cmd = buildBgStatusCommand(jobIds)
+    const timeoutMs = 20_000
+    try {
+      const r = deps.sideExec
+        ? await deps.sideExec(terminalId, cmd, { timeoutMs })
+        : await deps.terminals.execCapture(terminalId, cmd, undefined, timeoutMs, { silent: true })
+      return r ? parseBgStatusOutput(r.output) : undefined
+    } catch {
+      return undefined   // 终端没了 / 连接断了：这一轮跳过，下一轮再试
+    }
+  }
+
+  private deliverBgNotices(ended: BgEnded[]): void {
+    const bySession = new Map<string, BgEnded[]>()
+    for (const e of ended) {
+      const list = bySession.get(e.task.sessionId)
+      if (list) list.push(e)
+      else bySession.set(e.task.sessionId, [e])
+    }
+    for (const [sessionId, list] of bySession) {
+      const overflow = this.bgLimiter.hit(sessionId, Date.now())
+      this.pushNotice(sessionId, overflow ? noticeOverflowText(list.length) : noticeText(list), list)
+    }
+  }
+
+  /**
+   * 把任务结果推进会话。三种情况分开（见规划文档 P1-c）：
+   *  - 这个回合在等它（任务本回合起的 / 本回合刚查过）→ 插到下一步，不打断当前工作
+   *  - 本回合在跑但在忙别的（用户在问别的事）→ 排到这一轮结束后，别打断回答
+   *  - 会话空闲 → 唤醒，开新一轮接着说
+   */
+  private pushNotice(sessionId: string, text: string, ended: BgEnded[]): void {
+    const live = this.sessions.get(sessionId)
+    const agent = live?.handle?.agent as { status?: string; steer?(m: unknown): void; followup?(m: unknown): void } | undefined
+    if (!agent) return
+    const turn = live?.turn
+    const waiting = ended.some((e) =>
+      (e.task.startedTurn !== undefined && e.task.startedTurn === turn)
+      || (e.task.checkedTurn !== undefined && e.task.checkedTurn === turn))
+    const msg = createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+    try {
+      if (agent.status === 'running' && waiting) agent.steer?.(msg)
+      else agent.followup?.(msg)
+    } catch (e) {
+      this.cfg.log?.('warn', 'bg notice push failed', { sessionId, err: String(e).slice(0, 200) })
+    }
+  }
+
+  /**
+   * 用户点停止 / 关会话：把它名下的后台任务真的停掉（先 TERM 后 KILL），并且不叫醒模型。
+   * 同步清登记、把杀进程扔到后台 —— 停命令本身要等 TERM→KILL（最多几秒），
+   * 在这里 await 的话用户点「停止」要等好几秒回合才真的停（0.1.20 自评审发现）。
+   */
+  cancelBgOfSession(sessionId: string, jobId?: string): void {
+    const tasks = jobId ? this.bg.of(sessionId).filter((t) => t.jobId === jobId) : this.bg.of(sessionId)
+    if (!tasks.length) return
+    const deps = this.toolDeps
+    for (const t of tasks) this.bg.remove(t.jobId)
+    this.bgLimiter.reset(sessionId)
+    if (this.bg.size === 0) this.stopBgTimer()
+    if (!deps) return
+    for (const t of tasks) {
+      const cmd = buildStopBackgroundCommand(t.jobId)
+      const run = deps.sideExec
+        ? deps.sideExec(t.terminalId, cmd, { timeoutMs: 15_000 })
+        : deps.terminals.execCapture(t.terminalId, cmd, undefined, 15_000, { silent: true })
+      // 终端可能已经没了：记录照样清掉，失败也就算了
+      void Promise.resolve(run).catch(() => {})
+    }
+  }
+
   private subagents = new Map<string, { permission: SubagentPermission; parent: string; task: string; allowed?: string[] }>()
+  /** 并发派子代理时的占位序号（见 spawnSubagent：检查与写入之间不能有 await，否则超卖） */
+  private subagentSeq = 0
   // 每个主会话派过哪些子代理（界面标题栏下拉用）；落盘到 <baseDir>/subagents/<sessionId>.json，
   // 重启后 subagentsOf 会惰性读回来（之前只存内存，重启就空了）
   private subagentLog = new Map<string, SubagentRecord[]>()
@@ -825,13 +987,14 @@ export class DshController {
   // ── 会话 ────────────────────────────────────────────
   // 随机 id，删除后不复用：复用会撞上 dsh 磁盘上的旧日志（拒绝新建），还会继承旧会话的授权。
   // hidden：子代理会话——不写进会话列表（UI 上只从主会话的下拉里进去看）
-  async createSession(opts?: { title?: string; hidden?: boolean }): Promise<SessionInfo> {
+  async createSession(opts?: { title?: string; hidden?: boolean; modelProfileId?: string; thinking?: ThinkingLevel }): Promise<SessionInfo> {
     const id = `sess_${randomUUID().slice(0, 8)}`
     const createdAt = new Date().toISOString()
     const workDir = homedir()
-    // 新会话钉住当时的默认配置（之后改默认不影响它；要换在会话里切）
-    const modelProfileId = this.cfg.resolveSettings().profileId
-    const meta: SessionMeta = { id, title: opts?.title ?? id, threadId: id, createdAt, lastActiveAt: createdAt, workDir, ...(modelProfileId ? { modelProfileId } : {}) }
+    // 钉住哪套模型：默认取当前默认配置；「跟着某个会话走」的（子代理）由调用方把父会话的传进来
+    // —— 以前一律用默认，会话切到别的模型后子代理还是用默认那套，与用户预期不符
+    const modelProfileId = opts?.modelProfileId ?? this.cfg.resolveSettings().profileId
+    const meta: SessionMeta = { id, title: opts?.title ?? id, threadId: id, createdAt, lastActiveAt: createdAt, workDir, ...(modelProfileId ? { modelProfileId } : {}), ...(opts?.thinking ? { thinking: opts.thinking } : {}) }
     const info = await this.spawn(id, meta)
     if (!opts?.hidden) this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
     return info
@@ -860,14 +1023,33 @@ export class DshController {
       throw new Error(tr('同时最多 {n} 个子代理在跑，等一个结束再派', { n: maxConcurrent }))
     }
     const t0 = Date.now()
-    const info = await this.createSession({ title: tr('子任务：{t}', { t: t.value.slice(0, 20) }), hidden: true })
+    // 先同步占位再 await：检查与写入之间不能有 await，否则并发派 3 个时都能通过检查 → 超卖到第 4 个
+    const slot = `pending:${++this.subagentSeq}`
+    this.subagents.set(slot, { permission: req.permission, parent: req.parentSessionId, task: t.value, ...(req.tools?.length ? { allowed: req.tools } : {}) })
+    // 子代理继承父会话的模型配置（工作目录 / 执行模式早就继承了，模型这套以前漏了）
+    const parentMeta = this.cfg.sessionStore?.list().find((m) => m.id === req.parentSessionId)
+    const inheritProfile = (this.sessions.get(req.parentSessionId) as { profileId?: string } | undefined)?.profileId ?? parentMeta?.modelProfileId
+    let info: SessionInfo
+    try {
+      info = await this.createSession({
+        title: tr('子任务：{t}', { t: t.value.slice(0, 20) }), hidden: true,
+        ...(inheritProfile ? { modelProfileId: inheritProfile } : {}),
+        ...(parentMeta?.thinking ? { thinking: parentMeta.thinking } : {}),
+      })
+    } catch (e) {
+      this.subagents.delete(slot)   // 建不起来就把并发位退回去，别把它漏在那
+      throw e
+    }
     const sid = info.id
+    this.subagents.delete(slot)
     this.subagents.set(sid, { permission: req.permission, parent: req.parentSessionId, task: t.value, ...(req.tools?.length ? { allowed: req.tools } : {}) })
     // 子会话继承父会话的执行模式：预演模式下子代理自然只有读权限（网关最前面就拦写），
     // 信任档下也不会比主代理更严——否则子代理会卡在自己那份 confirm 档上
     this.setExecMode(sid, this.execModeOf(req.parentSessionId))
     // 记一笔给界面看（运行中）；结束时更新同一条
     const rec: SubagentRecord = { subagentId: sid, title: subagentTitleOf(t.value, req.title), task: t.value, permission: req.permission, status: 'running', startedAt: new Date(t0).toISOString() }
+    // 落一条日志：并行派多个子代理时，事后能对上「谁什么时候真正开始跑」（排查界面只显示一个的情况）
+    this.cfg.log?.('info', 'subagent started', { parent: req.parentSessionId, subagent: sid, permission: req.permission, at: rec.startedAt })
     const log = this.subagentLog.get(req.parentSessionId) ?? []
     this.subagentLog.set(req.parentSessionId, [...log, rec])
     this.persistSubagentLog(req.parentSessionId)
@@ -890,15 +1072,45 @@ export class DshController {
       if (now - stepAt < 400) return
       stepAt = now
       const one = { kind, label: label.replace(/\s+/g, ' ').trim().slice(0, 120), at: new Date(now).toISOString() }
-      // 最近一步给下拉用；同时记进轨迹（最多 50 条），展开子代理时能看到它都做了什么
+      // 最近一步给下拉用；同时记进轨迹（最多 50 条），展开子代理时能看到它都做了什么。
+      // 文字是 SSE 一段段推来的：并进上一条「✎」里，别让轨迹被几十条文本碎片塞满
+      // （用户反馈：每条文本都成了独立的一条记录）。
       const cur = (this.subagentLog.get(req.parentSessionId) ?? []).find((r) => r.subagentId === sid)
-      settle({ step: one, steps: [...(cur?.steps ?? []), one].slice(-50) })
+      const prev = cur?.steps ?? []
+      const last = prev[prev.length - 1]
+      const merged = kind === 'text' && last?.kind === 'text'
+        ? [...prev.slice(0, -1), { ...last, label: one.label, at: one.at }]
+        : [...prev, one]
+      settle({ step: one, steps: merged.slice(-50) })
     }
+    // 子代理的**明文**执行记录：dsh 的会话日志是自定义 zstd 分块（主代理读不了、也不适合边跑边读），
+    // 这里同步落一份 live.jsonl（一行一个事件，不压缩不加密）。子代理跑很久 / 超时了，
+    // 主会话可以据此知道它做到哪一步，接着做，不至于白跑。
+    const liveDir = await this.subagentDirOf(sid)
+    const livePath = join(liveDir, 'live.jsonl')
+    let liveBuf: string[] = []
+    let liveTimer: ReturnType<typeof setTimeout> | undefined
+    const flushLive = () => {
+      if (!liveBuf.length) return
+      const chunk = `${liveBuf.join('\n')}\n`
+      liveBuf = []
+      void appendFile(livePath, chunk, 'utf8').catch(() => { /* 落盘失败不影响子代理本身 */ })
+    }
+    const pushLive = (row: Record<string, unknown>) => {
+      liveBuf.push(JSON.stringify({ at: new Date().toISOString(), ...row }))
+      if (!liveTimer) liveTimer = setTimeout(() => { liveTimer = undefined; flushLive() }, 500)
+    }
+    pushLive({ type: 'task', task: t.value, permission: req.permission })
     const finished = new Promise<void>((resolve) => {
       const off = this.onEvent((ev) => {
         if (ev.sessionId !== sid) return
         if (ev.type === 'agent:itemStarted') {
           if (ev.tool?.name) bumpStep('tool', tr('调用 {tool}', { tool: ev.tool.name }))
+        }
+        // 明文记录：工具调用一行、助手输出一行（超时后主会话靠它定位做到哪一步）
+        if (ev.type === 'agent:itemStarted' && ev.tool?.name) pushLive({ type: 'tool', name: ev.tool.name })
+        if (ev.type === 'agent:itemUpdated' && ev.kind === 'agent_message' && ev.status === 'completed' && ev.text?.trim()) {
+          pushLive({ type: 'text', text: ev.text.slice(0, 4000) })
         }
         if ((ev.type === 'agent:itemDelta' || ev.type === 'agent:itemUpdated') && ev.text?.trim()) {
           const tail = ev.text.trim().slice(-80)
@@ -933,12 +1145,18 @@ export class DshController {
     this.subagentStopNote.delete(sid)
 
     const elapsedMs = Date.now() - t0
-    const logPath = join(this.cfg.baseDir, 'dsh-sessions', sid)
+    flushLive()   // 下面要读它：把还没落盘的行先写下去
+    // 子会话存档：真实路径在 dsh-sessions/<工作目录>/<id>/ 下（以前只拼 dsh-sessions/<id>，
+    // 主代理照着这个路径去找必然找不到）。顺手写一份可读的 transcript.md：
+    // 会话日志是 zstd 二进制，模型用 read_file 读不了。
+    const logPath = await this.writeSubagentTranscript(sid, t.value)
     if (timedOut) {
-      const r: SubagentResult = {
-        subagentId: sid, status: 'failed', summary: tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value }), error: 'timeout', elapsedMs, logPath,
-      }
-      settle({ status: 'failed', elapsedMs, summary: r.summary })
+      // 超时：把「做到哪一步」一起带回去，别让主会话白等一场再整段重派
+      const tail = await this.tailOf(livePath, 30, 1800)
+      const head = tr('子代理超时（{n} 秒）已中止：{t}', { n: Math.round(timeoutMs / 1000), t: t.value })
+      const summary = tail ? `${head}\n\n${tr('超时前最后执行到（完整记录见 {path}）：', { path: livePath })}\n${tail}` : head
+      const r: SubagentResult = { subagentId: sid, status: 'failed', summary, error: 'timeout', elapsedMs, logPath }
+      settle({ status: 'failed', elapsedMs, summary })
       return r
     }
     if (turnError) {
@@ -959,6 +1177,58 @@ export class DshController {
     }
     settle({ status: parsed.status, elapsedMs, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}) })
     return { subagentId: sid, status: parsed.status, summary: parsed.summary, ...(parsed.blocked ? { blocked: parsed.blocked } : {}), elapsedMs, logPath }
+  }
+
+  /**
+   * 子代理跑完落一份**可读**的执行记录，返回它的路径（给主代理在结果被截断时翻细节）。
+   *
+   * 为什么不是会话日志本身：`session.v4.jsonl.zstd` 是 dsh 的自定义分块格式（不是裸 zstd），
+   * 模型用 read_file 读出来是二进制垃圾；而且真实目录还多一层「工作目录转义」
+   * （dsh-sessions/<工作目录>/<id>/），以前只拼 dsh-sessions/<id>，照着找必然找不到。
+   */
+  private async writeSubagentTranscript(dshId: string, task: string): Promise<string> {
+    const rec = [...this.subagentLog.values()].flat().find((r) => r.subagentId === dshId)
+    const out = join(await this.subagentDirOf(dshId), 'transcript.md')
+    try {
+      const lines: string[] = [
+        `# 子代理执行记录`,   // i18n-ignore 写给模型 / 用户看的记录文件
+        '',
+        `任务：${task}`,   // i18n-ignore
+        `状态：${rec?.status ?? 'unknown'}`,   // i18n-ignore
+        '',
+      ]
+      if (rec?.steps?.length) {
+        lines.push('## 执行步骤', ...rec.steps.map((s) => `- [${s.at}] ${s.kind === 'tool' ? '工具' : '输出'}：${s.label}`), '')   // i18n-ignore
+      }
+      if (rec?.summary) lines.push('## 结论', rec.summary)   // i18n-ignore
+      await mkdir(dirname(out), { recursive: true })
+      await writeFile(out, lines.join('\n'), 'utf8')
+      return out
+    } catch {
+      return out
+    }
+  }
+
+  /** 子会话真实目录（dsh-sessions/<工作目录>/<id>）：findLog 解析，解析不到退回 <baseDir>/dsh-sessions/<id> */
+  private async subagentDirOf(dshId: string): Promise<string> {
+    let dir = join(this.cfg.baseDir, 'dsh-sessions', dshId)
+    try {
+      const store = (await this.boot() as any).sessionPersistence
+      const found = await store.findLog(dshId)   // 0.2 起返回 { sourcePath, currentPath }，按版本分代
+      const log: string | undefined = typeof found === 'string' ? found : found?.sourcePath
+      if (log) dir = dirname(resolve(log))
+    } catch { /* 解析不到就用兜底目录 */ }
+    try { await mkdir(dir, { recursive: true }) } catch { /* 建不出来就让后面的写失败，不影响执行 */ }
+    return dir
+  }
+
+  /** 读文本文件最后几行（子代理超时后给主会话看进度）；读不到返回空串 */
+  private async tailOf(path: string, maxLines: number, maxChars: number): Promise<string> {
+    try {
+      const text = await readFile(path, 'utf8')
+      const out = text.split('\n').filter(Boolean).slice(-maxLines).join('\n')
+      return out.length > maxChars ? `…${out.slice(-maxChars)}` : out
+    } catch { return '' }
   }
 
   // 起一个 agent。dsh 的 sessionId 默认就是我方 id；上下文重置后换成 meta.dshId
@@ -1199,9 +1469,32 @@ export class DshController {
   // ── turn ────────────────────────────────────────────
   // attachments：文件 / 目录只把路径追加到消息末尾（见 shared/ai/attachments.ts 的路径块）；
   // 图片存进附件存档，作为图片内容块随消息发送——会话所用配置没开「支持图片」时拒绝（不悄悄丢图）
+  /**
+   * 分叉会话的第一次发言：把「上一会话摘要」拼进这条消息（只拼一次，之后不再占上下文）。
+   * 为什么不塞进种子：种子里的 <context> 块在重放/发送时会被丢掉（实测），拼在真正的第一条消息上才可靠。
+   */
+  private forkDigestAttachment(sessionId: string): ContextAttachment | undefined {
+    const meta = this.cfg.sessionStore?.list().find((m) => m.id === sessionId)
+    if (!meta || meta.digestSent) return undefined
+    // 摘要 + 最近几轮**原文**一起带给模型：只给界面看气泡、模型看不到的话，它还得重新翻一遍
+    // （用户实测反馈：分叉后模型又问「你现在是哪个分支、改完了吗」）。
+    // 两者都只挂这一次：发完置 digestSent，之后不再重复占上下文。
+    const turns = (meta.forkPreview ?? [])
+      .map((t) => `${t.role === 'user' ? '你' : 'AI'}：${t.text}`)   // i18n-ignore 发给模型的上下文
+      .join('\n\n')
+    const text = [meta.contextDigest?.trim() ?? '', turns ? `【上一会话最近几轮原文】\n${turns}` : '']   // i18n-ignore 发给模型的上下文
+      .filter(Boolean).join('\n\n')
+    if (!text) return undefined
+    this.cfg.sessionStore?.upsert({ ...meta, digestSent: true })
+    return { kind: 'context', ctx: 'session', name: tr('上一会话摘要'), text }
+  }
+
   async sendTurn(sessionId: string, prompt: string, attachments: TurnAttachment[] = []): Promise<void> {
     this.retryBudget.reset(sessionId)   // 用户自己发了消息：自动重试预算清零
-    this.drive(sessionId, await this.userContent(sessionId, prompt, attachments))
+    // 分叉会话的第一次发言：把「上一会话摘要」作为上下文附件挂在消息上（只挂一次）。
+    // 不直接拼进正文：userContent 会重排 <context> 块，拼在正文里会被丢掉（实测）。
+    const dg = this.forkDigestAttachment(sessionId)
+    this.drive(sessionId, await this.userContent(sessionId, prompt, dg ? [...attachments, dg] : attachments))
   }
 
   /**
@@ -1390,6 +1683,10 @@ export class DshController {
   // 在途 exec 由 dsh 经 exec.signal 中止（Terminal.execCapture 收到 abort 发 Ctrl-C）。
   // 不自己发 turnFailed：dsh 取消后会发真实的 turn/end，带正确 turnId，由 relay 转出。
   async interruptTurn(sessionId: string): Promise<void> {
+    // 先把这个会话名下的后台任务真的停掉（先 TERM 后 KILL）：用户点了停止，就别让它在后台继续跑。
+    // 取消的任务不叫醒模型 —— 它没必要为一条已经被停掉的任务再开一轮。
+    // 不 await：登记同步清掉、杀进程在后台跑，用户点停止要立刻见效。
+    this.cancelBgOfSession(sessionId)
     // 先连带停掉这个会话派出去的子代理：否则用户点了「停止」，子代理还在后台跑（最多跑满 10 分钟超时）。
     // 子代理是独立隐藏会话，必须逐个 cancel；状态由它自己的 turnFailed 收尾（记成「已随主会话一起停止」）
     for (const [sid, sub] of [...this.subagents]) {
@@ -1440,12 +1737,17 @@ export class DshController {
     return text
   }
 
+  /** 会话当前用的模型配置 id（没切过就是 undefined = 默认）；会话内的判别调用要跟着它 */
+  private profileOfSession(sessionId?: string): string | undefined {
+    return sessionId ? (this.sessions.get(sessionId) as { profileId?: string } | undefined)?.profileId : undefined
+  }
+
   /**
    * 规则没识别出来时，用一次一次性小调用判断「命令是不是停在等输入」。
    * 只回 true/false：失败、超时、看不懂一律 false —— 宁可多等到超时，也不误杀正在跑的命令。
    * 每个命令由调用方保证最多问一次。
    */
-  async probeWaitingInput(tail: string): Promise<boolean> {
+  async probeWaitingInput(tail: string, sessionId?: string): Promise<boolean> {
     const text = tail.trim().slice(-600)
     if (!text) return false
     const ac = new AbortController()
@@ -1456,6 +1758,7 @@ export class DshController {
         '下面是一条命令最后一段输出。判断它是否停在这里等待用户输入（如 y/n、密码、选项、路径、按任意键）。只是普通日志、进度或已经跑完都算 false。\n只回答：{"waiting":true} 或 {"waiting":false}\n\n输出：\n' + '\n' + text,   // i18n-ignore 模型提示词（判别器）
         ac.signal,
         'probe-input',
+        this.profileOfSession(sessionId),
       )
       return /"waiting"\s*:\s*true/i.test(r)
     } catch {
@@ -1475,7 +1778,7 @@ export class DshController {
    * - 删除 / 卸载 / 格式化 / 清空 / 覆盖生产配置这类不可逆的 → 一律 null（交给用户决定）
    * - 密码、令牌、验证码 → null
    */
-  async decideInput(prompt: string, context?: string): Promise<string | undefined> {
+  async decideInput(prompt: string, context?: string, sessionId?: string): Promise<string | undefined> {
     const p = (prompt || '').trim().slice(-400)
     if (!p) return undefined
     const ctx = (context || '').trim().slice(-1200)
@@ -1487,6 +1790,7 @@ export class DshController {
         '一条命令停在等待输入，请判断该怎么回答。规则：1) 普通确认（y/n、[Y/n]、continue、overwrite、press any key）→ 直接给答案，如 "y"。2) 需要具体值（路径、版本号、名称）→ 只从下面给出的输出里能读到的才答，读不到就 null。3) 删除 / 卸载 / 格式化 / 清空 / 覆盖生产配置等不可逆操作 → 必须 null（交给用户决定）。4) 密码、令牌、验证码 → null。只回答两种之一：{"answer":"y"} 或 {"answer":null}\n\n命令最近的输出：\n' + ctx + '\n\n等待输入的提示行：\n' + p,   // i18n-ignore 模型提示词（答案决策）
         ac.signal,
         'decide-input',
+        this.profileOfSession(sessionId),
       )
       const m = /"answer"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(r)
       if (!m) return undefined
@@ -1779,13 +2083,66 @@ export class DshController {
   }
 
   /**
+   * 分叉标题：剥掉历史累加的后缀后，按「原标题 · 2 / · 3」编号（同一父会话的第几个分支）。
+   * 以前是无限追加「（分叉）」，而且计数接在后缀后面（`X（分叉）5`），下次分叉认不出又加一遍。
+   */
+  private forkTitleOf(title: string): string {
+    const base = forkTitle(title)
+    const taken = new Set((this.cfg.sessionStore?.list() ?? []).map((s) => s.title))
+    for (let i = 2; i < 1000; i++) {
+      const t = `${base} · ${i}`
+      if (!taken.has(t)) return t
+    }
+    return `${base} · ${Date.now()}`
+  }
+
+  /**
+   * 接续标题：先剥掉历史累加的后缀（（分叉）/（接续）/ · N），再补一个「（接续）」。
+   * 以前直接把「原标题（接续）」接上去，多接续几次就滚成「X（分叉）5（分叉）（接续）」。
+   */
+  private continueTitleOf(title: string): string {
+    return this.uniqueTitle(`${forkTitle(title)}${tr('（接续）')}`)
+  }
+
+  /**
+   * 分叉前给旧会话做一份「交接摘要」：用当前会话的模型生成结构化摘要，供新会话接着干活。
+   *
+   * 输入 = 已有压缩摘要 + 切点之后的**全部**尾部。尾部本来就是「上次压缩之后没被压过的对话」，
+   * 天然不超过上下文窗口，所以**不设人为字数上限**；只有窗口未知时才给个保守预算。
+   * 输出限 4000 字，结构固定（目标进展 / 关键事实 / 已完成改动 / 未决与下一步 / 用户约束），
+   * 并明确要求保留路径、端口、job id、命令与错误原文，避免摘要变成「相关配置已调整」这种废话。
+   */
+  private async summarizeForFork(o: { events: readonly DshEvent[]; lastSummary?: string; signal: AbortSignal; profileId?: string }): Promise<string | undefined> {
+    const window = this.cfg.contextLimitTokens?.() ?? 0
+    // 字符预算按窗口算（CJK 大致 1 字≈1 token，留 4 成给系统提示与输出）；窗口未知时按 6 万兜底
+    const budget = window > 0 ? Math.max(20_000, Math.round(window * 0.6)) : 60_000
+    const tail = recentContext(o.events as DshEvent[], budget)
+    const prev = (o.lastSummary ?? '').trim()
+    if (!tail && !prev) return undefined
+    const truncated = tail.length >= budget
+    const sys = '你是对话摘要器。把下面这段运维排障对话压成一份"能直接接着干活"的交接摘要，结构固定：'  // i18n-ignore 发给模型的提示词（分叉摘要）
+      + '①目标与当前进展 ②关键事实（主机 / 路径 / 端口 / 版本 / job id / 命令原文 / 错误原文，必须保留具体值，禁止"相关配置文件""已经修好"这类模糊说法）'  // i18n-ignore 发给模型的提示词（分叉摘要）
+      + '③已完成的改动（改了哪个文件、提交号、配置项）④未决问题与下一步 ⑤用户明确表达的偏好、约束与禁止项。'  // i18n-ignore 发给模型的提示词（分叉摘要）
+      + '只输出摘要本身，不要客套话，不要重复原话。'   // i18n-ignore 发给模型的提示词（分叉摘要）
+    const user = [
+      prev ? `【更早内容的压缩摘要（已有，可直接引用）】\n${prev}` : '',  // i18n-ignore 发给模型的提示词（分叉摘要）
+      tail ? `【之后继续的对话】\n${tail}` : '',  // i18n-ignore 发给模型的提示词（分叉摘要）
+      truncated ? '注意：更早的部分已按长度省略，摘要里不要臆测缺失内容。' : '',  // i18n-ignore 发给模型的提示词（分叉摘要）
+    ].filter(Boolean).join('\n\n')   // i18n-ignore 发给模型的上下文（分叉摘要）
+    const raw = await this.complete(sys, user, o.signal, 'fork-summary', o.profileId)
+    const text = raw.trim()
+    if (!text) return undefined
+    return text.length > 4000 ? `${text.slice(0, 4000)}…` : text
+  }
+
+  /**
    * 接续：把源会话的上下文带进一个**新会话**，源会话原样留在列表里（不换 thread、不清历史）。
    *
    * 0.1.6 修（B3）：以前是把源会话的整段事件前缀原样拷过去（buildForkSeed）——压缩过的会话
    * 带的是「摘要 + 压缩后保留的原文」（保留量能到上下文窗口 60%，最多 600K），没压缩过的直接
-   * 搬整段历史，新会话一开局就几十万 token。现在改成**只带「最近一次压缩摘要 + 最近几轮对话
-   * 的文字摘录」（digest）**，由界面作为新会话第一条消息的上下文发出去；结构化历史（工具调用、
-   * 附件引用）不带。工作目录 / 模型配置 / 思考深度照搬，标题由界面给（如「原标题（接续）」）。
+   * 搬整段历史，新会话一开局就几十万 token。现在和「分叉」同一套：**模型写的详细摘要 + 最近几轮原文**，
+   * 由主进程在第一条发言时作为上下文块发一次；结构化历史（工具调用 / 附件引用）不带。
+   * 工作目录 / 模型配置 / 思考深度照搬，标题统一成「原标题（接续）」（先剥掉历史累加的（分叉）后缀）。
    */
   async continueSession(srcId: string, opts?: { title?: string }): Promise<{ session: SessionInfo; digest: string }> {
     const src = this.cfg.sessionStore?.list().find((x) => x.id === srcId)
@@ -1797,41 +2154,36 @@ export class DshController {
     if (live.turning) throw new Error(tr('turn_in_progress: 本轮还在进行，等它结束（或先停止）再开新会话'))
     const session = (live.handle.agent as any)?.session
     const events: DshEvent[] = typeof session?.snapshotEvents === 'function' ? session.snapshotEvents() : []
-    const digest = continuationDigest(events, live.lastSummary)
-    // 「摘要 + 最近几轮」重组成种子事件：新会话打开即能看到上一会话的真实历史。
-    // 段里只要有一个引用不可靠（压缩检查点 / 越界引用），digestSeed 返回 undefined，退回「只带 digest」。
-    const ds = digestSeed(events, {
-      summary: live.lastSummary ?? '',
-      buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
-    })
+    // 与分叉同一套：让**当前会话的模型**写一份详细摘要（拿不到就退回本地拼接），
+    // 再取最近几轮做只读展示；原文随第一条消息作为上下文带给模型。
+    // 不再拷真事件：长会话里压缩检查点 / 图片引用会让 dsh 拒收种子，退回的截断文字又难读又喂不准。
+    const ac = new AbortController()
+    // 慢模型总结长会话可能要几分钟：给足 5 分钟，超时才退回本地拼接（接续不会失败）
+    const timer = setTimeout(() => ac.abort(), 300_000)
+    let digest = ''
+    try {
+      digest = (await this.summarizeForFork({ events, lastSummary: live.lastSummary, signal: ac.signal, profileId: this.profileOfSession(srcId) })) ?? ''
+    } catch (e) {
+      this.cfg.log?.('warn', 'continue summary failed, fallback to local digest', { sessionId: srcId, err: String(e).slice(0, 300) })
+    } finally {
+      clearTimeout(timer)
+    }
+    if (!digest.trim()) digest = continuationDigest(events, live.lastSummary)
+    const preview = forkPreview(events, { turns: 3 })
     const id = `sess_${randomUUID().slice(0, 8)}`
     const createdAt = new Date().toISOString()
-    const mkMeta = (sid: string, seeded: boolean): SessionMeta => ({
-      id: sid, title: opts?.title || src.title, threadId: sid, createdAt, lastActiveAt: createdAt,
+    const meta: SessionMeta = {
+      id, title: this.continueTitleOf(opts?.title ?? src.title), threadId: id, createdAt, lastActiveAt: createdAt,
       workDir: src.workDir,
       ...(src.modelProfileId ? { modelProfileId: src.modelProfileId } : {}),
       ...(src.thinking ? { thinking: src.thinking } : {}),
-      ...(seeded || !digest.trim() ? {} : { contextDigest: digest }),
-    })
-    // 带种子 = 新会话里已经有真实历史（回放给界面）；建不起来就退一步用 digest，绝不让接续失败
-    // 交给 dsh 之前先本地验一次引用自洽：历史里有过压缩替换 / buildForkSeed 补的收尾事件可能带着
-    // 源会话的原始 seq，dsh 会直接抛「sourceEventSeqs must reference earlier events: X >= current seq Y」
-    if (ds && !seedHasEarlierRefs(ds.seed)) {
-      this.cfg.log?.('warn', 'continue seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
-    } else if (ds) {
-      try {
-        const info = await this.spawn(id, mkMeta(id, true), false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
-        this.cfg.sessionStore?.upsert({ ...mkMeta(id, true), title: info.title })
-        return { session: info, digest: '' }
-      } catch (e) {
-        this.cfg.log?.('warn', 'continue with seed failed, fallback to digest', { sessionId: id, err: String(e).slice(0, 300) })
-        this.sessions.delete(id)
-      }
+      // 摘要 + 最近几轮原文都记在 meta 上：主进程在第一条发言时拼成上下文块发一次（不再拷事件当种子）
+      ...(digest.trim() ? { contextDigest: digest, digestSent: false, digestFrom: 'continue' as const } : {}),
+      ...(preview.length ? { forkPreview: preview } : {}),
     }
-    const plainId = `sess_${randomUUID().slice(0, 8)}`
-    const info = await this.spawn(plainId, mkMeta(plainId, false), false)
-    this.cfg.sessionStore?.upsert({ ...mkMeta(plainId, false), title: info.title })
-    return { session: info, digest }
+    const info = await this.spawn(id, meta, false)
+    this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
+    return { session: info, digest: '' }
   }
 
   /**
@@ -1868,41 +2220,40 @@ export class DshController {
     if (mode === 'fork') {
       const id = `sess_${randomUUID().slice(0, 8)}`
       const { dshId: _d, ...rest } = src
-      // 切点之前的上下文压成 digest：随新会话第一条消息发出去（界面负责附上）
       const idx = p.boundary === undefined ? -1 : events.findIndex((e) => e.seq === p.boundary)
       const upTo = events.slice(0, idx + 1)
-      const digest = continuationDigest(upTo, live.lastSummary)
-      // 「摘要 + 最近几轮」重组成种子事件：新会话打开就是真实历史（消息 / 工具卡都在），不用重新输入。
-      // 没有可拷的历史（从第一条消息分叉）时退回只带 digest 的旧行为。
-      const ds = digestSeed(upTo, {
-        summary: live.lastSummary ?? '',
-        buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
-      })
+      // 带过去的是「一份详细摘要 + 最近几轮原文」，不再整段复制：
+      // 几十轮的长会话整段搬过去，新会话一开局就背着几十万 token，之后每句话都按它计费，
+      // 而且建会话那一下要回放全部事件（用户实测要等十几秒）。
+      // 摘要用**当前会话的模型**生成，输入 = 已有压缩摘要 + 压缩点之后的全部尾部
+      // （尾部天然不超过上下文窗口，所以不设人为字数上限）；超时 / 模型不可用退回本地拼接，分叉永不失败。
+      const ac = new AbortController()
+      // 慢模型总结长会话可能要几分钟：给足 5 分钟，超时才退回本地拼接（不会卡死分叉）
+      const timer = setTimeout(() => ac.abort(), 300_000)
+      let digest = ''
+      try {
+        digest = (await this.summarizeForFork({ events: upTo, lastSummary: live.lastSummary, signal: ac.signal, profileId: this.profileOfSession(sessionId) })) ?? ''
+      } catch (e) {
+        this.cfg.log?.('warn', 'fork summary failed, fallback to local digest', { sessionId, err: String(e).slice(0, 300) })
+      } finally {
+        clearTimeout(timer)
+      }
+      if (!digest.trim()) digest = continuationDigest(upTo, live.lastSummary)
+      // 最近几轮只做**界面展示**：不拷真实事件。
+      // 拷事件这条路很脆——长会话里有压缩检查点（surfaceOp: replace）和图片引用（image/offload），
+      // 切片后引用越界，dsh 直接拒收种子，新会话就成空白（用户实测「还是没有最近的对话」）。
+      // 现在模型看到的是 contextDigest（详细摘要），界面看到的是 forkPreview 这几条只读气泡。
+      const preview = idx < 0 ? [] : forkPreview(upTo, { turns: 3 })
       const meta: SessionMeta = {
-        ...rest, id, threadId: id, title: this.uniqueTitle(forkTitle(src.title)), createdAt: now, lastActiveAt: now,
-        ...(ds || !digest.trim() ? {} : { contextDigest: digest }),
+        ...rest, id, threadId: id, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
+        // 摘要记在 meta 上：由主进程在**第一次发言时**拼进消息（放种子里不可靠：重放时 <context> 块会丢）
+        ...(digest.trim() ? { contextDigest: digest, digestSent: false, digestFrom: 'fork' as const } : {}),
+        ...(preview.length ? { forkPreview: preview } : {}),
       }
-      // 种子建不起来（dsh 校验没过等）就退一步：换个新 id 用 digest 建，绝不让分叉直接失败
-      if (ds && !seedHasEarlierRefs(ds.seed)) {
-        this.cfg.log?.('warn', 'fork seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
-      } else if (ds) {
-        try {
-          const info = await this.spawn(id, meta, false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
-          this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
-          return { session: info, text: p.text, digest: '' }
-        } catch (e) {
-          this.cfg.log?.('warn', 'fork with seed failed, fallback to digest', { sessionId: id, err: String(e).slice(0, 300) })
-          this.sessions.delete(id)
-        }
-      }
-      const plainId = `sess_${randomUUID().slice(0, 8)}`
-      const plainMeta: SessionMeta = {
-        ...rest, id: plainId, threadId: plainId, title: this.uniqueTitle(forkTitle(src.title)), createdAt: now, lastActiveAt: now,
-        ...(digest.trim() ? { contextDigest: digest } : {}),
-      }
-      const info = await this.spawn(plainId, plainMeta, false)
-      this.cfg.sessionStore?.upsert({ ...plainMeta, title: info.title })
-      return { session: info, text: p.text, digest }
+      const info = await this.spawn(id, meta, false)
+      this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
+      // digest 记在 meta 上，由 sendTurn 在第一次发言时挂进消息；这里返回空串，免得界面再拼一遍
+      return { session: info, text: p.text, digest: '' }
     }
     const meta = { ...src, dshId: `${sessionId}_${randomUUID().slice(0, 8)}` }
     await this.times.copy(live.dshId, meta.dshId, p.turns, p.calls)
@@ -1928,6 +2279,7 @@ export class DshController {
   }
 
   async stopAll(): Promise<void> {
+    this.stopBgTimer()
     for (const id of [...this.sessions.keys()]) await this.closeSession(id)
     for (const env of this.keyEnvs) delete process.env[env]
   }

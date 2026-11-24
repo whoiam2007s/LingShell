@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { buildConsolidatePrompt, countAfter, parseConsolidateReply, shouldConsolidate, validateConsolidateActions, type ConsolidateAction } from './knowledgeConsolidate.js'
-import type { KnowledgeCard } from './knowledge.js'
+import { buildConsolidatePrompt, countAfter, parseConsolidateReply, shouldConsolidate, validateConsolidateActions, type ConsolidateAction } from './memoryConsolidate.js'
+import type { MemoryCard } from './memory.js'
 
-const card = (id: string, title = id): KnowledgeCard => ({
+const card = (id: string, title = id): MemoryCard => ({
   id, scope: 'host', target: 'h1', category: 'ops', source: 'ai', title, content: `${id} 的内容`, updatedAt: '2026-11-01T00:00:00.000Z',
 })
 
 const cards = [card('a'), card('b'), card('c')]
 
-describe('知识库梳理', () => {
+describe('记忆库梳理', () => {
   it('解析模型回复：容忍 ```json 包裹与前后废话', () => {
     const r1 = parseConsolidateReply('好的，结果如下：\n{"actions":[{"kind":"merge","ids":["a","b"],"title":"合并","content":"内容","reason":"重复"}]}')
     expect(r1.actions?.length).toBe(1)
@@ -55,6 +55,18 @@ describe('知识库梳理', () => {
     expect(countAfter([{ kind: 'merge', ids: ['a', 'b', 'c'], title: 't', content: 'c', reason: 'r' }], 3)).toBe(1)
     expect(countAfter([{ kind: 'drop', ids: ['a'], reason: 'r' }], 3)).toBe(2)
     expect(countAfter([{ kind: 'update', ids: ['a'], title: 't', content: 'c', reason: 'r' }], 3)).toBe(3)
+  })
+
+  it('合并上限 5000 字、单卡上限 3000 字（写死，不按来源算）', () => {
+    // 合并：5000 以内都合法（不管合并了几张 2000 字的卡）
+    const long = (id: string): MemoryCard => ({ ...card(id), content: 'x'.repeat(2000) })
+    const three = [long('a'), long('b'), long('c')]
+    expect(validateConsolidateActions([{ kind: 'merge', ids: ['a', 'b', 'c'], title: '合并', content: 'y'.repeat(5000), reason: 'r' }], three)).toEqual([])
+    expect(validateConsolidateActions([{ kind: 'merge', ids: ['a', 'b', 'c'], title: '合并', content: 'y'.repeat(5001), reason: 'r' }], three).join('\n')).toContain('合并最多 5000 字')
+    // 单卡改写：3000 以内合法（原卡短也能补到 3000）
+    const one = [card('a')]
+    expect(validateConsolidateActions([{ kind: 'update', ids: ['a'], title: 't', content: 'y'.repeat(3000), reason: 'r' }], one)).toEqual([])
+    expect(validateConsolidateActions([{ kind: 'update', ids: ['a'], title: 't', content: 'y'.repeat(3001), reason: 'r' }], one).join('\n')).toContain('超过上限')
   })
 
   it('提示词里明确禁止凭空新增，并带上全部卡片', () => {

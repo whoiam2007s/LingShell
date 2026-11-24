@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { tr, type UpdateStatus } from '@lingshell/shared'
+import { tr, formatSize, type UpdateStatus } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { Section, Row, BTN2 } from '../ui.js'
 import { saveSystemPatch } from '../../../lib/systemSave.js'
@@ -63,6 +63,14 @@ export function UpdateCheck() {
   const busy = st?.state === 'checking' || st?.state === 'downloading' || st?.state === 'available'
   const color = st?.state === 'error' ? 'text-[var(--color-danger)]' : st?.state === 'downloaded' ? 'text-[var(--color-success)]' : ''
   const pct = Math.max(0, Math.min(100, Math.round(st?.percent ?? 0)))
+  // 下载详情：已下载 / 总量 · 实时速度（electron-updater 的 download-progress 直接给字节数与 B/s）
+  const detail = st?.state === 'downloading' && st.total
+    ? tr('{done} / {total} · {speed}/s', {
+        done: formatSize(st.transferred ?? 0),
+        total: formatSize(st.total),
+        speed: formatSize(st.bytesPerSecond ?? 0),
+      })
+    : ''
 
   return (
     <Section title={tr('更新')}>
@@ -98,6 +106,14 @@ export function UpdateCheck() {
         <div className="px-3.5 pb-2" data-update-bar>
           <div className="h-1 w-full overflow-hidden rounded bg-[var(--color-bg-raised)]">
             <div className="h-full bg-[var(--color-danger)] transition-[width] duration-300" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-[var(--color-text-muted)]">
+            <span data-update-detail className="tabular-nums">{detail}</span>
+            {st.fullDownload && (
+              <span data-update-full title={tr('差分下载被服务器拒绝，这次只能整包下载')}>
+                {tr('服务器不支持增量下载，正在整包下载（较慢）')}
+              </span>
+            )}
           </div>
         </div>
       )}

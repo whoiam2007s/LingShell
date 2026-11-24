@@ -68,7 +68,7 @@ export const chat: Record<string, string> = {
   '可以先点「重试」；仍然失败就用「手动下载」。': 'Try "Retry" first; if it still fails, use "Manual download".',
   '决定': 'Decision',
   '备份路径': 'Backup path',
-  '回滚方案': 'Rollback plan',
+
   '本页目录': 'Contents',
   '导出': 'Export',
   '命令历史：{host}': 'Command history: {host}',
@@ -87,7 +87,7 @@ export const chat: Record<string, string> = {
   '备份为 tar.gz': 'Back up as tar.gz',
   '正在备份…': 'Backing up…',
   '备份完成：{path}': 'Backup created: {path}',
-  '开始备份': 'Start backup',
+
   '把「{path}」打包到 {dir}（文件名 {name}-时间.tar.gz），默认排除 {list}。大目录可能需要几分钟。': 'Pack "{path}" into {dir} (file name {name}-time.tar.gz), excluding {list} by default. A large folder may take a few minutes.',
   '数据库备份': 'Database backup',
   '数据库·还原': 'Database · restore',
@@ -102,7 +102,7 @@ export const chat: Record<string, string> = {
   '我了解这会覆盖「{db}」现在的全部数据': 'I understand this overwrites all current data in "{db}"',
   '本轮结论': 'Summary of this turn',
   '展开全部': 'Show all',
-  '收起': 'Collapse',
+
   '已开始还原「{name}」→ {db}（未做还原前快照）': 'Restore started: "{name}" → {db} (no pre-restore snapshot)',
   '已开始还原「{name}」→ {db}；还原前快照 {snap}': 'Restore started: "{name}" → {db}; pre-restore snapshot {snap}',
   '{kind} 的备份可以点行尾的还原按钮直接还原（可勾选先备份当前库）。': '{kind} backups can be restored with the restore button at the end of the row (optionally back up the current database first).',
@@ -170,7 +170,7 @@ export const chat: Record<string, string> = {
   '当前终端已关闭': 'The current terminal is closed',
   '多行命令已填入撰写栏，检查后发送': 'Multi-line command put in the compose bar; review it, then send',
   'AI 正在这个终端执行命令': 'The AI is running a command in this terminal',
-  '终端已断开': 'Terminal disconnected',
+
   '插入失败：{error}': 'Insert failed: {error}',
   '发送到 {name} 失败：{error}': 'Failed to send to {name}: {error}',
   '代码': 'Code',
@@ -180,12 +180,12 @@ export const chat: Record<string, string> = {
   '在当前终端执行（多行逐行执行；危险命令 / 隐藏字符 / 生产终端先确认）': 'Run in the current terminal (multi-line runs line by line; dangerous commands / hidden characters / production terminals ask first)',
   '命令含隐藏字符': 'Command contains hidden characters',
   'dialog|危险命令确认': 'Confirm dangerous command',
-  '发送到生产终端': 'Send to production terminal',
+
   '确认执行': 'Run',
   '将在 {targets} 执行下面 {n} 行': 'About to run the {n} line(s) below in {targets}',
   '（生产终端）': ' (production)',
-  '，其中 {n} 行是危险命令（红色）': '; {n} of them are dangerous commands (red)',
-  '，含隐藏 / 控制字符（以 ⟨…⟩ 标出）': '; contains hidden / control characters (shown as ⟨…⟩)',
+
+
   '去除隐藏字符后执行': 'Strip hidden characters and run',
 
   // DiffView.tsx
@@ -195,11 +195,12 @@ export const chat: Record<string, string> = {
   '新增 {n} 行': '+{n} lines',
   '删除 {n} 行': '−{n} lines',
 
-  // KnowledgeItem.tsx
-  'AI 建议更新知识卡': 'AI suggests updating a knowledge card',
-  'AI 建议记入知识库': 'AI suggests adding to the knowledge base',
-  '已保存到知识库': 'Saved to the knowledge base',
-  '在知识库中查看': 'View in knowledge base',
+  // MemoryItem.tsx
+  'AI 建议更新记忆卡': 'AI suggests updating a memory card',
+  'AI 建议记入记忆库': 'AI suggests adding to the memory',
+  '已保存到记忆库': 'Saved to the memory',
+  '已保存': 'Saved',
+  '在记忆库中查看': 'View in memory',
   '已忽略': 'Ignored',
   '原卡片：{title}': 'Original card: {title}',
   '可先修改再保存': 'You can edit before saving',
@@ -241,7 +242,7 @@ export const chat: Record<string, string> = {
   '打开手册视图': 'Open runbook view',
   'AI 建议保存为快速命令': 'AI suggests saving as quick commands',
   'cmd|{n} 条': '{n} command(s)',
-  '命令组': 'Group',
+
   '命令组名': 'Group name',
   '删除这条': 'Remove this one',
   '说明（可选，悬停按钮时显示）': 'Description (optional, shown on button hover)',
@@ -260,7 +261,7 @@ export const chat: Record<string, string> = {
   '生成参数中…': 'Generating arguments…',
   'file|已修改': 'Modified',
   '，原文件已备份到 {path}（可在执行记录里还原）': '; original backed up to {path} (restore it from the execution log)',
-  '执行中…': 'Running…',
+
   '输出分成 {n} 组（相同输出同组）': 'Output falls into {n} groups (identical output grouped)',
   '各终端输出一致': 'All terminals produced the same output',
   '，{n} 台失败': ', {n} failed',
@@ -340,7 +341,7 @@ export const chat: Record<string, string> = {
   '执行回滚': 'Run rollback',
   // SafetyBits.tsx
   '复核模型：{model}': 'Review model: {model}',
-  '默认配置': 'Default profile',
+
   'AI 复核：{verdict}': 'AI review: {verdict}',
   'sudo|本主机': 'Allow sudo on this host for',
   '期间这台主机上需要 sudo / root 的命令不再逐条弹卡（危险命令、命中「总是询问」规则的仍会问）；到期自动收回，也可在会话授权抽屉里立即收回。只在内存里，重启应用即失效': 'During this time, commands needing sudo / root on this host no longer show a card each time (dangerous commands and "Always ask" rule matches still do). It is revoked automatically when it expires, or right away from the session permissions drawer. Kept in memory only; restarting the app clears it.',
@@ -419,7 +420,7 @@ export const chat: Record<string, string> = {
   '（{n} 行）': ' ({n} lines)',
   '已发送（此终端拿不到退出码）': "Sent (this terminal can't report exit codes)",
   '前面的步骤失败，未执行': 'Skipped because an earlier step failed',
-  '确认发送并执行': 'Send and run',
+
   '将发送到 {targets}{prod}，下面 {n} 行会逐行立即执行{danger}：': 'Will send to {targets}{prod}. The {n} line(s) below will run immediately, one by one{danger}:',
   // SaveRunbookDialog.tsx
   '保存为运维手册': 'Save as runbook',
@@ -549,7 +550,7 @@ export const chat: Record<string, string> = {
   '{hint}（粘贴的图片请先移除）': '{hint} (remove pasted images first)',
   // ChatPanel.tsx
   '报告': 'report',
-  '会话报告：{title}': 'Session report: {title}',
+
   '会话还是空的': 'The session is still empty',
   '本会话还在进行中，等这一轮结束再生成': 'This session is still running. Generate it after this turn ends',
   '分叉失败：{msg}': 'Fork failed: {msg}',
@@ -559,7 +560,7 @@ export const chat: Record<string, string> = {
   '没有活动终端：先在右侧打开一个终端（或点一下要用的那个）': 'No active terminal. Open one on the right first (or click the one you want to use)',
   '终端「{title}」已断开或正忙（AI 执行中），稍后再试': 'Terminal "{title}" is disconnected or busy (AI is running a command). Try again later',
   '读取会话「{title}」失败：{msg}': 'Failed to read session "{title}": {msg}',
-  'AI 会话未就绪': 'AI session not ready',
+
   '加载更早的消息（还有 {n} 次提问）': 'Load earlier messages ({n} earlier questions)',
   '回到底部': 'Back to bottom',
   '本条消息会让 AI 先加载这个 Skill 的完整指令': 'This message makes the AI load the full instructions of this skill first',
@@ -579,7 +580,11 @@ export const chat: Record<string, string> = {
   '较早的对话已经压不动了（摘要不会比原文更短）。建议新开一个会话，或从某条消息「从这里分叉」继续': 'The earlier part of this conversation cannot be shrunk any further (the summary would not be shorter than the original). Start a new session, or fork from one of the messages and continue there',
   '压缩时对话又变了（有新消息进来），再点一次压缩就好': 'The conversation changed while compacting (a new message came in) — just click compact again',
   '上下文还很短（约 {n}K tokens），不用压缩': 'The context is still short (about {n}K tokens) — no need to compact',
-  '上一会话摘要 + 最近几轮对话（分叉时带过来的上下文）': 'Previous session summary + most recent turns (context carried over by the fork)',
+  '上一会话摘要（分叉时带过来的上下文）': 'Previous session summary (context carried over by the fork)',
+  '上一会话摘要（接续时带过来的上下文）': 'Previous session summary (context carried over when continuing)',
+  '（接续）': '(continued)',
+  '上一会话最近几轮（会随下一条消息一起带给模型，这里只读）': 'Most recent turns of the previous session (sent to the model with your next message; read-only here)',
+  '你': 'You',
   '【上一会话的压缩摘要】': '[Summary of the previous session]',
   '展开': 'Expand',
   '会话已执行 {steps} 步、自动压缩 {n} 次，要开个新会话吗？': 'This session has run {steps} steps and auto-compacted {n} times. Start a new session?',
@@ -639,6 +644,8 @@ export const chat: Record<string, string> = {
   '待发送（本轮结束后依次发出，可撤回）': 'Queued (sent in order after this turn; can be withdrawn)',
   'AI 工作中…': 'AI is working…',
   '正在加载会话…': 'Loading session…',
+  '正在准备新会话…': 'Preparing a new session…',
+  '正在用模型总结上一会话，可能要等一会儿…': 'Summarizing the previous session with the model — this can take a while…',
   '读取对话历史并连接终端工具': 'Reading chat history and connecting terminal tools',
   '还没配置 API Key': 'No API key configured yet',
   '打开设置': 'Open settings',
@@ -715,7 +722,7 @@ export const chat: Record<string, string> = {
   '看不到进程（需要更高权限）': 'process not visible (needs higher privileges)',
   '帮我看看这个监听端口有没有风险。': 'Check whether this listening port is a risk.',
   '（下面是我从「监听端口」面板复制的信息，不是命令输出）': '(Below is what the listening-ports panel shows — not command output)',
-  '主机：{host}': 'Host: {host}',
+
   '协议：{proto}': 'Protocol: {proto}',
   '监听：{addr}:{port}（{kind}）': 'Listening on {addr}:{port} ({kind})',
   '进程：{proc}': 'Process: {proc}',
@@ -753,7 +760,7 @@ export const chat: Record<string, string> = {
   '这段 describe 说明了什么？有什么风险、下一步怎么查': 'What does this describe output tell me? Any risks, and what should I check next',
   '这些异常里先处理哪个？怎么修': 'Which of these problems should I fix first, and how',
   'K8s': 'K8s',
-  '体检': 'Health check',
+
   '主机体检报告': 'Host health report',
   '这份体检发现的问题（共 {n} 个）分别怎么排查：按严重程度给原因、验证方法和修复命令': 'How should I investigate the {n} problems found here? Give the cause, how to verify it, and the fix command, ordered by severity',
   '把整份体检报告（已脱敏）挂成上下文，问 AI 怎么处理': 'Attach the whole health report (redacted) as context and ask the AI what to do',
@@ -772,7 +779,7 @@ export const chat: Record<string, string> = {
   '这条 SQL 在做什么？执行计划说明慢在哪、怎么优化': 'What does this SQL do? What does the plan say about why it is slow, and how can I optimize it',
   '这段时间的日志有什么异常趋势？先看哪几条': 'Any abnormal trends in this time range? Which lines should I look at first',
   '这段脚本有哪些风险？能直接执行吗，需要改什么': 'What are the risks in this script? Can I run it as is, and what needs changing',
-  '脚本': 'Script',
+
   '声音提醒': 'Sound alerts',
   '任务完成 / 等你确认时各响一种音': 'One chime for completion, another when it needs you',
   '两种声音区分场景：任务跑完是两声上行；等你确认、等你审批计划、等你回答问题（授权卡 / 计划卡 / 提问卡）是三声短促。同一种音 2 秒内只响一次。关掉后完全静音，不影响系统通知。': 'Two different sounds: a rising two-note chime when a turn finishes; three short notes when it is waiting for you (approval card / plan card / question card). The same cue plays at most once every 2 seconds. Turning this off mutes the app entirely (system notifications still work).',
@@ -809,4 +816,27 @@ export const chat: Record<string, string> = {
   '这个模型没有这一档': 'This model has no such level',
   '切换会话（最近 {n} 条）': 'Switch session (last {n})',
   '让 AI 看用量（把当前范围的用量汇总挂到对话，不自动发送）': 'Let AI review usage (adds a context chip for the current range; not sent automatically)',
+  // 0.1.20：后台任务（start_background）在界面上露出的部分
+  'AI 工作中… · {n} 个任务在跑': 'AI is working… · {n} task(s) running',
+  '{n} 个后台任务在跑（完成会自动继续）': '{n} background task(s) running (it will continue automatically when they finish)',
+  '后台 {n}': 'Background {n}',
+  '后台': 'Background',
+  '停止这个任务（进程会被杀掉）': 'Stop this task (the process is really killed)',
+  '停止这个会话的后台任务（进程真的会被杀掉）': 'Stop this session\u2019s background tasks (the processes are really killed)',
+  // 常用任务参数：主机选择器
+  '选择主机…': 'Choose a host…',
+  '还没有保存的主机（可直接手填）': 'No saved hosts yet (you can type one)',
+  ' · 生产': ' · production',
+  // 输入框 `/` 唤起 Skill
+  '没有匹配的 Skill': 'No matching skill',
+  // 分叉：完整带到新会话
+  '从这里分叉：把当前对话完整带到新会话（含这一条），输入框留空': 'Fork from here: carry the whole conversation (including this message) into a new session and leave the composer empty',
+  // 分叉：进行中的进度（在旧会话里显示）
+  '正在分叉：{stage}': 'Forking: {stage}',
+  '读取历史…': 'reading history…',
+  '调用模型总结历史…': 'summarizing with the model…',
+  '期间消息操作已暂时禁用': 'message actions are disabled meanwhile',
+  // 会话流程图：导出图片
+  '导出为 SVG（矢量，文字可选中）': 'Export as SVG (vector; text stays selectable)',
+  '导出为 PNG（2 倍分辨率）': 'Export as PNG (2× resolution)',
 }

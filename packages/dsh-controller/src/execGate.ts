@@ -17,9 +17,17 @@ import {
 // 跑命令的工具（有 command 才判只读 / 危险）。check_background 没有 command，只是查日志，算读。
 const EXEC_TOOLS = new Set(['exec_in_terminal', 'exec_on_terminals', 'start_background', 'run_on_hosts'])
 const WRITE_TOOLS = new Set(['write_file', 'upload_file', 'set_app_setting', 'save_skill', 'save_db_connection', 'save_model_profile', 'save_mcp_server',
+  // 派子代理：子代理能跑命令、改文件，本身就该按写入授权；若判成 'read'，
+  // 「读操作永远放行」会让 auto / trust 档在派子代理时完全不问
+  'spawn_subagent',
+  // 往终端写一行：能回答命令的提问（甚至替用户确认一次删除 / 覆盖），按写操作对待——
+  // 否则 execKindOf 会给 'read'，而「读操作永远放行」会让 auto / trust 档直接放过
+  'send_terminal_input',
   // 跑 skill 自带脚本：脚本内容不可控（可能写文件 / 删东西），按写操作对待——
   // 否则 execKindOf 会给 'read'，而「读操作永远放行」会让 auto / trust 档直接放过
   'run_skill_script'])
+// 没有 path 参数、目标由工具自己限定的写工具（见 modeFacts 里 outsideWorkDir 的说明）
+const PATHLESS_WRITE = new Set(['run_skill_script', 'send_terminal_input', 'spawn_subagent'])
 // 以后新加的写类工具按前缀归属（现在还没有 move_file / delete_* 工具，先留住规则）
 const WRITE_PREFIXES = ['move_file', 'create_', 'delete_', 'remove_']
 
@@ -108,10 +116,11 @@ export function modeFacts(o: FactsInput): OpFacts {
     // 共享的删除判定只认已知的删除类工具；名字以 delete_ / remove_ 开头的一律当真删（保守）
     const byName = (o.name.startsWith('delete_') || o.name.startsWith('remove_')) && a.dryRun !== true
     facts.destructive = isDestructiveTool(o.name, a) || byName
-    // run_skill_script 没有 path 参数：它写的是 <skill>/scripts/ 里的脚本（目标由工具自己限定），
-    // 不存在「工作目录之外」这个概念。若按目录外处理，grantKeyOf 算不出 key（拿不到 directory），
-    // 于是 auto 档每次都问，而且已授权的调用会被 needsAskOutside 重新拦回询问。
-    facts.outsideWorkDir = o.name === 'run_skill_script' ? false : isOutsideWorkDir(a.path, o.workDir)
+    // 有的写工具没有 path 参数（run_skill_script 写的是 <skill>/scripts/ 里的脚本、
+    // send_terminal_input 写的是某个终端的输入缓冲，目标都由工具自己限定）：不存在「工作目录之外」。
+    // 若按目录外处理，grantKeyOf 算不出 key（拿不到 directory），于是 auto 档每次都问，
+    // 而且已授权的调用会被 needsAskOutside 重新拦回询问。
+    facts.outsideWorkDir = PATHLESS_WRITE.has(o.name) ? false : isOutsideWorkDir(a.path, o.workDir)
     if (facts.outsideWorkDir) facts.outsideDir = dirKeyOf(a.path)
   }
   const key = grantKeyOf(o.name, facts)

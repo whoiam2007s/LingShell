@@ -52,6 +52,8 @@ background:configure
 background:status
 batch:cancel
 batch:exec
+bg:cancel
+bg:list
 certs:check
 certs:delete
 certs:discover
@@ -249,13 +251,6 @@ keys:importPicked
 keys:list
 keys:pickImport
 keys:useForHost
-knowledge:consolidate
-knowledge:consolidateApply
-knowledge:consolidatePending
-knowledge:consolidatePendingClear
-knowledge:list
-knowledge:remove
-knowledge:save
 knownHosts:acceptChanged
 knownHosts:decide
 knownHosts:importOpenSsh
@@ -281,6 +276,13 @@ mcp:save
 mcp:setAutoApprove
 mcp:status
 mcp:test
+memory:consolidate
+memory:consolidateApply
+memory:consolidatePending
+memory:consolidatePendingClear
+memory:list
+memory:remove
+memory:save
 mobile:configure
 mobile:newPairCode
 mobile:revoke

@@ -1,23 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // i18n-ignore-file 全部是发给模型的提示词（界面语言提示见 buildLanguageSection）
 import { termEnvLabel, fleetHostLines, getLocale, type TermOs, type FleetHost } from '@lingshell/shared'
-// 我方系统提示词段：主机知识库/分级的用法 + propose_host_knowledge 的使用时机 + 用户全局自定义规则。
+// 我方系统提示词段：主机记忆库/分级的用法 + propose_host_memory 的使用时机 + 用户全局自定义规则。
 //
 // 走 dsh-system-prompt 的 section 注册：text 给成函数，每次组装（= 每次模型请求）现求值，
 // 所以设置里改了规则，正在进行的会话下一次请求就生效，不用重启会话。
 // order 50：在部署 persona(0) 之后、工具引导(100–199) 之前。
 
-export const PROMPT_SECTION = 'lingshell:host-knowledge'
+export const PROMPT_SECTION = 'lingshell:host-memory'
 const ORDER = 50
 
-const BASE = `## 主机知识库与规则
-- 用户为主机 / 分组 / 全局保存了知识卡（部署、日志位置、启停方式、已知问题等）。你打开或使用了某台主机的终端（或用 run_on_hosts 访问它）后，该主机 + 所属分组 + 全局的知识卡会出现在系统提示「主机知识库」段，动手前先读并遵守。list_terminals / create_terminal 返回的 knowledge 是该主机知识卡的标题，env 是分级（prod=生产，test=测试）。
+const BASE = `## 主机记忆库与规则
+- 用户为主机 / 分组 / 全局保存了记忆卡（部署、日志位置、启停方式、已知问题等）。你打开或使用了某台主机的终端（或用 run_on_hosts 访问它）后，该主机 + 所属分组 + 全局的记忆卡会出现在系统提示「主机记忆库」段，动手前先读并遵守。list_terminals / create_terminal 返回的 memory 是该主机记忆卡的标题，env 是分级（prod=生产，test=测试）。
 - 用户没有用 @ 指定主机 / 终端、问的是通用做法或知识（如「nginx 改了配置该 reload 还是重启」）时，直接用文字回答，不要自己挑一台 SSH 主机去执行命令；确实需要看某台主机时，先用文字问是哪台。
 - env=prod 的生产主机：每条写操作都需要用户逐条确认。优先只读排查；做变更前先说明影响和回滚办法，不做用户没要求的修改。
 - 先给回滚方案再执行：用 exec_in_terminal 做写操作（改配置文件、启停/重启服务、安装/升级/删除软件包、移动/删除/覆盖文件、改权限属主、改防火墙/定时任务/内核参数等）时，必须同时填 rollback（能撤销这次改动的命令，可多行）和 rollback_note（为什么这样回滚、注意事项）。改文件前先备份（如 cp -a 原文件 原文件.bak.时间戳），rollback 用备份还原；启停服务的 rollback 是反向操作。确实无法回滚的（删除了没有备份的数据、已发出的请求等），rollback 留空，在 rollback_note 里写明「不可回滚」及原因。只读查看命令不用填。生产主机上缺少回滚方案的写操作会被直接拒绝。
-- 排障中发现值得长期记住的事实（服务部署路径、配置/日志位置、启停/重启方式、踩过的坑）时，主动调用 propose_host_knowledge 提议保存成知识卡（用户在对话里确认后才保存）。一事一卡、标题简短；「主机知识库」里已有的不要重复新建，需要更正或补充时带 card_id 更新那张；只记稳定、可复用、非敏感的事实，绝不记录密码、密钥、token、连接串等机密。
+- 排障中发现值得长期记住的事实（服务部署路径、配置/日志位置、启停/重启方式、踩过的坑）时，主动调用 propose_host_memory 提议保存成记忆卡（用户在对话里确认后才保存）。一事一卡、标题简短；「主机记忆库」里已有的不要重复新建，需要更正或补充时带 card_id 更新那张；只记稳定、可复用、非敏感的事实，绝不记录密码、密钥、token、连接串等机密。
 - 用户说「把刚才这套检查存成快速命令」时调用 propose_quick_commands（命令组名 + 若干条 名称 / 命令 / 说明）；说「存成手册 / 运维手册」时调用 propose_runbook（标题、说明、按顺序的步骤、参数，会变的值提成参数）。两者都只出预览卡，用户确认后才保存，不要自己去改配置文件。
-- Skill 自带脚本一律用 run_skill_script 跑（只认 <skill>/scripts/ 下的文件，按 skill 授权一次、本会话内不用重复问）：它只接受「脚本 + 参数数组」，要管道 / 重定向 / 串联再用 exec_in_terminal（那样按普通命令授权）。不确定某个 skill 有哪些脚本时，先 read_file 看它的 SKILL.md 或列目录。`
+- Skill 自带脚本一律用 run_skill_script 跑（只认 <skill>/scripts/ 下的文件，按 skill 授权一次、本会话内不用重复问）：它只接受「脚本 + 参数数组」，要管道 / 重定向 / 串联再用 exec_in_terminal（那样按普通命令授权）。不确定某个 skill 有哪些脚本时，先 read_file 看它的 SKILL.md 或列目录。
+- 后台任务（start_background）：起好就返回，**不要守着它轮询**。想给它一个镜头就调一次 check_background（wait_seconds ≤ 60）；还没结束就结束这一轮，如实告诉用户「在后台跑，完成会自动通知」——任务结束时会有人把结果推给你。**任务没结束前不许说「已完成 / 已修复」**，也不要用 wait 反复空等（每次轮询都是一次完整的模型请求，历史里还会堆一堆无信息的记录）。`
 
 /**
  * dsh 的 renderPrompt 会把 `{{名字}}` 当变量严格插值，未知变量直接抛错、整轮失败，且没有转义语法。
@@ -78,11 +79,25 @@ export function installWorkDirSection(ctx: any, workDirFor: (agentId: string) =>
   return ctx.systemPrompt.section({ name: WORKDIR_SECTION, order: 901, interpolate: false, text: (c: any) => buildWorkDirSection(workDirFor(String(c?.agent?.id ?? '')) ?? '') })
 }
 
-// 主机知识库：按会话现求值——本会话用到的主机（见 DshController.touched）的知识卡，没用到主机时为空（段落消失）。
+// 当前日期：走**运行时上下文**（systemPrompt.context），不是系统提示正文。
+// 为什么：系统提示一改，它之后的整段会话历史缓存全部失效；运行时上下文是追加在末尾的快照，
+// 只多一条消息。而且同一天内容不变，引擎去重后一次会话通常只追加 1 条。
+// 只给日期不给时刻：精确时间让模型去目标主机上取（date / Get-Date），主机时钟比本机更符合被操作对象。
+export const TODAY_CONTEXT = 'lingshell:today'
+export function buildTodayContext(now: Date): string {
+  const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate()
+  const week = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()]
+  return `今天是 ${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}（星期${week}）。需要具体时刻请到目标主机上取（date / Get-Date），不要凭本机时钟推测。`   // i18n-ignore 发给模型的上下文
+}
+export function installTodayContext(ctx: any, now: () => Date = () => new Date()): () => void {
+  return ctx.systemPrompt.context({ name: TODAY_CONTEXT, order: 10, interpolate: false, text: () => buildTodayContext(now()) })
+}
+
+// 主机记忆库：按会话现求值——本会话用到的主机（见 DshController.touched）的记忆卡，没用到主机时为空（段落消失）。
 // 卡片是用户内容，可能含 `{{`，关掉变量插值原样输出。order 899：紧挨终端清单之前，只在用到新主机 / 改了卡片时变化
-export const KNOWLEDGE_SECTION = 'lingshell:knowledge'
-export function installKnowledgeSection(ctx: any, textFor: (agentId: string) => string): () => void {
-  return ctx.systemPrompt.section({ name: KNOWLEDGE_SECTION, order: 899, interpolate: false, text: (c: any) => textFor(String(c?.agent?.id ?? '')) })
+export const MEMORY_SECTION = 'lingshell:memory'
+export function installMemorySection(ctx: any, textFor: (agentId: string) => string): () => void {
+  return ctx.systemPrompt.section({ name: MEMORY_SECTION, order: 899, interpolate: false, text: (c: any) => textFor(String(c?.agent?.id ?? '')) })
 }
 
 // 跨主机提问：用法 + 可用主机 / 分组清单（只有名称 / id / 分组 / 环境，不含地址与凭据）。没有已保存主机时整段不出
@@ -108,7 +123,7 @@ export function buildLanguageSection(): string {
   if (getLocale() !== 'en') return ''
   return '## Interface language\n'
     + 'The user\'s interface language is English. Reply in English unless the user writes in another language. '
-    + 'Text shown in the app (explain, rollback_note, plan titles and purposes, ask_user questions and options, knowledge cards, quick commands, runbooks) should also be in English, '
+    + 'Text shown in the app (explain, rollback_note, plan titles and purposes, ask_user questions and options, memory cards, quick commands, runbooks) should also be in English, '
     + 'even where the instructions above ask for Chinese.'
 }
 export function installLanguageSection(ctx: any): () => void {

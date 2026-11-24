@@ -57,7 +57,7 @@ export function AiSecuritySettings() {
           <textarea value={sys.customRules} onChange={(e) => set({ customRules: e.target.value })} rows={4}
             placeholder={tr('如：回复用中文；改配置前先备份；重启服务前先问我')} className={TEXTAREA} />
         </Row>
-        <Row label={tr('本机备注')} hint={tr('同步成知识库里「本机」的一张卡')} tip={tr('AI 用到本地终端时会读到。写本机用途、常用目录、注意事项等，不要写密码等机密。分条记录请用知识库（左侧活动栏「知识库」）。')} wide>
+        <Row label={tr('本机备注')} hint={tr('同步成记忆库里「本机」的一张卡')} tip={tr('AI 用到本地终端时会读到。写本机用途、常用目录、注意事项等，不要写密码等机密。分条记录请用记忆库（左侧活动栏「记忆库」）。')} wide>
           <textarea value={sys.localNotes} onChange={(e) => set({ localNotes: e.target.value })} rows={3}
             placeholder={tr('本机用途、常用目录、注意事项…（不要写密码等机密）')} className={TEXTAREA} />
         </Row>

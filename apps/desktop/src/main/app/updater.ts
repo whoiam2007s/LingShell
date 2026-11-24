@@ -6,7 +6,7 @@ import electronUpdater, { type AppUpdater } from 'electron-updater'
 import { tr, type UpdateStatus } from '@lingshell/shared'
 import { log } from '../core/index.js'
 import { notify } from './notify.js'
-import { resolveUpdateSource, nextUpdateStatus } from './updateLogic.js'
+import { resolveUpdateSource, nextUpdateStatus, isDifferentialFallback } from './updateLogic.js'
 
 export interface Updater {
   status(): UpdateStatus
@@ -45,10 +45,19 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
   // 下载是用户主动点的（顶栏图标 / 设置页检查更新）→ 退出时装上是对的（用户点了就是想升级）。
   // 下载完成时也会弹窗问「现在重启 / 关闭后安装」，这里只是兜底：用户没在弹窗里选、直接关窗也能装上。
   au.autoInstallOnAppQuit = true
+  // 我们只发 NSIS 安装包，不用 web installer（分块安装包）；显式关掉，免得 electron-updater 每次启动都警告
+  au.disableWebInstaller = true
+  // 差分下载被服务器拒绝时 electron-updater 会自己回退整包下载（日志：Cannot download differentially…）。
+  // 这不是错误，但要让界面能解释「这次为什么慢」，所以在写日志时顺手记一笔。
+  const noteFallback = (m: string) => {
+    if (!isDifferentialFallback(m) || status.fullDownload) return
+    status = { ...status, fullDownload: true }
+    emit(status)
+  }
   au.logger = {
     info: (m: unknown) => log('info', 'main', 'updater', String(m)),
-    warn: (m: unknown) => log('warn', 'main', 'updater', String(m)),
-    error: (m: unknown) => log('error', 'main', 'updater', String(m)),
+    warn: (m: unknown) => { log('warn', 'main', 'updater', String(m)); noteFallback(String(m)) },
+    error: (m: unknown) => { log('error', 'main', 'updater', String(m)); noteFallback(String(m)) },
     debug: (m: string) => log('debug', 'main', 'updater', m),
   }
   if (src.override) {
@@ -64,8 +73,12 @@ export function initUpdater(win: BrowserWindow, emit: (s: UpdateStatus) => void)
         log('warn', 'main', 'updater', `临时更新配置写入失败：${String(e)}`)   // i18n-ignore 日志
       }
     }
-    au.setFeedURL({ provider: 'generic', url: src.url })
   }
+  // 关掉「多段 Range」请求：GitHub Release 的下载 CDN（release-assets.githubusercontent.com，Varnish）
+  // 对一次请求多个字节区间的 Range 直接回 501，electron-updater 探测失败就回退整包下载（132MB 全下）。
+  // generic provider 支持 useMultipleRangeRequest:false → 改成逐段单段 Range（服务器回 206），差分别真正生效。
+  // 这个字段不在 PublishConfiguration 类型里（只对 generic 分支的运行时选项生效），只能断言。
+  au.setFeedURL({ provider: 'generic', url: src.url, useMultipleRangeRequest: false } as unknown as Parameters<AppUpdater['setFeedURL']>[0])
   log('info', 'main', 'updater', `更新源 ${src.url}${src.override ? '（环境变量 LINGSHELL_UPDATE_URL）' : ''}，当前版本 ${app.getVersion()}`)   // i18n-ignore 日志
 
   status = { state: 'none' }

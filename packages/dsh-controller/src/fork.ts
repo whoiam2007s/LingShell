@@ -8,7 +8,7 @@
 //     以前一律取「之前」，导致从最新一条回复分叉会把刚刚那一轮整个切掉（用户反馈「丢了最新的一轮对话」）。
 // 找不到更早的 turn/end（第一条消息）→ 不带历史。
 // 一轮里补发的第二条消息（排队消息被并进同一轮）在 includeTurn=false 时按整轮切：同轮的前一条消息一并不带（少见，接受）。
-import { tr, tk } from '@lingshell/shared'
+import { tr, type ForkTurnPreview } from '@lingshell/shared'
 import { userMessageView, type DshEvent } from './relay.js'
 
 export interface ForkPoint {
@@ -44,11 +44,24 @@ export function forkPoint(events: readonly DshEvent[], messageId: string, opts?:
   return { boundary: cut >= 0 ? events[cut].seq : undefined, content, text: userMessageView(content).text, turns, calls }
 }
 
-/** 分叉会话的标题：「原标题（分叉）」，已是分叉的不再叠加（中英两种后缀都认：切换过界面语言的旧标题也不叠加） */
-const FORK_SUFFIX = tk('（分叉）')
+/**
+ * 分叉会话的标题：把历史上累加的后缀都剥掉（`（分叉）` / `（fork）` / ` · N`），
+ * 只留原会话名；编号由调用方按「原标题 · 2 / · 3」重排，不会越滚越长。
+ * 中英两种后缀都认（切过界面语言的旧标题也要能剥）。
+ */
+const FORK_MARKS = ['（分叉）', '（fork）', '(fork)']   // i18n-ignore 标题后缀，不是界面文案
+const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 export const forkTitle = (title: string): string => {
-  const suffix = tr(FORK_SUFFIX)
-  return title.endsWith(FORK_SUFFIX) || title.endsWith(suffix) ? title : `${title}${suffix}`
+  let s = title.trim()
+  const marks = [tr('（分叉）'), tr('（接续）'), ...FORK_MARKS].filter(Boolean)
+  for (let i = 0; i < 8; i++) {
+    const before = s
+    // 后缀后面可能还跟着计数（旧版会滚成「排查（分叉）5（分叉）」），所以连数字一起剥
+    for (const m of marks) s = s.replace(new RegExp(`${escRe(m)}\\s*\\d{0,3}$`, 'i'), '').trim()
+    s = s.replace(/\s·\s\d{1,3}$/, '').trim()   // 我们自己的分支序号「原标题 · 2」
+    if (s === before) break
+  }
+  return s || title.trim()
 }
 
 /**
@@ -173,6 +186,48 @@ export function digestSeed(
     }
   }
   return { seed, inherited: renumbered.length }
+}
+
+/**
+ * 分叉带过去的「最近几轮」：只给界面**只读展示**（用户问 + AI 答的纯文本）。
+ *
+ * 为什么不拷真实事件：长会话里事件带压缩检查点（surfaceOp: replace）和图片引用（image/offload），
+ * 切片后引用越界，dsh 直接拒收种子（`invalid seed event ... target seq N must be user/message or tool/result`），
+ * 新会话就成了空白；而且回放整段事件要十几秒。这里只取文字，任何会话都能带过去。
+ * 模型那边看到的是 contextDigest（详细摘要），不是这几个气泡。
+ */
+export function forkPreview(
+  events: readonly DshEvent[],
+  opts?: { turns?: number; maxChars?: number; maxEach?: number },
+): ForkTurnPreview[] {
+  const want = Math.max(1, opts?.turns ?? 3)
+  const maxChars = Math.max(200, opts?.maxChars ?? 8000)
+  const maxEach = Math.max(120, opts?.maxEach ?? 2000)
+  const clip = (s: string): string => (s.length > maxEach ? `${s.slice(0, maxEach)}…` : s)
+  const rows: ForkTurnPreview[] = []
+  for (const ev of events) {
+    if (ev.type === 'user/message' && ev.data?.source?.kind === 'user') {
+      const text = userMessageView(ev.data?.content).text.trim()
+      if (text) rows.push({ role: 'user', text: clip(text) })
+    } else if (ev.type === 'assistant/message') {
+      const blocks: unknown[] = Array.isArray(ev.data?.message?.content) ? ev.data.message.content : []
+      const text = blocks
+        .filter((b): b is { type: 'text'; text: string } =>
+          typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'text' && typeof (b as { text?: unknown }).text === 'string')
+        .map((b) => b.text)
+        .join('\n')
+        .trim()
+      if (text) rows.push({ role: 'ai', text: clip(text) })
+    }
+  }
+  // 一轮 = 一条用户消息及其后的助手回复；只留最后 want 轮
+  const starts: number[] = []
+  rows.forEach((r, i) => { if (r.role === 'user') starts.push(i) })
+  const tail = starts.length > want ? rows.slice(starts[starts.length - want]) : rows.slice()
+  // 总量超了就丢最早的一轮（至少留一轮）
+  let len = tail.reduce((n, r) => n + r.text.length, 0)
+  while (tail.length > 1 && len > maxChars) len -= tail.shift()!.text.length
+  return tail
 }
 
 /**

@@ -331,7 +331,7 @@ export const files: Record<string, string> = {
   '已替换 {n} 处（Ctrl+Z 可撤销）': 'Replaced {n} occurrences (Ctrl+Z to undo)',
   '第 {line} 行：{kind}（{code}）': 'Line {line}: {kind} ({code})',
   '已清理 {n} 处（保存前可在改动对比里核对，Ctrl+Z 可撤销）': 'Cleaned {n} spots (review them in the diff before saving; Ctrl+Z to undo)',
-  '（内容无变化）': '(No changes)',
+
   '以 root 身份读写（sudo）': 'Reading and writing as root (sudo)',
   '已保存（人工编辑不备份，不能一键还原）': 'Saved (manual edits are not backed up, so no one-click restore)',
   '查找 / 替换（Ctrl+F / Ctrl+H）\n跳到行：Ctrl+G': 'Find / replace (Ctrl+F / Ctrl+H)\nGo to line: Ctrl+G',

@@ -59,7 +59,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
   {
     id: 'chat', title: 'AI chat and permissions', icon: MessageSquare,
     blocks: [
-      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hovering shows the session name and its bound working directory, the "⋯" menu next to it holds "Rename", "Export session" and "Session flow"; drawer edges can be dragged to resize (up to half the window, double-click resets); unbound ones say "No working directory bound (using the default workspace)"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Knowledge base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
+      { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hovering shows the session name and its bound working directory, the "⋯" menu next to it holds "Rename", "Export session" and "Session flow"; drawer edges can be dragged to resize (up to half the window, double-click resets); unbound ones say "No working directory bound (using the default workspace)"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Memory base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
       { h: 'Folder / branch tags before the title', p: 'Two small tags sit in front of the session title: on the left the **bound working folder name** (e.g. `source`), on the right the **current Git branch** (e.g. `feat/0.1.16`). Both are capped at 100px with an ellipsis; hover for the full value. The folder tag is hidden when no folder is bound, the branch tag when it is not a Git repository.', tips: [
         'Click the folder tag: open that folder in the system file manager.',
         'Click the branch tag: open the Git panel.',
@@ -141,8 +141,8 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Each dropdown row shows only a one-line title; open it to see the full task, any blocked question and the summary.',
       ], tips: ['How many subagents run at once and the default timeout are both in "Settings → AI" (default 3 / 600s); over the limit it asks you to wait for one to finish. A subagent cannot spawn subagents, delete things or talk to you.', 'Subagents cannot see your chat: the main agent writes the terminal id into the task, and when no suitable terminal exists the subagent opens a new one itself.', 'Expand a subagent to see its execution trace: which tool it called, what it wrote, and when — no need to wait for it to finish to know what it is doing.'] },
       { h: 'Let the AI change settings (incl. UI theme)', p: 'Preference settings can be changed by the AI directly and apply immediately (theme and zoom need no restart): terminal font size / color scheme / keyword highlighting / scrollback, UI theme (including which dark and light themes follow the system), UI zoom, icon size, desktop notifications and sound, idle auto-lock, compaction ratio, suggested new-session steps, local notes and more.', tips: ['Provider, model name, API URL and global custom rules are read-only — changing them affects the running session or security policy, so edit those in the UI.', '"UI theme" and "terminal color scheme" are two different things: the former reskins the whole interface, the latter only the terminal area (which defaults to following the UI theme).', 'API keys and other secrets never pass through the AI; the model never writes them.'] },
-      { h: 'Knowledge base and tidying', p: 'The "Knowledge base" item on the left activity bar stores long-lived operational knowledge (deploy paths, log locations, how to start and stop, known issues) at four levels: this machine / host / group / global. The AI reads it automatically when it works on a matching host.', steps: [
-        '"Consolidate knowledge": the AI reads every card and proposes merges / rewrites / deletions; nothing changes until you tick items and click Apply. When the cards are already tidy it says "Nothing to tidy up".',
+      { h: 'Memory base and tidying', p: 'The "Memory base" item on the left activity bar stores long-lived operational memory (deploy paths, log locations, how to start and stop, known issues) at four levels: this machine / host / group / global. The AI reads it automatically when it works on a matching host.', steps: [
+        '"Consolidate memory": the AI reads every card and proposes merges / rewrites / deletions; nothing changes until you tick items and click Apply. When the cards are already tidy it says "Nothing to tidy up".',
         'Tidying waits at most 60 seconds and shows the elapsed seconds meanwhile; you can retry after a timeout or failure.',
         'When the AI learns something worth keeping it proposes a card first; it is only saved after you click Save.',
       ], tips: ['Card bodies are limited to 2000 characters; longer ones are rejected. The model reads them in full (when the total budget is exceeded some cards degrade to title-only lines).', 'In the background it tidies once when the library reaches 50 cards or 7 days have passed since the last run — it only produces a proposal and never changes data.'] },
@@ -154,7 +154,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         '"Add context" ▸ File / Folder: attach the path of a local file (images show as images) or folder to this message; see "Chat attachments and images".',
         '"Working directory": shows the currently bound directory; click to change it. Local terminals the AI opens in this session start here, and it\'s also the Explorer root; the default is your home directory. Terminals already running don\'t switch directories (each keeps its own current directory; SSH terminals use the remote directory). When the AI needs to work in this directory it opens a new local terminal; if you ask "which directory", it explains the working directory and each terminal\'s actual directory separately.',
         '"Skills" ▸: pick a skill for the AI to load first for this message; see "Skills".',
-        '"Common tasks" ▸: a submenu lists templates; picking one fills the input box (templates with `{{placeholders}}` show a form first) and doesn\'t send automatically. "Manage templates…" at the bottom opens "Settings → Task templates".',
+        '"Common tasks" ▸: a submenu lists templates; picking one fills the input box (templates with `{{placeholders}}` show a form first) and doesn\'t send automatically. Templates with a "host" parameter turn it into a picker listing saved hosts (production hosts are marked); you can still type one if none is saved. "Manage templates…" at the bottom opens "Settings → Task templates".',
         '"Runbooks" ▸: a submenu lists runbooks; pick one, fill in the parameters, check the target terminals, and click "Send to AI"; see "Runbooks".',
         'You can keep asking while the AI works: press Enter and the message is inserted into the chat after the current step and before the AI\'s next request (marked "Follow-up during this turn"), and the AI handles it within this turn instead of waiting until it\'s all done. Until it\'s delivered, you can "Withdraw" it from "Waiting to insert" at the bottom (the text goes back to the input box). Press Alt+Enter instead to queue it as a new turn after this one. Running commands aren\'t interrupted; to block a command awaiting permission, click "Deny". The red "Stop" ends the turn, and follow-ups not yet inserted are sent as a new turn once it stops.',
       ] },
@@ -168,6 +168,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Nodes show only an icon and a short name (`exec` / `write` / file name): hover for a summary, click for full details in the bottom bar.',
         'Edges carry no text, only colour: blue = prompt to tools, yellow = writes to outputs, grey dashed = files produced by a command, green = previous turn to the next prompt, purple = chip to the tool that used it.',
         'Long sessions draw only the latest 8 turns: one tick per turn at the top (click to jump) with "Earlier / Later" at both ends; a column folds into "Other +N" only past 40 nodes.',
+        'The "SVG" / "PNG" buttons at the top-right export the current group of turns as an image: SVG is vector with selectable text, PNG is rendered at 2x; the image is built from the node and edge data, not a screenshot.',
       ], tips: [
         'Chips are the attachments and references sent with the prompt (images, @-files, @-terminals); they hang in a vertical chain under the prompt.',
         'Click empty space to clear the selection; drag the canvas and scroll to zoom.',
@@ -857,7 +858,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     id: 'backup', title: 'Backup & diagnostics', icon: ArchiveRestore, settings: 'maintenance',
     blocks: [
       { h: 'Export config', steps: [
-        'In "Settings → Backup & diagnostics → Export config", check what to export: hosts (with credentials), trusted fingerprints, task templates, quick commands, scheduled inspections, app settings (Terminal / AI & security / General), model settings (with prices), alert bots, auto-replies, knowledge base, and secret vault.',
+        'In "Settings → Backup & diagnostics → Export config", check what to export: hosts (with credentials), trusted fingerprints, task templates, quick commands, scheduled inspections, app settings (Terminal / AI & security / General), model settings (with prices), alert bots, auto-replies, memory base, and secret vault.',
         'You can set an export password (at least 6 characters): only with one are credentials such as host passwords / private keys and API keys encrypted and exported; without one, no credentials are included.',
         'Click "Export config" to get a .lingshell-config.json file.',
       ], tips: [
@@ -950,7 +951,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Click "Save" to store it as `skills/<name>/SKILL.md`. Later, click "Edit" on the card to change it, or "Delete" (resource files are deleted too).',
       ] },
       { h: 'Use in a chat', steps: [
-        'Click "+" before the input box → "Skills" ▸ and pick a skill.',
+        'Type `/` in the input box to open the skill picker (arrow keys + Enter), or click "+" before the input box → "Skills" ▸ and pick one.',
         'A tag with its name appears above the input box (click × on the tag to remove it). Write what you want done and press Enter.',
         'The message starts with `/name`, so the AI gets the skill\'s full instructions before it starts. The tag applies to this message only.',
       ], tips: ['The list only shows skills that are enabled and allow manual invocation (skills with `user-invocable: false` in SKILL.md are hidden).'] },
@@ -990,28 +991,23 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     ],
   },
   {
-    id: 'messages', title: 'Message actions (copy / regenerate / edit and resend / fork)', icon: GitBranchPlus,
+    id: 'messages', title: 'Message actions (copy / regenerate / fork)', icon: GitBranchPlus,
     blocks: [
-      { p: 'Hover a message in the chat and a few small icon buttons appear next to the bubble (left of your messages, right of AI replies). While the current turn is still running, Edit, Fork and Regenerate are grayed out; use them after the turn ends (or after stopping it).' },
+      { p: 'Hover a message in the chat and a few small icon buttons appear next to the bubble (left of your messages, right of AI replies). While the current turn is still running, Fork and Regenerate are grayed out; use them after the turn ends (or after stopping it).' },
       { h: 'Copy', p: 'Both your messages and AI replies have "Copy". For AI replies it copies the original Markdown (code blocks and tables intact), so formatting survives when you paste into notes.' },
       { h: 'Regenerate', p: 'The last AI reply of the last turn has "Regenerate" (circular arrows): it reruns the turn with the same message (including its attachments). The turn\'s original reply and execution steps are replaced; earlier conversation is unchanged and it stays the same session.', tips: [
         'The replaced turn is no longer shown but is still stored locally, and Session history search can still find its content.',
         'Regenerating makes the AI run the turn\'s commands again (with permission as usual). Changes already made in the terminal are not undone.',
       ] },
-      { h: 'Edit and resend', steps: [
-        'Click "Edit" (pencil) on one of your messages. The bubble turns into an input box; after editing, press Enter or click "Send" (Shift+Enter for a new line, Esc or "Cancel" to discard).',
-        'The app forks a new session "Original title (fork)" from just before this message, switches to it and sends the edited text: the new session contains only the conversation before this message plus the edited turn.',
-        'The original session is kept in full; switch back any time from "Session history" on the left.',
-      ] },
-      { h: 'Fork from here', p: '"Fork from here" (branch icon) forks a new session "Original title (fork)" at this message and switches to it.', steps: [
-        'The new session opens with the history before the fork point: "latest compaction summary + the last 2 turns" are rebuilt as the session\'s real history — message bubbles and tool cards included, copyable and clickable, still there after a restart, and you don\'t have to retype anything.',
-        'The summary is attached to the first message of that history and shown as a "previous session summary" chip; click it to read the summary instead of having a wall of text in the bubble.',
-        'This message\'s text is put into the input box so you can edit it before sending, or ask a different way.',
-        'Forking from an AI reply includes that whole turn (question + reply) in the history carried over.',
+      { h: 'Fork from here', p: '"Fork from here" (branch icon) starts a new session at this message and switches to it; the title is "Original title · 2" (then · 3, · 4 for the same session).', steps: [
+        'The new session does not copy the original events: the AI first summarizes the history before the fork point with the current session model, then attaches that summary plus the last 3 turns verbatim as context to your first message in the new session (sent once).',
+        'The top of the chat shows a collapsible summary card and the last 3 turns as read-only bubbles; their text is also sent to the model with the first message, not just shown to you.',
+        'The input box is not pre-filled: the message at the fork point and its reply are already covered by the summary / recent turns, so just write your new question. Forking from an AI reply includes that whole turn (question + reply).',
       ], tips: [
+        'Summarizing takes a moment; the original session shows "Summarizing the previous session" meanwhile. On failure it falls back to a locally generated brief digest.',
+        'The summary is generated at fork time and does not follow later changes in the original session; fork again for a fresh one.',
         'The forked session keeps the original session\'s working directory, model profile and thinking depth. Terminal permissions aren\'t inherited; like a new session, they\'re granted again as needed.',
-        'If the slice contains compaction checkpoints or other special events, the app safely falls back to "summary only": the new session shows an expandable read-only history block at the top instead.',
-        'Forking the same session repeatedly adds a number to the title ("… (fork) 2", "… (fork) 3") so they are easy to tell apart.',
+        'Existing "(fork)" suffixes and trailing numbers are stripped first, then "· N" is appended, so repeated forks do not pile up.',
       ] },
       { h: 'Code blocks in AI replies', p: 'Hover a code block in an AI reply and buttons appear in the top-right corner. Every code block has "Copy code"; command code blocks (bash / sh / shell / zsh / console / PowerShell / cmd, or no language) also have "Insert into terminal" and "Run in current terminal". The "current terminal" is the one showing in the terminal area on the right (the focused pane when split). With no terminal open, these two buttons are grayed out.', steps: [
         'Insert into terminal (cursor icon): a single-line command is written after the current terminal\'s prompt without pressing Enter, and keyboard focus moves to the terminal so you can check or edit it and press Enter yourself. A multi-line command opens the "Compose bar" at the bottom of the terminal and fills it in (without running); review it and send from the Compose bar.',
@@ -1091,24 +1087,24 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     ],
   },
   {
-    id: 'knowledge', title: 'Knowledge base (host / group / global cards)', icon: BookMarked,
+    id: 'memory', title: 'Memory base (host / group / global cards)', icon: BookMarked,
     blocks: [
-      { p: 'Record long-lived knowledge about your servers as knowledge cards: how things are deployed, where logs are, how to start / stop, known issues and so on. Each card has a title, content (Markdown) and a category (Deployment / Log locations / Start & stop / Known issues / Other), and is attached to a host, a group or "Global". Once the AI uses a host, it automatically reads the cards for that host, its group and global (newest first, about 4,000 characters total; beyond that only titles are listed), so it gets to know your servers better over time.' },
-      { h: 'Open the knowledge base', steps: [
-        'Click the "Knowledge base" icon (bookmark) in the left activity bar, or search "Open knowledge base" in the command palette.',
-        'In the Host panel ("Hosts" in the title bar), right-click a host → "Knowledge base" to see that host\'s cards directly; right-click a group header → "Group knowledge base".',
+      { p: 'Record long-lived memory about your servers as memory cards: how things are deployed, where logs are, how to start / stop, known issues and so on. Each card has a title, content (Markdown) and a category (Deployment / Log locations / Start & stop / Known issues / Other), and is attached to a host, a group or "Global". Once the AI uses a host, it automatically reads the cards for that host, its group and global (newest first, about 4,000 characters total; beyond that only titles are listed), so it gets to know your servers better over time.' },
+      { h: 'Open the memory base', steps: [
+        'Click the "Memory base" icon (bookmark) in the left activity bar, or search "Open memory base" in the command palette.',
+        'In the Host panel ("Hosts" in the title bar), right-click a host → "Memory base" to see that host\'s cards directly; right-click a group header → "Group memory base".',
         'Filter by "All / Global / Group / Host" on the left; the search box at the top searches titles and content in full text (separate multiple words with spaces); the dropdown on the right filters by category.',
       ] },
       { h: 'Add / edit / delete manually', steps: [
         'Click "New card" in the top-right corner: choose where it belongs (Global / a group / a host) and a category, fill in the title and content, and click "Save".',
         'The pencil on the right of a card is "Edit"; the trash can is "Delete" (asks once more).',
       ] },
-      { h: 'AI-suggested cards', p: 'When troubleshooting turns up something worth remembering long term (where a service is deployed, log locations, how to start / stop it, pitfalls you hit), the AI shows an "AI suggests saving to knowledge base" card in the chat (or "AI suggests updating a knowledge card" when correcting an existing card; expand it to see the original). You can edit the title, category and content first. Nothing is written until you click "Save"; "Ignore" writes nothing. After saving, click "View in knowledge base".', tips: [
-        'The AI only suggests stable, non-sensitive facts. Don\'t put passwords, keys or tokens in the knowledge base.',
-        'Knowledge cards are your own notes and can go stale. When the AI finds they don\'t match what\'s actually on the host, it trusts the host and suggests an update.',
+      { h: 'AI-suggested cards', p: 'When troubleshooting turns up something worth remembering long term (where a service is deployed, log locations, how to start / stop it, pitfalls you hit), the AI shows an "AI suggests saving to memory base" card in the chat (or "AI suggests updating a memory card" when correcting an existing card; expand it to see the original). You can edit the title, category and content first. Nothing is written until you click "Save"; "Ignore" writes nothing. The card collapses after you save or ignore; click the title row to expand it again. After saving, click "View in memory base".', tips: [
+        'The AI only suggests stable, non-sensitive facts. Don\'t put passwords, keys or tokens in the memory base.',
+        'Memory cards are your own notes and can go stale. When the AI finds they don\'t match what\'s actually on the host, it trusts the host and suggests an update.',
       ] },
       { h: 'Old "Host notes"', p: 'The old "Notes" in the host form and "Local notes" in "Settings → AI & security" have been migrated automatically into a "Host notes" card for that host (or this machine), with nothing lost. Editing the notes later updates this card too.' },
-      { h: 'Backup', p: 'Check "Knowledge base" in "Settings → Backup & diagnostics → Export config" to include it in the config export. On import you can merge or overwrite (per card). Host cards are matched to the imported hosts; host cards whose host can\'t be found locally are dropped, so import them together with "Hosts".' },
+      { h: 'Backup', p: 'Check "Memory base" in "Settings → Backup & diagnostics → Export config" to include it in the config export. On import you can merge or overwrite (per card). Host cards are matched to the imported hosts; host cards whose host can\'t be found locally are dropped, so import them together with "Hosts".' },
     ],
   },
   {
@@ -1146,7 +1142,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       { h: 'Issues', p: 'CPU or memory over 90%, the fullest mount point over 85%, failed systemd services, or an active watchdog alert on the host: if any applies, the card gets a red border, moves to the front, and lists the reasons below.' },
       { h: 'Card actions', steps: [
         'Click a card to open that host\'s terminal (or switch to it if already open); the dashboard closes.',
-        '"…" menu in the card\'s top-right corner: "Host health check", "Services", "Ports" (switch to / connect that host\'s terminal and open the matching drawer), "Knowledge base", "Ask across hosts" (prefilled with the host\'s group), "Ask AI" (sends the host\'s current status, issues, alerts and health check results to the AI as a message).',
+        '"…" menu in the card\'s top-right corner: "Host health check", "Services", "Ports" (switch to / connect that host\'s terminal and open the matching drawer), "Memory base", "Ask across hosts" (prefilled with the host\'s group), "Ask AI" (sends the host\'s current status, issues, alerts and health check results to the AI as a message).',
       ] },
     ],
   },
@@ -1414,9 +1410,10 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Turn on "Double-tap Alt to summon" under Settings → General → "Window" (saved automatically); it takes effect when "On" appears beside it.',
         'When the app is in the background (minimized or covered), quickly tap Alt twice: the window shows and the cursor goes to the current terminal. Double-tap again while it\'s in front to minimize.',
       ], tips: ['Taps must be within 0.4 s of each other, each held no more than 0.3 s. Alt combined with other keys (Alt+Tab, Ctrl+Alt+…) doesn\'t trigger it.', 'If the app is locked, summoning shows the lock screen; unlock first.', 'Windows only for now.'] },
-      { h: 'AI background jobs stay out of your terminal', p: 'When the AI runs long commands as background jobs (builds, installs, `python3 -m http.server` and the like), starting them, checking status and reading logs all use a separate channel: a separate channel on the same SSH connection, or a separate bash process locally. Wrapper commands like `mkdir -p /tmp/lingshell-jobs …` and polling loops no longer show up in your terminal, and the terminal stays free. Jobs start in that terminal\'s current directory; tool cards in the chat still show commands and results.', tips: [
+      { h: 'AI background jobs stay out of your terminal', p: 'When the AI runs long commands as background jobs (builds, installs, `python3 -m http.server` and the like), starting them, checking status and reading logs all use a separate channel: a separate channel on the same SSH connection, or a separate bash process locally. Wrapper commands like `mkdir -p /tmp/lingshell-jobs …` and polling loops no longer show up in your terminal, and the terminal stays free. When a job finishes it wakes the session automatically to continue, so the AI does not have to keep polling. Jobs start in that terminal\'s current directory; tool cards in the chat still show commands and results.', tips: [
         'Variables you exported or virtual environments you activated in the terminal aren\'t inherited; the AI writes them into the command itself.',
         'WSL terminals have no separate channel, so jobs still run in the terminal, but wrapper commands and output are hidden.',
+        'The status line shows "N background jobs running (will continue automatically)"; the subagent panel lists only running jobs and each has its own stop button, while the main "Stop" also stops this session\'s background jobs.',
       ] },
     ],
   },
@@ -1533,7 +1530,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
       ] },
       { h: 'AI review (a second model checks high-risk commands)', steps: [
         'In "Settings → AI & security → AI review", turn on "Enable AI review", pick a "Review model" (you can choose a cheaper model profile) and the "Review scope": write commands on production hosts / all dangerous commands / all write commands.',
-        'Commands in scope go to the review model before the permission card appears (with the host, recent session context, and that host\'s rules and knowledge card titles; file writes also include the diff, redacted by "Redact before sending to AI" with vault values swapped for placeholders). The card shows "AI review: risk · reason".',
+        'Commands in scope go to the review model before the permission card appears (with the host, recent session context, and that host\'s rules and memory card titles; file writes also include the diff, redacted by "Redact before sending to AI" with vault values swapped for placeholders). The card shows "AI review: risk · reason".',
         'When the review says "Suggest blocking", the command is denied by default and the reason is passed to the AI (the execution log records "Blocked by AI review"). Set "When review suggests blocking" to "Warn only, don\'t block" to show the card as usual.',
       ], tips: [
         'Review has a 15-second limit. On timeout or error the card shows "AI review: not reviewed" and appears as usual.',
@@ -1800,9 +1797,9 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     id: 'layout', title: 'Layout: activity bars, drawers and the input box', icon: AppWindow,
     blocks: [
       { h: 'Two activity bars', p: 'There are two vertical icon bars, split by what they manage rather than where they sit:', steps: [
-        '**Left (next to the chat)**: Explorer (chat working directory), History, Session permissions / execution log, Knowledge base | Table viewer, Git, Database, API debugger, Deploy review. The last five relate to "this project / this machine" but don\'t depend on which terminal is active, so they live here.',
+        '**Left (next to the chat)**: Explorer (chat working directory), History, Session permissions / execution log, Memory base | Table viewer, Git, Database, API debugger, Deploy review. The last five relate to "this project / this machine" but don\'t depend on which terminal is active, so they live here.',
         '**Right (in the terminal area)**: Explorer (current terminal directory), Dual-pane files, Command history | Host health check, Processes, Services, Containers, Listening ports, More views (disk / cron / firewall / service topology / Kubernetes) | Alerts, Logs, Session log, Instant replay | Connectivity probe, Batch run, File compare, Runbooks | the transfer queue at the bottom.',
-        'Drawers slide out from the bar that owns them: the left bar\'s drawers come out at the chat panel\'s right edge (Git, Database, History, Permissions, Knowledge base), the right bar\'s drawers cover the terminal area\'s right edge. Click the same icon again to close.',
+        'Drawers slide out from the bar that owns them: the left bar\'s drawers come out at the chat panel\'s right edge (Git, Database, History, Permissions, Memory base), the right bar\'s drawers cover the terminal area\'s right edge. Click the same icon again to close.',
         'Every icon has a tooltip saying what it does and what it needs (e.g. "Linux SSH only", "local terminal shows local Docker"); hover first when unsure.',
       ], tips: [
         'Icons never wrap or collapse; when the window is short they simply continue downwards.',

@@ -9,7 +9,7 @@ import { openRunbookView } from '../../runbooks/index.js'
 import { updateQuickCommands } from '../../terminals/index.js'
 
 // AI 提议的快速命令 / 运维手册（工具 propose_quick_commands / propose_runbook）：按工具入参出可编辑预览卡，
-// 「保存」才写入（同知识卡）。结果按工具调用 id 记在模块里：切会话会卸载卡片，回来不该又变成待处理
+// 「保存」才写入（同记忆卡）。结果按工具调用 id 记在模块里：切会话会卸载卡片，回来不该又变成待处理
 const done = new Map<string, { state: 'saved' | 'ignored'; id?: string }>()
 const errText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 const BTN1 = 'flex items-center gap-1 rounded-md border border-transparent bg-[var(--color-accent)] px-3 py-1 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:opacity-40'

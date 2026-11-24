@@ -26,9 +26,9 @@ LingShell is an open-source AI terminal and operations workbench: an AI chat on 
 
 - Local terminals (Git Bash / PowerShell / cmd / WSL on Windows; native shells on macOS / Linux) and SSH terminals.
 - AI chat, tool calls, approval cards, four execution modes, execution plans, rollback plans, audit trail, per-turn file changes and undo.
-- Fork from any message (the new session starts with the compaction summary plus the last 2 turns as real history), continue in a new session from a summary, thinking depth in four levels (off / low / medium / high, per profile and per session; each level sends the value verified against that vendor's docs, unverified levels stay greyed out).
+- Fork from any message (the new session starts with a model-generated summary of the previous session plus the last 3 turns verbatim; titles auto-number as "Original · 2"), continue in a new session from a summary, thinking depth in four levels (off / low / medium / high, per profile and per session; each level sends the value verified against that vendor's docs, unverified levels stay greyed out).
 - Split panes, broadcast input, pinned/colored/renamed tabs, tmux session persistence, command success/failure marks, history, completion, quick commands, composer, keyword highlighting and alerts.
-- Attachments/images, Skills, MCP, knowledge base, cross-host questions, host dashboard.
+- Attachments/images, Skills, MCP, memory base, cross-host questions, host dashboard.
 
 ### Files and developer tools
 
@@ -49,7 +49,7 @@ Each area has its own page with usage details and caveats (Chinese and English):
 
 | Topic | What's inside |
 | --- | --- |
-| [AI chat & execution](guide/en/ai-chat.md) | Approval cards, execution plans, rollback, run log, context & attachments, Skills / MCP / knowledge |
+| [AI chat & execution](guide/en/ai-chat.md) | Approval cards, execution plans, rollback, run log, context & attachments, Skills / MCP / memory base |
 | [Terminal](guide/en/terminal.md) | Local & SSH, split & broadcast, search, quick commands, compose bar, highlight alerts, command marks, instant replay |
 | [Hosts & connections](guide/en/hosts.md) | Hosts & groups, imports, keys & credentials, jump / proxy / ProxyCommand, port forwarding, OTP, reconnect |
 | [Files & transfer](guide/en/files.md) | Explorer, SFTP upload/download, resume, dual pane, sudo mode, external editor, directory sync |

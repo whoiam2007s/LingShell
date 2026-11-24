@@ -247,7 +247,7 @@ export const terminals: Record<string, string> = {
   '已向 {pid} 发送 {sig}': 'Sent {sig} to {pid}',
   '向进程 {pid} 发送 {sig} 失败：{msg}': 'Failed to send {sig} to process {pid}: {msg}',
   '进程 · 本机': 'Processes · This computer',
-  '进程': 'Processes',
+
   '切回列表视图': 'Back to list view',
   '树形视图（按父进程）': 'Tree view (by parent process)',
   '继续自动刷新': 'Resume auto-refresh',
@@ -286,7 +286,7 @@ export const terminals: Record<string, string> = {
   '（未加载）': '(not loaded)',
   '（单元文件不存在）': '(unit file not found)',
   '开机自启：{state}': 'Start at boot: {state}',
-  '自启': 'Autostart',
+
   '开机自启 {state}': 'Start at boot {state}',
   '重新读取 status': 'Reload status',
   '读取 systemctl status…': 'Reading systemctl status…',
@@ -477,7 +477,7 @@ export const terminals: Record<string, string> = {
   '广播开着时发给广播组': 'Sent to the broadcast group when broadcast is on',
   '只在：{scope}': 'Only on: {scope}',
   '广播': 'Broadcast',
-  '当前系统不支持': 'Not supported on this system',
+
   '添加快速命令': 'Add quick command',
   '删除命令组「{name}」及其 {n} 条命令？': 'Delete command group "{name}" and its {n} commands?',
   '发送到：{list}': 'Send to: {list}',
@@ -618,7 +618,7 @@ export const terminals: Record<string, string> = {
   '留空 = 未分组': 'Empty = ungrouped',
   '生产：AI 在这台主机上的每条写操作都需你确认，危险命令强制确认': 'Production: every AI write operation on this host needs your confirmation, and dangerous commands always require it',
   '备注': 'Notes',
-  '会同步成知识库里该主机的一张「主机备注」卡，AI 用到这台主机时读到。写用途、服务管理方式、日志路径、注意事项等，不要写密码等机密；分条记录请用知识库（主机面板右键 → 知识库）': 'Synced as a "Host notes" card for this host in the knowledge base, read by the AI when it uses this host. Describe its purpose, how services are managed, log paths, caveats etc. Don\'t include passwords or other secrets. For separate entries, use the knowledge base (right-click in the host panel → Knowledge base)',
+  '会同步成记忆库里该主机的一张「主机备注」卡，AI 用到这台主机时读到。写用途、服务管理方式、日志路径、注意事项等，不要写密码等机密；分条记录请用记忆库（主机面板右键 → 记忆库）': 'Synced as a "Host notes" card for this host in the memory, read by the AI when it uses this host. Describe its purpose, how services are managed, log paths, caveats etc. Don\'t include passwords or other secrets. For separate entries, use the memory (right-click in the host panel → Memory)',
   '用途、服务管理方式、日志路径、注意事项…': 'Purpose, service management, log paths, caveats…',
   'AI 用到这台主机后注入系统提示、必须遵守的规则（如「只读排查，改配置前先问我」）。叠加顺序：全局 → 分组 → 主机 → 工作目录，越具体的优先；分组规则在主机面板里右键分组设置。不要写密码等机密': 'Rules injected into the system prompt once the AI uses this host, which it must follow (e.g. "Read-only troubleshooting; ask me before changing config"). Layering: global → group → host → working directory, more specific wins; group rules are set by right-clicking a group in the host panel. Don\'t include passwords or other secrets',
   '例：这台是主库，禁止重启 mysqld；变更前先 mysqldump': 'e.g. This is the primary database: never restart mysqld; run mysqldump before changes',
@@ -674,7 +674,7 @@ export const terminals: Record<string, string> = {
   '未检测到 agent': 'No agent detected',
   '启动 OpenSSH Authentication Agent 服务 / Pageant，或设置 SSH_AUTH_SOCK 环境变量后点「重新检测」': 'Start the OpenSSH Authentication Agent service / Pageant, or set the SSH_AUTH_SOCK environment variable, then click "Detect again"',
   '代理地址': 'Proxy address',
-  '请填代理地址和 1–65535 的端口': 'Enter a proxy address and a port from 1–65535',
+
   // TerminalView.tsx
   '拖入的不是本地文件': 'What you dropped isn\'t a local file',
   '{title}：{msg}': '{title}: {msg}',
@@ -690,7 +690,7 @@ export const terminals: Record<string, string> = {
   '加入 / 移出广播组': 'Add to / remove from broadcast group',
   '录像中': 'Recording',
   '新建终端：本地 / SSH / 已保存主机{key}': 'New terminal: local / SSH / saved host{key}',
-  '新建 SSH 连接…': 'New SSH connection…',
+
   '已保存主机（点击直接连）': 'Saved hosts (click to connect)',
   '停止录制当前终端': 'Stop recording current terminal',
   '开始录制当前终端': 'Record current terminal',
@@ -715,7 +715,7 @@ export const terminals: Record<string, string> = {
   '容器视图（Docker）': 'Containers (Docker)',
   '监听端口（本机：谁占了端口）': 'Listening ports (this computer: who is using a port)',
   '监听端口（转发到本机）': 'Listening ports (forward locally)',
-  '双栏文件管理\n左边本机、右边这台服务器，拖过去就上传 / 下载': 'Dual-pane files\nThis computer on the left, this server on the right; drag across to upload / download',
+
   'Git（改动 / 分支 / 历史 / 储藏 / 同步）': 'Git (changes / branches / history / stash / sync)',
   '告警（{n} 条未读）': 'Alerts ({n} unread)',
   '告警：关键字告警命中的行': 'Alerts: lines matching keyword alerts',

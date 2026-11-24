@@ -12,7 +12,7 @@ export function AiReviewSection({ sys, set }: { sys: SystemSettings; set: (p: Pa
   const r: AiReviewSettings = { ...DEFAULT_AI_REVIEW, ...(sys.aiReview ?? {}) }
   const put = (p: Partial<AiReviewSettings>) => set({ aiReview: { ...r, ...p } })
   return (
-    <Section title={tr('AI 复核')} tip={trx('参考 VS Code 的辅助授权与运维的双人复核：命中范围的命令在弹授权卡前，先把命令、主机、会话最近的上下文、该主机的规则与知识卡标题交给复核模型， 它回答「安全 / 风险 / 建议拦截」和一句理由，显示在授权卡上（「AI 复核：风险 · 理由」），也记进执行记录。写文件的改动还会把 diff 一并发给复核模型。 这些内容先按「发给 AI 前脱敏」处理，密钥保险箱里的值会换成占位符，复核模型同样看不到明文。{br}复核限时 15 秒，超时或出错按「未复核」照常弹卡。 「安全」不会自动放行（生产主机始终要你确认）。', { br: <br /> })}>
+    <Section title={tr('AI 复核')} tip={trx('参考 VS Code 的辅助授权与运维的双人复核：命中范围的命令在弹授权卡前，先把命令、主机、会话最近的上下文、该主机的规则与记忆卡标题交给复核模型， 它回答「安全 / 风险 / 建议拦截」和一句理由，显示在授权卡上（「AI 复核：风险 · 理由」），也记进执行记录。写文件的改动还会把 diff 一并发给复核模型。 这些内容先按「发给 AI 前脱敏」处理，密钥保险箱里的值会换成占位符，复核模型同样看不到明文。{br}复核限时 15 秒，超时或出错按「未复核」照常弹卡。 「安全」不会自动放行（生产主机始终要你确认）。', { br: <br /> })}>
       <Row label={tr('启用 AI 复核')} hint={tr('默认关；每次复核会多一次模型调用')}>
         <Switch checked={r.enabled} onCheckedChange={(v) => put({ enabled: v })} />
       </Row>

@@ -9,7 +9,7 @@ import { useHostPrefs, patchHostPrefs, recordRecentHost } from './hostPrefs.js'
 import { useHostProbe } from './useHostProbe.js'
 import { WorkspaceList } from './WorkspaceList.js'
 import { BookMarked, Network } from 'lucide-react'
-import { openKnowledge } from '../knowledge/index.js'
+import { openMemory } from '../memory/index.js'
 import { quoteToChat } from '../../lib/quoteToChat.js'
 import { trx } from '../../lib/trx.js'
 import { ScrollText } from 'lucide-react'
@@ -175,7 +175,7 @@ export function HostPanel({ initialTab = 'hosts', saveWorkspace, onClose, onEdit
               <div className="my-1 h-px bg-[var(--color-border-subtle)]" />
               <button onClick={() => { setMenu(null); onClose(); onEditHosts() }} className={ITEM}><Pencil className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('编辑')}</button>
               <button onClick={() => duplicate(menu.host)} className={ITEM}><Copy className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('复制主机')}</button>
-              <button onClick={() => { setMenu(null); onClose(); openKnowledge({ scope: 'host', target: menu.host.id }) }} className={ITEM}><BookMarked className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('知识库')}</button>
+              <button onClick={() => { setMenu(null); onClose(); openMemory({ scope: 'host', target: menu.host.id }) }} className={ITEM}><BookMarked className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('记忆库')}</button>
               <button onClick={() => { setMenu(null); setRules({ kind: 'host', hostId: menu.host.id, label: menu.host.label }) }} className={ITEM}><ScrollText className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('规则…')}</button>
             </>
           ) : (
@@ -183,7 +183,7 @@ export function HostPanel({ initialTab = 'hosts', saveWorkspace, onClose, onEdit
               <button onClick={() => openGroup(menu.hosts)} className={ITEM}><Layers className="h-3.5 w-3.5 text-[var(--color-accent)]" />{tr('整组打开（{n} 台）', { n: menu.hosts.length })}</button>
               {menu.group !== '未分组' /* i18n-ignore 同上 */ && <>
                 <button onClick={() => { setMenu(null); onClose(); quoteToChat(tr('在 {group} 所有主机上检查：', { group: menu.group })) }} className={ITEM}><Network className="h-3.5 w-3.5 text-[var(--color-accent)]" />{tr('跨主机提问')}</button>
-                <button onClick={() => { setMenu(null); onClose(); openKnowledge({ scope: 'group', target: menu.group }) }} className={ITEM}><BookMarked className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('分组知识库')}</button>
+                <button onClick={() => { setMenu(null); onClose(); openMemory({ scope: 'group', target: menu.group }) }} className={ITEM}><BookMarked className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('分组记忆库')}</button>
                 <button onClick={() => { setMenu(null); setRules({ kind: 'group', group: menu.group }) }} className={ITEM}><ScrollText className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />{tr('分组规则…')}</button>
               </>}
             </>

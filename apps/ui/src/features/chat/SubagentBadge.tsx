@@ -4,7 +4,7 @@
 // 一行只显示「标题」（模型给的一句话，或 task 首句截 40 字）：完整 prompt 收进详情，
 // 下拉与悬停提示都出在按钮正下方居中（与对话区 hover 模型的 tooltip 一致），不再用原生 title。
 import { useEffect, useRef, useState } from 'react'
-import { Bot, ChevronDown, Loader2, Check, X, MessageCircleQuestion } from 'lucide-react'
+import { Bot, ChevronDown, Loader2, Check, X, MessageCircleQuestion, Terminal } from 'lucide-react'
 import { fmtMs, tr, type SubagentView } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
@@ -25,22 +25,42 @@ function StatusIcon({ status }: { status: SubagentView['status'] }) {
 /** 浮层统一位置：按钮正下方居中（窗口再窄也不出屏） */
 const BELOW_CENTER = 'absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2'
 
+/** 记录里的时间是 ISO（UTC）：必须转成本地时区再显示，否则东八区会差 8 小时 */
+const clockOf = (iso: string): string => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(11, 19)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
 export function SubagentBadge({ sessionId, live = false }: { sessionId: string; live?: boolean }) {
   const [list, setList] = useState<SubagentView[]>([])
+  // 后台任务（start_background 起的）：只显示还在跑的，跑完自动消失（不持久化）
+  const [bg, setBg] = useState<{ jobId: string; command: string; startedAt: number }[]>([])
   const [open, setOpen] = useState(false)
   const [hover, setHover] = useState(false)
   const [detail, setDetail] = useState<string | undefined>()
   const rootRef = useRef<HTMLDivElement>(null)
 
-  // live（回合进行中）时轮询几次：子代理跑起来/结束时状态要跟着变
+  // live（回合进行中）时轮询密一点：子代理跑起来/结束时状态要跟着变。
+  // 常驻轮询（忙 3 秒 / 闲 8 秒）：只是读内存表，配合下面的内容比对不会引起重渲染；
+  // 之前只在「有东西在显示」时轮询，短回合起完任务就结束的话永远补不上（手测 A4/A5 就是如此）
+  const active = live || list.length > 0 || bg.length > 0
   useEffect(() => {
     let alive = true
-    const load = () => client.subagent.list(sessionId).then((l: SubagentView[]) => { if (alive) setList(l) }).catch(() => {})
-    void load()
-    if (!live) return () => { alive = false }
-    const t = setInterval(load, 3000)
+    // 内容没变就保持原引用，别让轮询把界面每几秒重渲一次
+    type Row = { jobId?: string; id?: string; status?: string; steps?: { at?: string }[]; elapsedMs?: number }
+    // 步骤内容变了也要刷新：文本合并后 steps.length 不变，只按长度比对会一直显示旧的那一行
+    const keyOf = (x: Row) => `${x.jobId ?? x.id ?? ''}|${x.status ?? ''}|${x.steps?.length ?? 0}|${x.steps?.at(-1)?.at ?? ''}|${x.elapsedMs ?? ''}`
+    const same = (a: Row[], b: Row[]) => a.length === b.length && a.every((x, i) => keyOf(x) === keyOf(b[i]))
+    const load = () => {
+      void client.subagent.list(sessionId).then((l: SubagentView[]) => { if (alive) setList((cur) => (same(cur, l) ? cur : l)) }).catch(() => {})
+      void client.bg.list(sessionId).then((l) => { if (alive) setBg((cur) => (same(cur, l) ? cur : l)) }).catch(() => {})
+    }
+    load()
+    const t = setInterval(load, active ? 3000 : 8000)
     return () => { alive = false; clearInterval(t) }
-  }, [sessionId, live])
+  }, [sessionId, live, active])
 
   // 点外面关掉
   useEffect(() => {
@@ -50,7 +70,7 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
     return () => window.removeEventListener('mousedown', onDown)
   }, [open])
 
-  if (!list.length) return null
+  if (!list.length && !bg.length) return null
   const running = list.filter((x) => x.status === 'running').length
   const tip = tr('这个会话派过的子代理（{n} 个）', { n: list.length })
 
@@ -59,11 +79,23 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
       <button onClick={() => setOpen((o) => !o)} aria-label={tip} aria-expanded={open}
         onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
         onFocus={() => setHover(true)} onBlur={() => setHover(false)}
-        className={cn('flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] transition-colors hover:bg-[var(--color-bg-hover)]',
-          running ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]')}>
-        {running ? <Loader2 className="h-3 w-3 animate-spin-slow" /> : <Bot className="h-3 w-3" />}
-        <span>{tr('子代理 {n}', { n: list.length })}</span>
-        <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+        className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] transition-colors hover:bg-[var(--color-bg-hover)]">
+        {/* 图标跟名字同一个主题色；正在跑的在名字后面挂一个转圈（一眼看出还在动） */}
+        {!!list.length && (
+          <span data-badge-subagent className={cn('flex items-center gap-1', running ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]')}>
+            <Bot className="h-3 w-3" />
+            {tr('子代理 {n}', { n: list.length })}
+            {running > 0 && <Loader2 className="h-3 w-3 animate-spin-slow" />}
+          </span>
+        )}
+        {!!bg.length && (
+          <span data-badge-bg className="flex items-center gap-1 text-[var(--color-accent)]">
+            <Terminal className="h-3 w-3" />
+            {tr('后台 {n}', { n: bg.length })}
+            <Loader2 className="h-3 w-3 animate-spin-slow" />
+          </span>
+        )}
+        <ChevronDown className={cn('h-3 w-3 text-[var(--color-text-muted)] transition-transform', open && 'rotate-180')} />
       </button>
       {hover && !open && (
         <div data-subagent-tip className={`${BELOW_CENTER} pointer-events-none whitespace-nowrap rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] shadow-lg`}>
@@ -72,6 +104,20 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
       )}
       {open && (
         <div className={`${BELOW_CENTER} max-h-[min(420px,60vh)] w-[min(500px,calc(100vw-24px))] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-xl`}>
+          {/* 后台任务：只列还在跑的，跑完自动从列表消失（内存态，不落盘） */}
+          {bg.map((t) => (
+            <div key={t.jobId} data-bg-task className="flex items-center gap-2 rounded-md border-b border-[var(--color-border-subtle)] px-2 py-1.5 last:border-b-0">
+              <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-warn)]"><Loader2 className="h-3 w-3 animate-spin-slow" />{tr('后台')}</span>
+              <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]" title={t.command}>{t.command}</span>
+              <span className="shrink-0 font-mono text-[10.5px] text-[var(--color-text-muted)]">{fmtMs(Date.now() - t.startedAt)}</span>
+              <button onClick={() => {
+                // 先从本地列表摘掉这一行（否则要等下一轮轮询才消失，最多 3 秒，看着像没反应），再让主进程杀进程
+                setBg((cur) => cur.filter((x) => x.jobId !== t.jobId))
+                void client.bg.cancel(sessionId, t.jobId).catch(() => {})
+              }} title={tr('停止这个任务（进程会被杀掉）')}
+                className="shrink-0 rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"><X className="h-3 w-3" /></button>
+            </div>
+          ))}
           {list.map((x) => (
             <div key={x.subagentId} className="rounded-md border-b border-[var(--color-border-subtle)] px-2 py-1.5 last:border-b-0">
               <button onClick={() => setDetail(detail === x.subagentId ? undefined : x.subagentId)}
@@ -101,13 +147,13 @@ export function SubagentBadge({ sessionId, live = false }: { sessionId: string; 
                   )}
                   {!!x.steps?.length && (
                     <div className="rounded border border-[var(--color-border-subtle)] px-2 py-1 text-[11px]">
-                      <div className="text-[var(--color-text-muted)]">{tr('执行轨迹（{n} 步）：', { n: x.steps.length })}</div>
+                      <div className="text-[var(--color-text-muted)]">{x.steps.length >= 50 ? tr('执行轨迹（最近 {n} 步）：', { n: 50 }) : tr('执行轨迹（{n} 步）：', { n: x.steps.length })}</div>
                       <div className="mt-0.5 max-h-40 space-y-0.5 overflow-auto">
                         {x.steps.map((s, i) => (
                           <div key={i} className="flex items-start gap-1">
                             <span className="shrink-0 text-[var(--color-text-muted)]">{s.kind === 'tool' ? '⚙' : '✎'}</span>
                             <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]" title={s.label}>{s.label}</span>
-                            <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{s.at.slice(11, 19)}</span>
+                            <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{clockOf(s.at)}</span>
                           </div>
                         ))}
                       </div>

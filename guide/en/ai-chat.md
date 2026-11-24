@@ -13,7 +13,7 @@ The left pane is the AI chat, the right pane is your terminals and hosts. The AI
 - **Run log**: time, host, command, exit code, duration and whether it was rejected — all recorded and exportable.
 - **Context management**: long sessions are compacted automatically; click the usage chip in the chat header to compact on demand; you can also reset or fork a session.
 - **Attachments**: drag in screenshots, paste images or attach log files.
-- **Skills / MCP / knowledge**: turn team conventions into Skills, wire external tools via MCP, save host facts as knowledge cards — the AI pulls them in when relevant.
+- **Skills / MCP / memory**: turn team conventions into Skills, wire external tools via MCP, save host facts as memory cards — the AI pulls them in when relevant.
 - **`@` references**: point the AI at a specific terminal, host or past session.
 - **`!` prefix**: a line starting with `!` runs directly in the current terminal, bypassing the AI.
 - **Ask cards**: when the AI needs a decision it shows options (single or multi select) and continues after you choose.

@@ -47,7 +47,7 @@ export interface ConvItem {
     deadlineMs: number
     result?: 'allow' | 'deny' | 'timeout' | 'cancelled'
   }
-  knowledge?: Omit<import('@lingshell/shared').KnowledgeProposalEvent, 'type' | 'sessionId'>   // AI 提议的知识卡（propose_host_knowledge）
+  memory?: Omit<import('@lingshell/shared').MemoryProposalEvent, 'type' | 'sessionId'>   // AI 提议的记忆卡（propose_host_memory）
   ask?: Omit<import('@lingshell/shared').AskRequestEvent, 'type' | 'sessionId'> & { result?: 'answered' | 'skipped' | 'timeout'; answer?: import('@lingshell/shared').AskAnswer }   // AI 提问卡（ask_user）
   attachments?: MsgAttachment[]   // user_message 带的附件（气泡下方显示）
   msgId?: string               // user_message 的服务端 id（回显 / 回放后才有；编辑重发、分叉、重新生成按它定位）
@@ -58,7 +58,7 @@ export interface ConvItem {
 export interface OutgoingAttachments { send: TurnAttachment[]; view: MsgAttachment[] }
 
 export type SessionPhase =
-  | { phase: 'starting' }
+  | { phase: 'starting'; note?: string }   // note：等模型总结上一会话时的说明（普通建会话没有）
   | { phase: 'ready' }
   | { phase: 'no-key' }
   | { phase: 'error'; message: string }
@@ -358,10 +358,10 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
             plan: { approvalId: e.approvalId, title: e.title, steps: e.steps, deadlineMs: e.deadlineMs },
           })
           break
-        case 'knowledge:proposal':
+        case 'memory:proposal':
           upsert(e.sessionId, {
             itemId: e.proposalId, kind: 'host_note', status: 'completed', text: '',
-            knowledge: { proposalId: e.proposalId, draft: e.draft, targetLabel: e.targetLabel, previous: e.previous },
+            memory: { proposalId: e.proposalId, draft: e.draft, targetLabel: e.targetLabel, previous: e.previous },
           })
           break
         case 'ask:request': {
@@ -513,11 +513,13 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
   }
 
   // 重新生成最后一轮：主进程把本会话换成切点前的分叉并重发那条消息（见 DshController.forkSession），
-  // 切点前的历史随即回放，这里先清空本地对话再收；busy 先置上，由新一轮的 turn 事件接管
+  // 切点前的历史随即回放；busy 先置上，由新一轮的 turn 事件接管。
+  // 界面只摘掉「这条消息及之后」，前面的历史留在屏幕上——回放按同样的 itemId 原地覆盖，
+  // 不会出现「整屏先清空、停一下、再一点点长回来」的闪空。
   const regenerate = (msgId: string) => {
     const sid = activeSessionId
     if (!sid || busyRef.current.has(sid)) return
-    clearSession(sid)
+    trimTurn(sid, msgId)
     busyRef.current.add(sid)
     rerender()
     client.agent.forkSession(sid, msgId, 'regenerate').catch((err) => {
@@ -558,6 +560,23 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
     turnIdRef.current.delete(sid)
     timesRef.current.delete(sid)
     stopReqRef.current.delete(sid)
+    rerender()
+  }
+
+  /**
+   * 只摘掉「这条用户消息及其之后」的内容（重新生成用：切点在这条消息之前）。
+   * 前面留着的原因：主进程回放种子时 itemId 是稳定的（用户消息用 data.id，助手块用 turn:step:index），
+   * upsert 会原地覆盖，不会重复；全清反而会先空屏一两秒再看着历史一点点长回来。
+   */
+  const trimTurn = (sid: string, msgId: string) => {
+    const items = [...itemsOf(sid)]
+    const at = items.findIndex((it) => it.kind === 'user_message' && (it.msgId === msgId || it.itemId === msgId))
+    if (at < 0) { clearSession(sid); return }   // 找不到（不在当前窗口 / id 已变）：退回整屏清空
+    const next = items.slice(0, at)
+    itemsMap.current.set(sid, next)
+    const idx = new Map<string, number>()
+    next.forEach((it, i) => idx.set(it.itemId, i))
+    indexMap.current.set(sid, idx)
     rerender()
   }
 

@@ -26,6 +26,7 @@ import { SessionProvider, useSession } from './lib/sessionContext.js'
 import { useResizable } from './lib/useResizable.js'
 import { isAction, loadKeybindings } from './lib/keybindings.js'
 import { closePalette, paletteCtx, paletteSend } from './lib/paletteBus.js'
+import { emitPanelOpened, onPanelOpened } from './lib/panelBus.js'
 import { onSendToChat, onSendToNewChat, takeNewChatSend, sendToChat } from './lib/sendToChat.js'
 import type { SessionPhase } from './features/chat/index.js'
 import { tr, type SessionMeta, type TerminalInfo } from '@lingshell/shared'
@@ -34,8 +35,8 @@ import { noteSessionEvent } from './lib/sessionStates.js'
 import { loadTermPrefs } from './lib/termPrefs.js'
 import { logger } from './lib/logger.js'
 import { BookMarked } from 'lucide-react'
-import { KnowledgeModal } from './features/knowledge/index.js'
-import { openKnowledge } from './features/knowledge/index.js'
+import { MemoryModal } from './features/memory/index.js'
+import { openMemory } from './features/memory/index.js'
 import { DashboardModal } from './features/dashboard/index.js'
 import { closeDashboard, openDashboard } from './features/dashboard/index.js'
 import { RunbookViewModal } from './features/runbooks/index.js'
@@ -85,6 +86,10 @@ function AppShell() {
   const [delTarget, setDelTarget] = useState<{ id: string; title: string } | null>(null)
   const [historyQuery, setHistoryQuery] = useState<string>()   // 命令面板「搜索历史会话内容」带进历史抽屉的词
   useEffect(() => { if (drawer !== 'history') setHistoryQuery(undefined) }, [drawer])
+  // 左右抽屉互斥：左侧打开时广播一声（TerminalView 收到会把右侧收起）；
+  // 右侧打开时这里把自己关掉。只广播「打开」，避免两边互相触发。
+  useEffect(() => { if (drawer) emitPanelOpened('left') }, [drawer])
+  useEffect(() => onPanelOpened((side) => { if (side === 'right') setDrawer(null) }), [])
   const [uploadPaths, setUploadPaths] = useState<string[] | null>(null)   // 会话侧资源管理器（本地 FS）要上传的项，同终端本地侧逻辑
 
   const setActiveId = (id: string) => { setActiveIdState(id); setCtxSession(id) }
@@ -93,6 +98,10 @@ function AppShell() {
   const activeWorkDir = sessions.find((s) => s.id === activeId)?.workDir
   // 分叉 / 接续带过来的上下文（上一会话摘要 + 最近几轮）：新会话里显示成只读历史块，不让它看着像空会话
   const activeSeed = sessions.find((s) => s.id === activeId)?.contextDigest
+  // 分叉带过来的「最近几轮」：只在界面按只读气泡显示（模型看到的是上面那份摘要）
+  const activeForkPreview = sessions.find((s) => s.id === activeId)?.forkPreview
+  // 这份摘要是分叉来的还是接续来的（顶部卡片文案不同）
+  const activeDigestFrom = sessions.find((s) => s.id === activeId)?.digestFrom
   // 资源管理器：这个对话上次停在的目录，没有就用工作目录（每次打开 / 切对话时取一次）
   const explorerRoot = useMemo(() => (drawer === 'explorer' ? getLastDir(`session:${activeId}`) ?? activeWorkDir : undefined), [drawer, activeId, activeWorkDir])
 
@@ -190,9 +199,11 @@ function AppShell() {
   // 接续：用旧会话的摘要开一个新会话（旧会话原样留在会话列表里，工作目录 / 模型配置照搬）
   const continueSession = async (fromId: string, title: string): Promise<{ id: string; digest: string } | undefined> => {
     const seq = ++selectSeq.current
-    setPhase({ phase: 'starting' })
+    // 主进程要先让模型把上一会话总结成摘要（最长 5 分钟），这段时间给个准确提示，
+    // 别让人以为是在「读取对话历史」。
+    setPhase({ phase: 'starting', note: tr('正在用模型总结上一会话，可能要等一会儿…') })
     try {
-      // 新会话不播种子：带过去的上下文（摘要 + 最近几轮）由界面作为第一条消息的附件发出去，token 可控
+      // 摘要 + 最近几轮记在新会话 meta 上，由主进程在你第一条消息时挂上（界面不再自己拼）
       const r = await client.agent.continueSession(fromId, { title })
       const s = r.session
       await refreshSessions()
@@ -383,7 +394,7 @@ function AppShell() {
           {activeId && <ActBtn title={tr('资源管理器（会话工作目录）')} active={drawer === 'explorer'} onClick={() => setDrawer((d) => (d === 'explorer' ? null : 'explorer'))}><FolderTree className="h-4 w-4" /></ActBtn>}
           <ActBtn title={tr('历史会话')} active={drawer === 'history'} onClick={() => setDrawer((d) => (d === 'history' ? null : 'history'))}><History className="h-4 w-4" /></ActBtn>
           {activeId && <ActBtn title={tr('会话授权 / 执行记录')} active={drawer === 'auth'} onClick={() => setDrawer((d) => (d === 'auth' ? null : 'auth'))}><ShieldCheck className="h-4 w-4" /></ActBtn>}
-          <ActBtn title={tr('知识库（主机 / 分组 / 全局知识卡）')} onClick={() => openKnowledge()}><BookMarked className="h-4 w-4" /></ActBtn>
+          <ActBtn title={tr('记忆库（主机 / 分组 / 全局记忆卡）')} onClick={() => openMemory()}><BookMarked className="h-4 w-4" /></ActBtn>
           <ActSep />
           {/* 工具：跟「这个项目 / 这台机器」有关，但不依赖终端区停在哪，所以从终端那条活动栏挪到这边 */}
           <ActBtn title={tr('表格查看：选一个文件（CSV / TSV / JSON）按表格看')} onClick={() => void pickAndOpenTable().catch((e) => log.warn('table pick failed', e))}><Table2 className="h-4 w-4" /></ActBtn>
@@ -399,6 +410,8 @@ function AppShell() {
             sessionPhase={phase}
             sessionTitle={activeTitle}
             seedDigest={activeSeed}
+            forkPreview={activeForkPreview}
+            seedDigestFrom={activeDigestFrom}
             workDir={activeWorkDir}
             onOpenGit={() => void openGit()}
             onPickWorkDir={pickWorkDir}
@@ -488,7 +501,7 @@ function AppShell() {
         <DirSyncDialog />
         {/* 用量统计弹窗：openUsage() 打开；点会话名 → 收起设置并切到该会话 */}
         <UsageModal onOpenSession={(sid) => { setShowSettings(false); void selectSession(sid) }} />
-        <KnowledgeModal />
+        <MemoryModal />
         <DashboardModal />
         <RunbookViewModal />
         <ComplianceBatchModal />

@@ -10,8 +10,8 @@ import { BUILTIN_TEMPLATES } from './TemplateStore.js'
 import { hostPortOf } from './KnownHostsStore.js'
 import { readJson, writeJson } from './jsonFile.js'
 import { AutoReplyStore, DEFAULT_AUTO_REPLIES, type PersistedAutoReply } from './AutoReplyStore.js'
-import { KnowledgeStore, legacyCardId } from './KnowledgeStore.js'
-import { normalizeKnowledge, type KnowledgeCard } from '@lingshell/shared'
+import { MemoryStore, legacyCardId } from './MemoryStore.js'
+import { normalizeMemory, type MemoryCard } from '@lingshell/shared'
 import { SecretStore, type PersistedSecret } from './SecretStore.js'
 
 // 配置导出/导入：单个 JSON 文件。只读写 hosts(+credentials，随主机节)/known_hosts/templates/quick-commands/schedules/settings/webhooks/auto-replies 八个文件，
@@ -59,7 +59,7 @@ export interface ConfigBundle {
     model?: ModelSection
     webhooks?: BundleWebhook[]
     autoReplies?: BundleAutoReply[]
-    knowledge?: KnowledgeCard[]
+    memory?: MemoryCard[]
     secrets?: BundleSecret[]
   }
   secrets?: SecretBox
@@ -243,7 +243,7 @@ export function exportConfig(dir: string, enc: Encryptor, opts: ConfigExportOpts
       return v ? r : { ...r, responseOmitted: true as const }
     }) ?? []
   }
-  if (want.has('knowledge')) sections.knowledge = new KnowledgeStore(dir).list()
+  if (want.has('memory')) sections.memory = new MemoryStore(dir).list()
   if (want.has('secrets')) {
     const vs = new SecretStore(dir, enc)
     sections.secrets = vs.read().map(({ valueCipher, valuePlain, ...rest }) => {
@@ -266,7 +266,7 @@ export function parseBundle(text: string): ConfigBundle {
   if (!b || b.format !== BUNDLE_FORMAT || !b.sections || typeof b.sections !== 'object' || Array.isArray(b.sections)) throw new Error(`invalid_file: ${tr('不是灵壳配置文件')}`)
   if (typeof b.version !== 'number' || b.version > BUNDLE_VERSION) throw new Error(`unsupported_version: ${tr('配置文件版本 {version}，本程序只支持到 {max}，请升级后再导入', { version: String(b.version), max: BUNDLE_VERSION })}`)
   // 节的基本形状先查掉：坏文件在预览 / 导入里逐条读字段时不该抛出自定义错误以外的异常
-  const arr = ['hosts', 'credentials', 'knownHosts', 'templates', 'quickCommands', 'schedules', 'webhooks', 'autoReplies', 'knowledge', 'secrets'] as const
+  const arr = ['hosts', 'credentials', 'knownHosts', 'templates', 'quickCommands', 'schedules', 'webhooks', 'autoReplies', 'memory', 'secrets'] as const
   for (const k of arr) if (b.sections[k] !== undefined && !Array.isArray(b.sections[k])) throw new Error(`invalid_file: ${tr('配置文件的「{section}」节格式不对', { section: k })}`)
   for (const k of ['system', 'model'] as const) {
     const v = b.sections[k]
@@ -278,7 +278,7 @@ export function parseBundle(text: string): ConfigBundle {
 export function previewBundle(b: ConfigBundle): ConfigPreview {
   const s = b.sections
   const counts: Partial<Record<ConfigSection, number>> = {}
-  for (const k of ['hosts', 'knownHosts', 'templates', 'quickCommands', 'schedules', 'webhooks', 'autoReplies', 'knowledge', 'secrets'] as const) if (Array.isArray(s[k])) counts[k] = s[k]!.length
+  for (const k of ['hosts', 'knownHosts', 'templates', 'quickCommands', 'schedules', 'webhooks', 'autoReplies', 'memory', 'secrets'] as const) if (Array.isArray(s[k])) counts[k] = s[k]!.length
   if (s.system) counts.system = 1
   if (s.model) counts.model = s.model.profiles?.length || 1
   // 带 ProxyCommand 的主机：导入后连接时会在本机执行这些命令，预览里逐条列出让用户确认
@@ -526,28 +526,28 @@ export function importConfig(dir: string, enc: Encryptor, bundle: ConfigBundle, 
     report.schedules = { ...r, droppedTargets }
     writes.push([f.schedules, cur])
   }
-  // 知识库：按卡片 id 合并；主机卡的主机按 idMap 重映射（本机 / 'local' 照留），找不到的丢弃；不合法的卡跳过
-  if (opts.knowledge && s.knowledge) {
-    const ks = new KnowledgeStore(dir)
+  // 记忆库：按卡片 id 合并；主机卡的主机按 idMap 重映射（本机 / 'local' 照留），找不到的丢弃；不合法的卡跳过
+  if (opts.memory && s.memory) {
+    const ks = new MemoryStore(dir)
     const cur = ks.list()
     const localIds = new Set(hosts.map((h) => h.id))
     const r = { added: 0, updated: 0, skipped: 0, dropped: 0 }
-    for (const x of s.knowledge) {
+    for (const x of s.memory) {
       let target: string | undefined = x?.target
       if (x?.scope === 'host') {
         target = target === 'local' ? target : idMap.get(target) ?? (localIds.has(target) ? target : undefined)
         if (!target) { r.dropped++; continue }
       }
-      let card: KnowledgeCard
+      let card: MemoryCard
       try {
         const id = String(x.id ?? '').startsWith('kb_note_') && target ? legacyCardId(target) : String(x.id || `kb_${randomUUID().slice(0, 8)}`)
-        card = { ...normalizeKnowledge({ ...x, target: target ?? '' }), id, updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : now.toISOString() } as KnowledgeCard
+        card = { ...normalizeMemory({ ...x, target: target ?? '' }), id, updatedAt: typeof x.updatedAt === 'string' ? x.updatedAt : now.toISOString() } as MemoryCard
       } catch { r.skipped++; continue }
       const i = cur.findIndex((c) => c.id === card.id)
-      if (i >= 0 && opts.knowledge === 'merge') { r.skipped++; continue }
+      if (i >= 0 && opts.memory === 'merge') { r.skipped++; continue }
       if (i >= 0) { cur[i] = card; r.updated++ } else { cur.push(card); r.added++ }
     }
-    report.knowledge = r
+    report.memory = r
     writes.push([ks.file, { ...(readJson<object>(ks.file) ?? {}), cards: cur }])
   }
 

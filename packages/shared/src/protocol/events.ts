@@ -32,7 +32,7 @@ export type ItemKind =
   | 'todo'              // 任务清单（checklist_write）
   | 'auth_request'      // Phase 3：授权请求卡片
   | 'plan_request'      // 计划审批卡片（propose_plan）
-  | 'host_note'         // AI 提议沉淀到知识库的卡片（propose_host_knowledge）
+  | 'host_note'         // AI 提议沉淀到记忆库的卡片（propose_host_memory）
   | 'system_notice'     // 系统提示（不属于任何一轮，如「历史无法恢复，已开新的空会话」）
   | 'ask_request'       // AI 提问卡（ask_user）：让用户在几个方案里拍板
 
@@ -172,19 +172,19 @@ export type AuthResolvedEvent = {
   result: 'allow' | 'deny' | 'timeout'
 }
 
-// AI 调 propose_host_knowledge：不直接写，UI 在时间线出卡片（可改），用户点「保存」才经 knowledge.save 写入
-export type KnowledgeProposalEvent = {
-  type: 'knowledge:proposal'
+// AI 调 propose_host_memory：不直接写，UI 在时间线出卡片（可改），用户点「保存」才经 memory.save 写入
+export type MemoryProposalEvent = {
+  type: 'memory:proposal'
   proposalId: string
   sessionId: string
-  draft: import('../ai/index.js').KnowledgeInput   // id 有值 = 更新已有卡片
+  draft: import('../ai/index.js').MemoryInput   // id 有值 = 更新已有卡片
   targetLabel: string                              // 归属给人看：主机「web-1」/ 分组「web」/ 全局
   previous?: { title: string; content: string }    // 更新时的原卡内容（卡片上对照）
 }
 
-// 后台自动梳理攒出了建议清单（卡片满 50 张 / 距上次超 7 天）：界面在知识库入口提示，不弹窗
-export type KnowledgeConsolidatePendingEvent = {
-  type: 'knowledge:consolidatePending'
+// 后台自动梳理攒出了建议清单（卡片满 50 张 / 距上次超 7 天）：界面在记忆库入口提示，不弹窗
+export type MemoryConsolidatePendingEvent = {
+  type: 'memory:consolidatePending'
   at: string
   plan: import('../ai/index.js').ConsolidatePlan
 }
@@ -250,7 +250,18 @@ export type McpStatusEvent = { type: 'mcp:status'; servers: McpServerStatus[] }
 // ── 自动更新 ──
 // disabled = 未配置更新源（或开发模式），updater 完全不启用、不联网
 export type UpdateState = 'disabled' | 'checking' | 'none' | 'available' | 'downloading' | 'downloaded' | 'error'
-export interface UpdateStatus { state: UpdateState; version?: string; percent?: number; error?: string }
+export interface UpdateStatus {
+  state: UpdateState
+  version?: string
+  percent?: number
+  // 下载进度：总字节 / 已下载字节 / 实时速度（B/s），来自 electron-updater 的 download-progress 事件，只用于界面展示
+  total?: number
+  transferred?: number
+  bytesPerSecond?: number
+  // 服务器不支持 Range（GitHub 的下载 CDN 会返回 501）→ 差分失败、已回退整包下载；只用来解释「这次为什么很慢」
+  fullDownload?: boolean
+  error?: string
+}
 export type UpdateStatusEvent = { type: 'update:status' } & UpdateStatus
 
 // 应用锁状态变化（手动锁 / 空闲 / 系统锁屏 / 解锁）
@@ -262,8 +273,8 @@ export type AppEvent =
   | TerminalDataEvent | TerminalCreatedEvent | TerminalLockedEvent | TerminalStatusEvent | TerminalRecordingEvent | TerminalAutoReplyEvent | HostStatsEvent
   | AgentEvent
   | AuthRequestEvent | AuthResolvedEvent | PlanRequestEvent
-  | KnowledgeProposalEvent
-  | KnowledgeConsolidatePendingEvent
+  | MemoryProposalEvent
+  | MemoryConsolidatePendingEvent
   | AppSettingsChangedEvent
   | TransferProgressEvent
   | PortForwardChangedEvent

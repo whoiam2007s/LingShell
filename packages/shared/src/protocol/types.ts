@@ -849,6 +849,12 @@ export type PortForwardInfo = PortForwardInput & { id: string; hostLabel: string
 export interface SavedPortForward { id: string; hostId: string; input: PortForwardInput; autoStart: boolean }
 
 // ── Phase 4：会话/布局持久化 ──────────────────────────
+/** 分叉时带过来的「最近几轮」：只读展示用（不进 dsh 事件日志，也不重复占上下文） */
+export interface ForkTurnPreview {
+  role: 'user' | 'ai'
+  text: string
+}
+
 export interface SessionMeta {
   id: string
   title: string
@@ -859,7 +865,13 @@ export interface SessionMeta {
   dshId?: string            // dsh 侧会话 id（上下文重置会换新的）；缺省 = id
   modelProfileId?: string   // 会话级模型覆盖（模型配置 id）；缺省 / 配置已删 = 默认配置
   thinking?: ThinkingLevel  // 会话级思考深度（覆盖模型配置里的默认值）；缺省 = 跟随配置。重启后要还在
-  contextDigest?: string    // 分叉 / 接续带过来的上下文（上一会话摘要 + 最近几轮）；界面显示成只读历史块
+  contextDigest?: string    // 分叉 / 接续带过来的上下文（上一会话摘要）；只在第一次发言时随消息发给模型
+  /** 分叉带过来的最近几轮：界面按只读气泡展示（不拷真实事件——长会话里拷种子会被 dsh 拒收，新会话直接空白） */
+  forkPreview?: ForkTurnPreview[]
+  /** 这份摘要从哪来：分叉 / 接续（界面卡片文案不同） */
+  digestFrom?: 'fork' | 'continue'
+  /** 摘要是否已经随第一次发言带给模型（分叉会话用：只拼一次，之后不再重复占上下文） */
+  digestSent?: boolean
 }
 export interface TerminalLayoutItem {
   kind: 'local' | 'ssh'

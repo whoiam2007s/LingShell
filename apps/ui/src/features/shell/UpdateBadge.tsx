@@ -4,7 +4,7 @@
 // 用户点了「跳过这个版本」后，这个版本不再出现在顶栏（设置页仍可手动检查）。
 import { useEffect, useState } from 'react'
 import { ArrowUpCircle, ArrowUpFromLine } from 'lucide-react'
-import { tr, type UpdateStatus } from '@lingshell/shared'
+import { tr, formatSize, type UpdateStatus } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { UpdateReadyDialog } from './UpdateReadyDialog.js'
 
@@ -35,10 +35,19 @@ export function UpdateBadge() {
   const v = st.version ? ` ${st.version}` : ''
   const done = st.state === 'downloaded'
   const pct = Math.max(0, Math.min(100, Math.round(st.percent ?? 0)))
+  // 悬停提示补上「已下载 / 总量 · 实时速度」，回退整包时说明原因（设置页里有同样的信息）
+  const size = st.total
+    ? ` · ${tr('{done} / {total} · {speed}/s', {
+        done: formatSize(st.transferred ?? 0),
+        total: formatSize(st.total),
+        speed: formatSize(st.bytesPerSecond ?? 0),
+      })}`
+    : ''
+  const slow = st.fullDownload ? ` · ${tr('服务器不支持增量下载，已改为整包下载')}` : ''
   const tip = done
     ? tr('新版本{version}已下载，点击选择现在安装还是关闭后安装', { version: v })
     : st.state === 'downloading'
-      ? tr('正在下载新版本{version}（{percent}%）', { version: v, percent: pct })
+      ? tr('正在下载新版本{version}（{percent}%）', { version: v, percent: pct }) + size + slow
       : tr('发现新版本{version}，点击下载更新', { version: v })
 
   const onClick = () => {

@@ -15,7 +15,7 @@ export const TEAM_FEATURES = [
   'rbac',                // 角色与主机 / 操作权限
   'relay',               // 远程中继 / NAT 穿透
   'team_dashboard',      // 团队仪表盘 / 值班
-  'shared_content',      // 团队 Runbook / Skills / 知识库
+  'shared_content',      // 团队 Runbook / Skills / 记忆库
   'backup_policy',       // 团队数据库备份策略
   'deploy_approval',     // 团队部署评审 / 发布门禁
   'archive',             // 录像 / 日志长期归档

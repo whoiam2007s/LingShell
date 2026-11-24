@@ -17,7 +17,7 @@ describe('groupTurns', () => {
     expect(turns[0].turnId).toBe('turn_2')
     expect(groupTurns([item('u1', 'user_message')])[0].turnId).toBeUndefined()
   })
-  it('知识卡提议不收进折叠的执行过程，放在最终回复前', () => {
+  it('记忆卡提议不收进折叠的执行过程，放在最终回复前', () => {
     const t = groupTurns([item('u1', 'user_message'), item('t1', 'tool_call'), item('k1', 'host_note'), item('t2', 'tool_call'), item('a1', 'agent_message')])[0]
     expect(t.steps.map((i) => i.itemId)).toEqual(['t1', 't2'])
     expect(t.final.map((i) => i.itemId)).toEqual(['k1', 'a1'])

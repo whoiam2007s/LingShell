@@ -37,7 +37,8 @@ function mcpArgs(input?: Record<string, unknown>): string {
 const TERMINAL_TOOLS = new Set([
   'exec_in_terminal', 'exec_on_terminals', 'read_terminal', 'create_terminal', 'list_terminals', 'start_background', 'check_background',
 ])
-const FILE_TOOL_ICON: Record<string, typeof Terminal> = { read_file: FileText, write_file: FileEdit, download_file: Download, upload_file: Upload, wait: Timer, run_on_hosts: Network, propose_host_knowledge: BookMarked, ask_user: MessageCircleQuestion, propose_runbook: BookPlus, propose_quick_commands: Zap, spawn_subagent: Bot }
+const FILE_TOOL_ICON: Record<string, typeof Terminal> = { read_file: FileText, write_file: FileEdit, download_file: Download, upload_file: Upload, wait: Timer, run_on_hosts: Network, propose_host_memory: BookMarked, propose_runbook: BookPlus, propose_quick_commands: Zap, spawn_subagent: Bot, ask_user: MessageCircleQuestion,
+  propose_host_knowledge: BookMarked }   // 0.1.20 前的旧工具名：老会话历史里记的还是它，图标不能丢
 
 interface FleetOut { command: string; results: FleetRow[]; summary: FleetSummary }
 function parseFleetResult(output?: string): FleetOut | undefined {
@@ -56,10 +57,10 @@ export function ToolItem({ item, live = false }: { item: ConvItem; live?: boolea
 
   // 提取命令/主要参数用于一行预览
   const input = tool?.input as Record<string, unknown> | undefined
-  // check_background 没有命令，预览显示它查的是哪个后台任务；知识卡提议显示标题
+  // check_background 没有命令，预览显示它查的是哪个后台任务；记忆卡提议显示标题
   const command = mcp ? mcpArgs(input) : (input?.command as string) ?? (input?.path as string)
     ?? (input?.job_id ? `job ${input.job_id as string}` : '')
-  const preview0 = (name === 'propose_host_knowledge' || name === 'propose_runbook') && typeof input?.title === 'string' ? input.title
+  const preview0 = (name === 'propose_host_memory' || name === 'propose_host_knowledge' || name === 'propose_runbook') && typeof input?.title === 'string' ? input.title
     : name === 'propose_quick_commands' && typeof input?.set_name === 'string' ? input.set_name
     : name === 'ask_user' && typeof input?.question === 'string' ? input.question
     // run_skill_script 的入参只有 skill / script，不拼出来卡片那一行就是空的

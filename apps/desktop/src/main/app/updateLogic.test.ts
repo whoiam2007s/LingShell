@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveUpdateSource, nextUpdateStatus, classifyUpdateError } from './updateLogic.js'
+import { resolveUpdateSource, nextUpdateStatus, classifyUpdateError, isDifferentialFallback } from './updateLogic.js'
 
 describe('classifyUpdateError', () => {
   it('网络 / 代理类', () => {
@@ -60,7 +60,26 @@ describe('nextUpdateStatus', () => {
   it('错误带消息', () => {
     expect(nextUpdateStatus(idle, 'error', new Error('net::ERR'))).toEqual({ state: 'error', version: undefined, error: 'net::ERR' })
   })
+  it('下载进度带总量 / 已下载 / 实时速度', () => {
+    expect(nextUpdateStatus({ state: 'available', version: '0.2.0' }, 'download-progress',
+      { percent: 9.4, total: 132_000, transferred: 12_000, bytesPerSecond: 1_500_000 }))
+      .toEqual({ state: 'downloading', version: '0.2.0', percent: 9, total: 132_000, transferred: 12_000, bytesPerSecond: 1_500_000 })
+  })
+  it('回退整包的标志在后续进度事件里保留', () => {
+    const next = nextUpdateStatus({ state: 'downloading', version: '0.2.0', fullDownload: true }, 'download-progress', { percent: 50 })
+    expect(next?.fullDownload).toBe(true)
+  })
   it('未知事件返回 undefined', () => {
     expect(nextUpdateStatus(idle, 'update-cancelled')).toBeUndefined()
+  })
+})
+
+describe('isDifferentialFallback', () => {
+  it('认出 electron-updater 回退整包的日志', () => {
+    expect(isDifferentialFallback('Cannot download differentially, fallback to full download: HttpError: 501')).toBe(true)
+  })
+  it('普通错误 / 空消息不算回退', () => {
+    expect(isDifferentialFallback('net::ERR_CONNECTION_RESET')).toBe(false)
+    expect(isDifferentialFallback('')).toBe(false)
   })
 })

@@ -1,8 +1,8 @@
-// 知识库梳理：AI 读全部卡片，出「合并 / 更新 / 删除」清单，用户勾选后一次写回。
-// 只出清单不动数据（后端 knowledge:consolidate），应用才落盘（knowledge:consolidateApply）。
+// 记忆库梳理：AI 读全部卡片，出「合并 / 更新 / 删除」清单，用户勾选后一次写回。
+// 只出清单不动数据（后端 memory:consolidate），应用才落盘（memory:consolidateApply）。
 import { useEffect, useState } from 'react'
 import { Sparkles, X } from 'lucide-react'
-import { tr, type ConsolidateAction, type ConsolidatePlan, type KnowledgeCard } from '@lingshell/shared'
+import { tr, type ConsolidateAction, type ConsolidatePlan, type MemoryCard } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
 import { BTN2 } from '../../components/ui/form.js'
@@ -22,7 +22,7 @@ const KIND_STYLE: Record<ConsolidateAction['kind'], string> = {
 
 export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: {
   open: boolean
-  cards: KnowledgeCard[]
+  cards: MemoryCard[]
   /** 后台已攒好的清单：有就直接用，不再让模型重跑一遍 */
   pending?: { at: string; plan: ConsolidatePlan } | null
   onClose: () => void
@@ -41,11 +41,16 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
     return () => clearInterval(t)
   }, [loading])
 
+  // 「重试」计数：失败后点重试就 +1，让下面的 effect 重跑一次（不用把请求逻辑再抄一份）
+  const [attempt, setAttempt] = useState(0)
+  // 关掉弹窗就复位，下次打开重新从「有后台清单先展示」开始
+  useEffect(() => { if (!open) setAttempt(0) }, [open])
+
   // 打开即就绪：有后台清单直接展示，否则让模型读一遍（要几秒到十几秒）；关掉后丢弃结果
   useEffect(() => {
     if (!open) return
     setErr('')
-    if (pending) {
+    if (pending && !attempt) {
       setPlan(pending.plan)
       setChecked(new Set(pending.plan.actions.map((_, i) => i)))   // 默认全选，用户自己取消不要的
       setLoading(false)
@@ -53,7 +58,7 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
     }
     let alive = true
     setLoading(true); setPlan(null); setElapsed(0)
-    client.knowledge.consolidate('manual')
+    client.memory.consolidate('manual')
       .then((p) => {
         if (!alive) return
         setPlan(p)
@@ -62,7 +67,7 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
       .catch((e) => { if (alive) setErr(errText(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [open, pending])
+  }, [open, pending, attempt])
 
   if (!open) return null
 
@@ -74,7 +79,7 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
     if (!picked.length) return
     setApplying(true); setErr('')
     try {
-      await client.knowledge.consolidateApply(picked)
+      await client.memory.consolidateApply(picked)
       onApplied()
       onClose()
     } catch (e) { setErr(errText(e)) } finally { setApplying(false) }
@@ -85,15 +90,15 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
       <div className="flex max-h-[min(720px,88vh)] w-[min(820px,92vw)] flex-col overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] shadow-2xl">
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--color-border-subtle)] px-4">
           <Sparkles className="h-4 w-4 text-[var(--color-accent)]" />
-          <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{tr('知识库梳理')}</span>
+          <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">{tr('记忆库梳理')}</span>
           <button onClick={onClose} title={tr('关闭（Esc）')} className="ml-auto flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]"><X className="h-4 w-4" /></button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <p className="mb-3 text-[12px] text-[var(--color-text-secondary)]">
-            {tr('AI 读一遍全部知识卡，把重复的合并、过时的更新、没用的删掉。清单只是建议——勾选你想采纳的，点「应用」才会改。')}
+            {tr('AI 读一遍全部记忆卡，把重复的合并、过时的更新、没用的删掉。清单只是建议——勾选你想采纳的，点「应用」才会改。')}
           </p>
-          {loading && <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">{tr('AI 正在读全部知识卡，请稍等…（已等待 {n} 秒）', { n: elapsed })}</div>}
+          {loading && <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">{tr('AI 正在读全部记忆卡，请稍等…（已等待 {n} 秒）', { n: elapsed })}</div>}
           {err && <div className="rounded border border-[color:color-mix(in_srgb,var(--color-danger)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--color-danger)_8%,transparent)] px-3 py-2 text-[12px] text-[var(--color-danger)]">{err}</div>}
           {!loading && plan && !plan.actions.length && (
             <div className="py-10 text-center text-[12px] text-[var(--color-text-muted)]">{tr('没发现需要整理的地方：{n} 张卡已经比较整齐了。', { n: plan.before })}</div>
@@ -130,7 +135,13 @@ export function ConsolidateDialog({ open, cards, pending, onClose, onApplied }: 
               {picked.length !== plan.actions.length && tr('（已选 {k} 项）', { k: picked.length })}
             </span>
           )}
-          <button onClick={onClose} className={cn('ml-auto', BTN2)}>{tr('取消')}</button>
+          {/* 模型没给出可用清单（格式不对 / 超时 / 网络）时给个重试，省得关掉再重开一次 */}
+          <div className="ml-auto flex items-center gap-2">
+            {err && !loading && !plan && (
+              <button onClick={() => setAttempt((n) => n + 1)} className={BTN2}>{tr('重试')}</button>
+            )}
+            <button onClick={onClose} className={BTN2}>{tr('取消')}</button>
+          </div>
           {plan && plan.actions.length > 0 && (
             <button onClick={apply} disabled={applying || !picked.length}
               className="rounded-md border border-transparent bg-[var(--color-accent)] px-4 py-1.5 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:opacity-40">

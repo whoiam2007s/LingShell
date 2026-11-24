@@ -206,7 +206,7 @@ export function buildSecretsPrompt(list: SecretSummary[], hostLabel?: (id: strin
       + '应用在命令真正发进终端前才把它换成真实值（按所在引号自动转义成一个字面量：不在引号里时直接写，如 mysql -uroot -p{{secret:mysql-root}}；放在双引号里也可以，如 -H "Authorization: Bearer {{secret:api-token}}"）。',   // i18n-ignore 注入系统提示
     '- 工具结果、终端快照里出现的真实值会被换回占位符，所以你看到 {{secret:名称}} 是正常的，不要尝试 echo / cat / base64 等方式去获取真实值。',   // i18n-ignore 注入系统提示
     '- 每个密钥有可用范围，不在范围内的终端上使用会被直接拒绝；run_on_hosts 与 write_file 不支持占位符（要写进文件请用 exec_in_terminal 执行 printf 等命令）。',   // i18n-ignore 注入系统提示
-    '- 授权卡与执行记录上显示的是占位符原文；不要把真实值写进知识卡、计划或回复。',   // i18n-ignore 注入系统提示
+    '- 授权卡与执行记录上显示的是占位符原文；不要把真实值写进记忆卡、计划或回复。',   // i18n-ignore 注入系统提示
     ...usable.map((s) => `- {{secret:${s.name}}}${s.description ? `：${s.description}` : ''}（可用范围：${secretScopeLabel(s, hostLabel)}）`),   // i18n-ignore 注入系统提示
   ].join('\n')
 }

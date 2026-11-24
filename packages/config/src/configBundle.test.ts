@@ -12,7 +12,7 @@ import { KnownHostsStore } from './KnownHostsStore.js'
 import { WebhookStore } from './WebhookStore.js'
 import { QuickCommandStore } from './QuickCommandStore.js'
 import { AutoReplyStore } from './AutoReplyStore.js'
-import { KnowledgeStore, legacyCardId } from './KnowledgeStore.js'
+import { MemoryStore, legacyCardId } from './MemoryStore.js'
 import { exportConfig, importConfig, parseBundle, previewBundle, sealSecrets, openSecrets, type ConfigBundle } from './configBundle.js'
 
 // 两台「机器」的 safeStorage：前缀不同，验证导入后用的是本机加密器重新加密
@@ -508,28 +508,28 @@ describe('命名凭据随主机节导出导入', () => {
   })
 })
 
-describe('知识库', () => {
+describe('记忆库', () => {
   it('导出导入往返：主机卡按导入的主机重映射，本机找不到的主机卡丢弃；按 id 合并 / 覆盖', () => {
     const { dir, db } = seed()
-    const ks = new KnowledgeStore(dir)
+    const ks = new MemoryStore(dir)
     ks.save({ id: 'kb_g', scope: 'global', target: '', title: '值班', content: '找张三', category: 'other', source: 'manual' })
     ks.save({ id: 'kb_h', scope: 'host', target: db.id, title: '日志', content: '/var/log/db', category: 'logs', source: 'ai' })
     ks.save({ id: 'kb_gone', scope: 'host', target: 'host-not-exported', title: 'x', content: 'y', category: 'other', source: 'manual' })
     ks.syncLegacy([{ hostKey: db.id, notes: 'n' }])
-    const b = parseBundle(JSON.stringify(exportConfig(dir, A, { sections: ['hosts', 'knowledge'] }, '1.0.0')))
-    expect(previewBundle(b).counts.knowledge).toBe(4)
+    const b = parseBundle(JSON.stringify(exportConfig(dir, A, { sections: ['hosts', 'memory'] }, '1.0.0')))
+    expect(previewBundle(b).counts.memory).toBe(4)
     const dst = tmp()
-    const r = importConfig(dst, B, b, { hosts: 'merge', knowledge: 'merge' })
-    expect(r.knowledge).toEqual({ added: 3, updated: 0, skipped: 0, dropped: 1 })
+    const r = importConfig(dst, B, b, { hosts: 'merge', memory: 'merge' })
+    expect(r.memory).toEqual({ added: 3, updated: 0, skipped: 0, dropped: 1 })
     const newDb = new HostStore(dst, B).list().find((h) => h.label === 'db')!
-    const cards = new KnowledgeStore(dst).list()
+    const cards = new MemoryStore(dst).list()
     expect(cards.find((c) => c.id === 'kb_h')?.target).toBe(newDb.id)
     expect(cards.find((c) => c.id === legacyCardId(newDb.id))?.content).toBe('n')   // 迁移卡 id 跟着新主机 id
     // 合并：同 id 保留本机；覆盖：用文件里的
-    new KnowledgeStore(dst).save({ id: 'kb_g', scope: 'global', target: '', title: '本机改过', content: 'z', category: 'other', source: 'manual' })
-    expect(importConfig(dst, B, b, { knowledge: 'merge' }).knowledge).toMatchObject({ skipped: 3, dropped: 1 })
-    expect(new KnowledgeStore(dst).list().find((c) => c.id === 'kb_g')?.title).toBe('本机改过')
-    importConfig(dst, B, b, { knowledge: 'overwrite' })
-    expect(new KnowledgeStore(dst).list().find((c) => c.id === 'kb_g')?.title).toBe('值班')
+    new MemoryStore(dst).save({ id: 'kb_g', scope: 'global', target: '', title: '本机改过', content: 'z', category: 'other', source: 'manual' })
+    expect(importConfig(dst, B, b, { memory: 'merge' }).memory).toMatchObject({ skipped: 3, dropped: 1 })
+    expect(new MemoryStore(dst).list().find((c) => c.id === 'kb_g')?.title).toBe('本机改过')
+    importConfig(dst, B, b, { memory: 'overwrite' })
+    expect(new MemoryStore(dst).list().find((c) => c.id === 'kb_g')?.title).toBe('值班')
   })
 })

@@ -1,4 +1,4 @@
-// AppClient 的AI：会话与对话、授权、执行记录、用量、MCP、模板、Skills、附件、知识库、安全规则、改动汇总与回滚。主进程注册见 apps/desktop/src/main/ai/register.ts，渲染层实现见 apps/ui/src/client/transports/ipc/ai.ts
+// AppClient 的AI：会话与对话、授权、执行记录、用量、MCP、模板、Skills、附件、记忆库、安全规则、改动汇总与回滚。主进程注册见 apps/desktop/src/main/ai/register.ts，渲染层实现见 apps/ui/src/client/transports/ipc/ai.ts
 import type { SessionInfo, SessionMeta, ApprovalAnswer, AuthLevel, AuditEntry, McpServerSummary, McpServerInput, McpServerStatus, McpToolInfo, ThinkingLevel } from '../types.js'
 import type { PromptTemplate, TemplateInput } from '../../ops/index.js'
 import type { NlCommandRequest } from '../../terminal/index.js'
@@ -134,16 +134,16 @@ export interface AiApi {
     check(sessionId: string, at: string): Promise<import('../../ai/index.js').RollbackCheck>
     run(sessionId: string, at: string, ackDanger: boolean): Promise<import('../../ai/index.js').RollbackResult>
   }
-  // 主机知识库（见 desktop/main/ai/knowledgeIpc.ts）：list 前先把旧「主机备注」同步成卡片；save 新增 / 更新（id 有值 = 更新）
-  knowledge: {
-    list(): Promise<import('../../ai/index.js').KnowledgeCard[]>
-    save(input: import('../../ai/index.js').KnowledgeInput): Promise<import('../../ai/index.js').KnowledgeCard>
+  // 主机记忆库（见 desktop/main/ai/memoryIpc.ts）：list 前先把旧「主机备注」同步成卡片；save 新增 / 更新（id 有值 = 更新）
+  memory: {
+    list(): Promise<import('../../ai/index.js').MemoryCard[]>
+    save(input: import('../../ai/index.js').MemoryInput): Promise<import('../../ai/index.js').MemoryCard>
     remove(id: string): Promise<void>
     /** 梳理：让模型产出合并 / 更新 / 删除清单（不落库）；trigger 说明为什么触发 */
     consolidate(trigger?: 'manual' | 'size' | 'schedule'): Promise<import('../../ai/index.js').ConsolidatePlan>
     /** 应用用户勾选的清单动作；返回实际应用条数 */
     consolidateApply(actions: import('../../ai/index.js').ConsolidateAction[]): Promise<{ applied: number }>
-    /** 后台自动梳理攒下的待处理清单（没有则 null）；界面在知识库入口提示条数 */
+    /** 后台自动梳理攒下的待处理清单（没有则 null）；界面在记忆库入口提示条数 */
     consolidatePending(): Promise<{ at: string; plan: import('../../ai/index.js').ConsolidatePlan } | null>
     /** 用户把建议放一边：清掉待处理清单（不应用） */
     consolidatePendingClear(): Promise<void>
@@ -151,6 +151,12 @@ export interface AiApi {
   // 子代理：某个会话派过哪些（会话标题栏下拉里显示；新的在前）
   subagent: {
     list(sessionId: string): Promise<import('../../protocol/types.js').SubagentView[]>
+  }
+  // 后台任务（start_background 起的）：该会话**还在跑**的（状态条 / 任务面板用；跑完即从列表移除）
+  bg: {
+    list(sessionId: string): Promise<{ jobId: string; command: string; startedAt: number; terminalId: string }[]>
+    /** 用户点停止：停掉该会话的后台任务（先 TERM 后 KILL，整棵进程树），且不叫醒模型；给 jobId 就只停那一条 */
+    cancel(sessionId: string, jobId?: string): Promise<void>
   }
   // 左侧对话增强（见 desktop/main/ai/chatPlusIpc.ts）：digest 历史会话摘要（@ 引用）；search 跨会话全文检索；
   // runShell 输入框 `!命令` 在终端里执行并取回结果（输出已按脱敏设置处理、只留末尾 4KB）；answerAsk 回答 AI 提问卡（null = 跳过）

@@ -12,7 +12,7 @@ exports[`工具定义 > 工具清单与顺序（加 / 删工具时更新快照�
   "check_background",
   "wait",
   "create_terminal",
-  "propose_host_knowledge",
+  "propose_host_memory",
   "propose_quick_commands",
   "propose_runbook",
   "run_on_hosts",

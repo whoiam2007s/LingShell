@@ -98,16 +98,16 @@ describe('工具定义', () => {
     expect(execCapture.mock.calls[1][1]).toContain('$i -lt 30 ]')       // 默认 30s
   })
 
-  it('list_terminals / create_terminal 带上知识卡标题与分级', async () => {
-    const hostMeta = (tid: string) => (tid === 'term_1' ? { knowledge: ['nginx 日志位置'], env: 'prod' as const } : {})
+  it('list_terminals / create_terminal 带上记忆卡标题与分级', async () => {
+    const hostMeta = (tid: string) => (tid === 'term_1' ? { memory: ['nginx 日志位置'], env: 'prod' as const } : {})
     const d = deps({ hostMeta, createLocalTerminal: async () => ({ terminalId: 'term_1', title: 'T' }) })
     expect(JSON.parse(await defOf(d, 'list_terminals').execute({} as never, exec() as never)))
       .toEqual([
-        { id: 'term_1', title: '本地', type: 'local', status: 'running', locked: false, knowledge: ['nginx 日志位置'], env: 'prod' },
+        { id: 'term_1', title: '本地', type: 'local', status: 'running', locked: false, memory: ['nginx 日志位置'], env: 'prod' },
         { id: 'term_ssh', title: 'A', type: 'ssh', status: 'running', locked: false },
       ])
     expect(JSON.parse(await defOf(d, 'create_terminal').execute({ type: 'local' } as never, exec() as never)))
-      .toMatchObject({ terminalId: 'term_1', knowledge: ['nginx 日志位置'], env: 'prod' })
+      .toMatchObject({ terminalId: 'term_1', memory: ['nginx 日志位置'], env: 'prod' })
   })
 
   it('list_terminals 带最近知道的 cwd（没有就不带），问目录不必为此跑 pwd', async () => {
@@ -117,26 +117,26 @@ describe('工具定义', () => {
     expect(out.find((x) => x.id === 'term_ssh')?.cwd).toBeUndefined()
   })
 
-  it('propose_host_knowledge：按终端解析主机 / 分组 / 全局 / 按 card_id 更新，只提议不写；参数不全报错；无需授权', async () => {
-    const proposeKnowledge = vi.fn(() => ({ targetLabel: '主机「本机」' }))
-    const d = deps({ proposeKnowledge })
-    const run = (a: Record<string, unknown>) => defOf(d, 'propose_host_knowledge').execute(a as never, exec() as never)
+  it('propose_host_memory：按终端解析主机 / 分组 / 全局 / 按 card_id 更新，只提议不写；参数不全报错；无需授权', async () => {
+    const proposeMemory = vi.fn(() => ({ targetLabel: '主机「本机」' }))
+    const d = deps({ proposeMemory })
+    const run = (a: Record<string, unknown>) => defOf(d, 'propose_host_memory').execute(a as never, exec() as never)
     const out = JSON.parse(await run({ terminal_id: 'term_1', title: ' 日志 ', content: ' 在 /var/log/x ', category: 'logs' }))
-    expect(proposeKnowledge).toHaveBeenCalledWith('sess_1', { scope: 'host', target: 'local', title: '日志', content: '在 /var/log/x', category: 'logs' })
+    expect(proposeMemory).toHaveBeenCalledWith('sess_1', { scope: 'host', target: 'local', title: '日志', content: '在 /var/log/x', category: 'logs' })
     expect(out).toMatchObject({ ok: true, target: '主机「本机」' })
     await run({ terminal_id: 'term_ssh', title: 't', content: 'c' })
-    expect(proposeKnowledge).toHaveBeenLastCalledWith('sess_1', expect.objectContaining({ scope: 'host', target: 'host_a' }))
+    expect(proposeMemory).toHaveBeenLastCalledWith('sess_1', expect.objectContaining({ scope: 'host', target: 'host_a' }))
     await run({ scope: 'group', group: 'web', title: 't', content: 'c' })
-    expect(proposeKnowledge).toHaveBeenLastCalledWith('sess_1', expect.objectContaining({ scope: 'group', target: 'web' }))
+    expect(proposeMemory).toHaveBeenLastCalledWith('sess_1', expect.objectContaining({ scope: 'group', target: 'web' }))
     await run({ scope: 'global', title: 't', content: 'c' })
-    expect(proposeKnowledge).toHaveBeenLastCalledWith('sess_1', expect.objectContaining({ scope: 'global', target: '' }))
+    expect(proposeMemory).toHaveBeenLastCalledWith('sess_1', expect.objectContaining({ scope: 'global', target: '' }))
     await run({ card_id: 'kb_1', title: 't', content: 'c' })   // 只给 card_id：归属由主进程沿用原卡
-    expect(proposeKnowledge).toHaveBeenLastCalledWith('sess_1', { cardId: 'kb_1', title: 't', content: 'c', category: undefined })
+    expect(proposeMemory).toHaveBeenLastCalledWith('sess_1', { cardId: 'kb_1', title: 't', content: 'c', category: undefined })
     await expect(run({ terminal_id: 'nope', title: 't', content: 'c' })).rejects.toThrow(/终端不存在/)
     await expect(run({ terminal_id: 'term_1', title: ' ', content: 'c' })).rejects.toThrow(/不能为空/)
     await expect(run({ scope: 'group', title: 't', content: 'c' })).rejects.toThrow(/group/)
     await expect(run({ title: 't', content: 'c' })).rejects.toThrow(/归属/)
-    expect(decideFor(d, 'sess_1', 'propose_host_knowledge', { terminal_id: 'term_1', title: 't', content: 'c' })).toEqual({ kind: 'allow' })
+    expect(decideFor(d, 'sess_1', 'propose_host_memory', { terminal_id: 'term_1', title: 't', content: 'c' })).toEqual({ kind: 'allow' })
   })
 
   it('exec_in_terminal 透传 signal 与超时，并把退出码写进审计', async () => {

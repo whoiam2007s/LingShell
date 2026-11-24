@@ -291,7 +291,7 @@ export function NewConnectionForm({ form, setForm, onConnected, editId, hostOpti
                 </FormRow>
               </div>
             </div>
-            <FormRow label={tr('备注')} tip={tr('会同步成知识库里该主机的一张「主机备注」卡，AI 用到这台主机时读到。写用途、服务管理方式、日志路径、注意事项等，不要写密码等机密；分条记录请用知识库（主机面板右键 → 知识库）')}>
+            <FormRow label={tr('备注')} tip={tr('会同步成记忆库里该主机的一张「主机备注」卡，AI 用到这台主机时读到。写用途、服务管理方式、日志路径、注意事项等，不要写密码等机密；分条记录请用记忆库（主机面板右键 → 记忆库）')}>
               <textarea value={form.notes} onChange={(e) => setF({ notes: e.target.value })} rows={card ? 3 : 2}
                 placeholder={tr('用途、服务管理方式、日志路径、注意事项…')} className={cn(TEXTAREA, 'resize-y')} />
             </FormRow>

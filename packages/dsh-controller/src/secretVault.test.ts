@@ -52,7 +52,7 @@ describe('密钥保险箱：网关校验', () => {
     expect(secretError(vault, 'exec_in_terminal', { terminal_id: 'term_s', command: 'ls', explain: '{{secret:demo}}' })).toBeUndefined()
     expect(secretError(vault, 'write_file', { terminal_id: 'term_l', path: '/a', content: 'p={{secret:demo}}' })).toMatch(/^secret_unsupported.*printf/)
     expect(secretError(vault, 'run_on_hosts', { targets: ['h1'], command: 'echo {{secret:demo}}' })).toMatch(/^secret_unsupported/)
-    expect(secretError(vault, 'propose_host_knowledge', { content: '用 {{secret:demo}} 登录' })).toBeUndefined()   // 知识卡里引用名称没问题
+    expect(secretError(vault, 'propose_host_memory', { content: '用 {{secret:demo}} 登录' })).toBeUndefined()   // 记忆卡里引用名称没问题
     expect(secretError(undefined, 'write_file', { content: '{{secret:demo}}' })).toBeUndefined()
     expect(wireOf(vault, 'term_l', 'ls')).toBeUndefined()
   })

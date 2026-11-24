@@ -35,7 +35,7 @@ export function groupTurns(items: ConvItem[]): Turn[] {
   // 二次划分：把每轮末尾连续的 agent_message 从 steps 移到 final。
   // 中间隔了非 agent_message（工具/思考/todo…）就断开——只取真正结尾那段连续文本。
   for (const t of turns) {
-    // 知识卡提议、提问卡（ask_user）要用户操作：不收进折叠的【执行过程】，放在最终回复前面。
+    // 记忆卡提议、提问卡（ask_user）要用户操作：不收进折叠的【执行过程】，放在最终回复前面。
     // 快速命令 / 运维手册提议：工具卡留在执行过程里，另出一张预览卡（itemId 加 PROPOSAL_SUFFIX）放到外面
     const isCard = (i: ConvItem) => i.kind === 'host_note' || i.kind === 'ask_request'
     const cards = [

@@ -47,6 +47,8 @@ background.configure → background:configure
 background.status → background:status
 batch.cancel → batch:cancel
 batch.exec → batch:exec
+bg.cancel → bg:cancel
+bg.list → bg:list
 certs.check → certs:check
 certs.delete → certs:delete
 certs.discover → certs:discover
@@ -245,13 +247,6 @@ keys.importPicked → keys:importPicked
 keys.list → keys:list
 keys.pickImport → keys:pickImport
 keys.useForHost → keys:useForHost
-knowledge.consolidate → knowledge:consolidate
-knowledge.consolidateApply → knowledge:consolidateApply
-knowledge.consolidatePending → knowledge:consolidatePending
-knowledge.consolidatePendingClear → knowledge:consolidatePendingClear
-knowledge.list → knowledge:list
-knowledge.remove → knowledge:remove
-knowledge.save → knowledge:save
 knownHosts.acceptChanged → knownHosts:acceptChanged
 knownHosts.decide → knownHosts:decide
 knownHosts.importOpenSsh → knownHosts:importOpenSsh
@@ -278,6 +273,13 @@ mcp.save → mcp:save
 mcp.setAutoApprove → mcp:setAutoApprove
 mcp.status → mcp:status
 mcp.test → mcp:test
+memory.consolidate → memory:consolidate
+memory.consolidateApply → memory:consolidateApply
+memory.consolidatePending → memory:consolidatePending
+memory.consolidatePendingClear → memory:consolidatePendingClear
+memory.list → memory:list
+memory.remove → memory:remove
+memory.save → memory:save
 mobile.configure → mobile:configure
 mobile.newPairCode → mobile:newPairCode
 mobile.revoke → mobile:revoke

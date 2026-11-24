@@ -1,14 +1,14 @@
 // 英文译文：键 = 中文原文（见 ../../i18n.ts）。只放这一块负责的文件里用到的文案
 export const sharedA: Record<string, string> = {
   // 通用标点 / 连接词（拼接列表、标签用）
-  '、': ', ',
+
   '：': ': ',
   '；': '; ',
 
   // deployReview.ts
-  '高': 'High',
-  '中': 'Medium',
-  '低': 'Low',
+
+
+
   '待处理': 'Open',
   '已接受': 'Accepted',
   '忽略': 'Ignore',
@@ -79,7 +79,7 @@ export const sharedA: Record<string, string> = {
   '目标环境': 'Target environment',
   '生产环境': 'Production',
   '测试环境': 'Test',
-  '目标主机': 'Target hosts',
+
   '评审人': 'Reviewer',
   '评审结论': 'Conclusion',
   '未给出': 'Not given',
@@ -313,7 +313,7 @@ export const sharedA: Record<string, string> = {
   '模型没有按格式返回，请换个说法再试': 'The model did not reply in the expected format. Try rephrasing.',
   '模型无法生成': 'The model could not generate it',
   '模型给出的时间表达式不合法：{v}': 'The model returned an invalid schedule: {v}',
-  '（空）': '(empty)',
+
   '模型给出的命令为空或不是一行': 'The model returned an empty or multi-line command',
 
   // gitOps.ts
@@ -504,7 +504,7 @@ export const sharedA: Record<string, string> = {
   '端口可连': 'Port reachable',
   'curl 退出码 {n}': 'curl exit code {n}',
   '没有结果（超时或被中断）': 'No result (timed out or interrupted)',
-  '失败': 'Failed',
+
   '{check} 无法测': '{check} cannot test',
   '通': 'Reachable',
   '有响应但状态异常': 'Responds with an error status',
@@ -519,12 +519,12 @@ export const sharedA: Record<string, string> = {
   '未完成的源': 'Incomplete sources',
 
   // certCheck.ts
-  '检查失败': 'Check failed',
+
   '已过期': 'Expired',
   '3 天内到期': 'Expires within 3 days',
   '14 天内到期': 'Expires within 14 days',
   '即将到期': 'Expiring soon',
-  '正常': 'OK',
+
   '请填写域名或 主机:端口': 'Enter a domain or host:port',
   'IPv6 地址请写成 [地址]:端口': 'Write IPv6 addresses as [address]:port',
   '不是有效的域名或地址：{v}': 'Not a valid domain or address: {v}',
@@ -607,7 +607,7 @@ export const sharedA: Record<string, string> = {
   '未分组': 'Ungrouped',
   '未保存的在线终端': 'Unsaved open terminals',
   '等待中': 'Waiting',
-  '运行中': 'Running',
+
   '成功': 'Succeeded',
   '失败（被信号终止）': 'Failed (killed by signal)',
   '失败（{code}）': 'Failed ({code})',
@@ -763,7 +763,7 @@ export const sharedA: Record<string, string> = {
   '模型设置（全部模型配置 + 单价）': 'Model settings (all model profiles + prices)',
   '告警机器人（地址含 token，需设导出密码）': 'Alert bots (URLs contain tokens; needs an export password)',
   '自动应答（密钥应答需设导出密码）': 'Auto replies (secret replies need an export password)',
-  '知识库（主机 / 分组 / 全局知识卡）': 'Knowledge base (host / group / global cards)',
+  '记忆库（主机 / 分组 / 全局记忆卡）': 'Memory (host / group / global cards)',
   '密钥保险箱（名称 / 说明 / 范围；值需设导出密码）': 'Secret vault (names / descriptions / scopes; values need an export password)',
 
   // commandRules.ts

@@ -1,7 +1,7 @@
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Pencil, GitBranchPlus, RefreshCw } from 'lucide-react'
+import { Copy, Check, GitBranchPlus, RefreshCw } from 'lucide-react'
 import { tr } from '@lingshell/shared'
 import type { ConvItem } from '../useConversation.js'
 import { cn } from '../../../lib/cn.js'
@@ -13,10 +13,11 @@ import { langOf } from '../codeBlock.js'
 import { splitTermBlocks, termBlockName } from '../../../lib/termBlock.js'
 import { BlockChip } from '../AttachmentChips.js'
 
-// 消息上的操作（ChatPanel 提供）：编辑后重发 / 从这里分叉 / 重新生成。busy = 本轮进行中（全部禁用）
+// 消息上的操作（ChatPanel 提供）：从这里分叉 / 重新生成。busy = 本轮进行中（全部禁用）
+// 「编辑后重发」已移除：它的语义（切在这条消息之前、把改后的内容重发）和「分叉」容易混淆，
+// 用户实际想要的是「把当前对话完整带到新会话继续」，见 docs/0.1.20-规划.md F3。
 export interface MsgActions {
   busy: boolean
-  onEdit(msgId: string, text: string): void
   onFork(msgId: string, includeTurn?: boolean): void
   onRegenerate(msgId: string): void
 }
@@ -42,7 +43,15 @@ function UserText({ text }: { text: string }) {
 // regenFrom：本轮用户消息的服务端 id，只给最后一轮的最后一条 AI 回复（出「重新生成」）
 export const MessageItem = memo(function MessageItem({ item, streaming, regenFrom, turnUserMsgId }: { item: ConvItem; streaming: boolean; regenFrom?: string; turnUserMsgId?: string }) {
   const isUser = item.kind === 'user_message'
-  const [editing, setEditing] = useState(false)
+  // 后台任务完成通知是宿主注入的（不是用户说的话）：用系统条目样式显示，别冒充用户发言
+  if (isUser && item.text.startsWith('[后台任务完成]')) {   // i18n-ignore 识别宿主注入的通知前缀（不是界面文案）
+    return (
+      <div data-system-notice className="mx-4 my-2 flex items-start gap-2 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3 py-2 text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
+        <span className="mt-0.5 shrink-0 text-[var(--color-accent)]">⏱</span>
+        <span className="min-w-0 whitespace-pre-wrap break-words">{item.text}</span>
+      </div>
+    )
+  }
   return (
     <div className={cn('group/msg animate-fade-in flex gap-2.5 px-3 py-2', isUser && 'flex-row-reverse')}>
       {/* 头像只给用户消息：AI 的头像由所在回合（ChatPanel 的 TurnBlock）统一出一个，放在回合最前 */}
@@ -51,7 +60,7 @@ export const MessageItem = memo(function MessageItem({ item, streaming, regenFro
           {tr('我')}
         </div>
       )}
-      {editing ? <EditBox item={item} onClose={() => setEditing(false)} /> : (
+      {(
         // 气泡：无边框，用户气泡与 AI 气泡用不同底色区分（用户偏蓝、AI 用 raised 灰）
         <div
           className={cn(
@@ -76,8 +85,8 @@ export const MessageItem = memo(function MessageItem({ item, streaming, regenFro
         </div>
       )}
       {/* 悬停才显示的操作：用户消息在气泡左侧，AI 回复在气泡右侧，底部对齐 */}
-      {!editing && !streaming && item.text && item.status !== 'in_progress' && (
-        <MsgToolbar item={item} isUser={isUser} regenFrom={regenFrom} turnUserMsgId={turnUserMsgId} onEdit={() => setEditing(true)} />
+      {!streaming && item.text && item.status !== 'in_progress' && (
+        <MsgToolbar item={item} isUser={isUser} regenFrom={regenFrom} turnUserMsgId={turnUserMsgId} />
       )}
       {/* 发送时间：行是 row-reverse，放在这里就落在气泡左侧、底部对齐 */}
       {isUser && item.at && <UserMsgTime at={item.at} />}
@@ -86,7 +95,7 @@ export const MessageItem = memo(function MessageItem({ item, streaming, regenFro
 })
 
 // Markdown 正文单独 memo：消息操作（context）变化时不重新解析。代码块换成带按钮的 CodeBlock
-const MarkdownBody = memo(function MarkdownBody({ text, streaming }: { text: string; streaming: boolean }) {
+export const MarkdownBody = memo(function MarkdownBody({ text, streaming }: { text: string; streaming: boolean }) {
   const components = useMemo<Components>(() => ({
     pre({ node, children }) {
       const code = (node as unknown as HNode | undefined)?.children?.find((c) => c.type === 'element')
@@ -142,7 +151,7 @@ const hastText = (n?: HNode): string => (!n ? '' : n.type === 'text' ? n.value ?
 
 const TB = 'flex h-6 w-6 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--color-text-muted)]'
 
-function MsgToolbar({ item, isUser, regenFrom, turnUserMsgId, onEdit }: { item: ConvItem; isUser: boolean; regenFrom?: string; turnUserMsgId?: string; onEdit: () => void }) {
+function MsgToolbar({ item, isUser, regenFrom, turnUserMsgId }: { item: ConvItem; isUser: boolean; regenFrom?: string; turnUserMsgId?: string }) {
   const act = useContext(MsgActionsContext)
   const [copied, setCopied] = useState(false)
   useEffect(() => { if (!copied) return; const t = setTimeout(() => setCopied(false), 1500); return () => clearTimeout(t) }, [copied])
@@ -160,50 +169,17 @@ function MsgToolbar({ item, isUser, regenFrom, turnUserMsgId, onEdit }: { item: 
         {copied ? <Check className="h-3.5 w-3.5 text-[var(--color-success)]" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
       {isUser && act && (
-        <>
-          <button data-msg-edit onClick={onEdit} disabled={off} className={TB}
-            title={tip(tr('编辑后重发：从这条消息之前分叉出新会话，发送改后的内容（原会话保留在历史里）'))}><Pencil className="h-3.5 w-3.5" /></button>
-          <button data-msg-fork onClick={() => msgId && act.onFork(msgId)} disabled={off} className={TB}
-            title={tip(tr('从这里分叉：从这条消息之前分叉出新会话，并把这条消息填进输入框（不发送）'))}><GitBranchPlus className="h-3.5 w-3.5" /></button>
-        </>
+        <button data-msg-fork onClick={() => msgId && act.onFork(msgId)} disabled={off} className={TB}
+          title={tip(tr('从这里分叉：把当前对话完整带到新会话（含这一条），输入框留空'))}><GitBranchPlus className="h-3.5 w-3.5" /></button>
       )}
       {!isUser && forkFrom && act && (
-        <button data-msg-fork-reply onClick={() => act.onFork(forkFrom, true)} disabled={!act || act.busy}
-          title={act.busy ? tr('从这里分叉：从这一轮之前分叉出新会话（本轮进行中，结束后再操作）') : tr('从这里分叉：以这一轮的提问为切点新建会话，后面的对话不带过去（原会话保留）')}><GitBranchPlus className="h-3.5 w-3.5" /></button>
+        <button data-msg-fork-reply onClick={() => act.onFork(forkFrom, true)} disabled={!act || act.busy} className={TB}
+          title={tip(tr('从这里分叉：把当前对话完整带到新会话（含这一条），输入框留空'))}><GitBranchPlus className="h-3.5 w-3.5" /></button>
       )}
       {!isUser && regenFrom && act && (
         <button data-msg-regen onClick={() => act.onRegenerate(regenFrom)} disabled={off} className={TB}
           title={tip(tr('重新生成：用同一条消息重跑这一轮（替换这一轮的回复，前面的对话不变）'))}><RefreshCw className="h-3.5 w-3.5" /></button>
       )}
-    </div>
-  )
-}
-
-// 原地编辑用户消息：Enter 发送（分叉出新会话），Shift+Enter 换行，Esc 取消
-function EditBox({ item, onClose }: { item: ConvItem; onClose: () => void }) {
-  const act = useContext(MsgActionsContext)
-  const [draft, setDraft] = useState(item.text)
-  const ta = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => { const el = ta.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) } }, [])
-  // 自适应高度（+2 = 上下边框，border-box 下 scrollHeight 不含边框），最高 240px 后滚动
-  useEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight + 2, 240)}px` } }, [draft])
-  const ok = !!draft.trim() && !!item.msgId && !act?.busy
-  const submit = () => { if (!ok || !act || !item.msgId) return; act.onEdit(item.msgId, draft); onClose() }
-  return (
-    <div data-msg-editor className="flex w-[85%] flex-col gap-1.5">
-      <textarea ref={ta} value={draft} rows={1} spellCheck={false} onChange={(e) => setDraft(e.target.value)} aria-label={tr('编辑消息')}
-        onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing) return
-          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
-          else if (e.key === 'Escape') { e.preventDefault(); onClose() }
-        }}
-        className="w-full resize-none rounded-lg border border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)] bg-[var(--color-bg-base)] px-3 py-2 text-[13px] leading-relaxed text-[var(--color-text-primary)] outline-none" />
-      <div className="flex items-center justify-end gap-1.5 text-[11.5px]">
-        <span className="mr-auto text-[var(--color-text-muted)]">{tr('发送后在新会话里继续（原会话保留在历史里）')}</span>
-        <button onClick={onClose} className="rounded-md border border-[var(--color-border-default)] px-2.5 py-0.5 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">{tr('取消')}</button>
-        <button data-msg-edit-send onClick={submit} disabled={!ok}
-          className="rounded-md border border-transparent bg-[var(--color-accent)] px-2.5 py-0.5 font-medium text-[var(--color-bg-base)] hover:bg-[var(--color-accent-dim)] disabled:cursor-not-allowed disabled:opacity-40">{tr('发送')}</button>
-      </div>
     </div>
   )
 }

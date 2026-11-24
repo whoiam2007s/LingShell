@@ -105,6 +105,8 @@ export function composeSubagentTask(task: string, contextHint?: string): string 
 // ── 工具拦截 ────────────────────────────────────────────────────────
 /** 子代理永远不能用的工具（交互 / 递归 / 删除） */
 const ALWAYS_DENY = new Set(['ask_user', 'spawn_subagent'])
+/** 自检测试用：子代理永远不能用的工具（写工具可以靠这张表挡，不必再进 WRITE_TOOLS） */
+export const SUBAGENT_ALWAYS_DENY: ReadonlySet<string> = ALWAYS_DENY
 const DENY_PREFIXES = ['delete_', 'remove_']
 
 /** 跑命令的工具：只读子代理能不能用要看命令内容（不能按工具名一刀切） */
@@ -168,6 +170,8 @@ export function parseToolList(v: unknown): string[] | undefined {
 const WRITE_TOOLS = new Set([
   'write_file', 'upload_file', 'set_app_setting', 'save_skill', 'save_db_connection',
   'save_model_profile', 'save_mcp_server', 'run_skill_script', ...EXEC_COMMAND_TOOLS,
+  // 往终端写一行：能替用户回答命令的提问（包括确认一次删除 / 覆盖），只读档必须挡住
+  'send_terminal_input',
 ])
 export const isWriteTool = (name: string): boolean => WRITE_TOOLS.has(name)
 

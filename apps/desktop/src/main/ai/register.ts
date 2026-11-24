@@ -1,4 +1,4 @@
-// AI 领域：授权卡 / 计划卡、dsh 控制器、会话与对话、知识库、安全规则、用量、MCP、模板（从 ipc.ts 原样搬来，顺序不变）
+// AI 领域：授权卡 / 计划卡、dsh 控制器、会话与对话、记忆库、安全规则、用量、MCP、模板（从 ipc.ts 原样搬来，顺序不变）
 import { ipcMain, app, shell, dialog, clipboard } from 'electron'
 import { join, posix, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
@@ -21,7 +21,7 @@ import { parseAttachments, registerAttachments, parseFileNameW, IMAGE_FILTER } f
 import { registerChatFork } from './chatForkIpc.js'
 import { sha256, registerTurnUndo } from './turnUndo.js'
 import { registerRollback } from './rollbackIpc.js'
-import { registerKnowledge } from './knowledgeIpc.js'
+import { registerMemory } from './memoryIpc.js'
 import { registerSafety } from './safetyIpc.js'
 import { registerAiLink } from './aiLinkIpc.js'
 import { createAskBroker, registerChatPlus } from './chatPlusIpc.js'
@@ -165,18 +165,18 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     return applyRuleVerdict(evaluateCommandRules(sys().commandRules, command, { hostKey, group: hostOf(hostKey)?.group }), base,
       { prod, readonly: auth.getTrust(sid) === 'readonly', dangerous: dangerCheck(command) === 'dangerous' })
   }
-  // 主机知识库（见 knowledgeIpc.ts）+ 跨主机提问的执行通道（见 fleetExec.ts，连接选择同批量执行）
-  const knowledge = registerKnowledge({
+  // 主机记忆库（见 memoryIpc.ts）+ 跨主机提问的执行通道（见 fleetExec.ts，连接选择同批量执行）
+  const memory = registerMemory({
     handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), localNotes: () => sys().localNotes,
     // 梳理要调一次模型：复用 dsh 的一次性补全通道
     complete: (s, u, sig, src) => controllerRef.current!.complete(s, u, sig, src),
-    // 后台攒到建议了：告诉界面（知识库入口上显示「有 N 条整理建议」），不弹窗、不打断
-    onPending: (plan) => send({ type: 'knowledge:consolidatePending', at: new Date().toISOString(), plan }),
+    // 后台攒到建议了：告诉界面（记忆库入口上显示「有 N 条整理建议」），不弹窗、不打断
+    onPending: (plan) => send({ type: 'memory:consolidatePending', at: new Date().toISOString(), plan }),
   })
   // 安全与流程（见 safetyIpc.ts）：分层规则 / AI 复核 / 预演模式 / sudo 限时提权
   const safety = registerSafety({
     handle: (ch, fn) => ipcMain.handle(ch, fn), dir: paths.config, hosts: () => hostStore.list(), sys, auth, isReadOnly: isReadOnlyCommand,
-    knowledgeTitles: (k) => knowledge.titles(k), profileName: (id) => settings.resolveProfile(id).name,
+    memoryTitles: (k) => memory.titles(k), profileName: (id) => settings.resolveProfile(id).name,
     complete: (s, u, sig, src, pid) => controllerRef.current!.complete(s, u, sig, src, pid),
     preview: { get: (sid) => !!controllerRef.current?.isPreview(sid), set: (sid, on) => controllerRef.current?.setPreview(sid, on), approve: (sid, steps) => controllerRef.current?.approvePlan(sid, steps) ?? 0 },
     execMode: { get: (sid) => controllerRef.current?.execModeOf(sid) ?? 'confirm', set: (sid, mode) => controllerRef.current?.setExecMode(sid, mode) },
@@ -227,11 +227,11 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     interactivePolicy: (): 'abort' | 'auto' | 'handoff' => sys().interactivePolicy,
     createLocalTerminal: (sessionId) => openTerminal(sessionId, 'local'),
     createSshTerminal: (sessionId, hostId) => openTerminal(sessionId, hostId),
-    // 分级 + 该主机的知识卡标题（全文在用到该主机后经系统提示「主机知识库」段注入）
+    // 分级 + 该主机的记忆卡标题（全文在用到该主机后经系统提示「主机记忆库」段注入）
     hostMeta: (tid) => {
       const hostKey = termHostKey.get(tid) ?? 'local'
-      const titles = knowledge.titles(hostKey)
-      return { ...(hostKey === 'local' ? {} : { env: hostOf(hostKey)?.env }), ...(titles.length ? { knowledge: titles } : {}) }
+      const titles = memory.titles(hostKey)
+      return { ...(hostKey === 'local' ? {} : { env: hostOf(hostKey)?.env }), ...(titles.length ? { memory: titles } : {}) }
     },
     // AI 终端清单里带上各终端最近知道的 cwd（不触发 pwd 探测），问目录时不用为此跑命令、弹授权
     terminalCwd: (tid) => terminals.cachedCwd(tid),
@@ -321,12 +321,12 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
         return { id: saved.id, name: saved.name, created }
       },
     },
-    proposeKnowledge: (sessionId, req) => {
-      const p = knowledge.propose(req)
-      send({ type: 'knowledge:proposal', proposalId: randomUUID(), sessionId, ...p })
+    proposeMemory: (sessionId, req) => {
+      const p = memory.propose(req)
+      send({ type: 'memory:proposal', proposalId: randomUUID(), sessionId, ...p })
       return { targetLabel: p.targetLabel }
     },
-    hostKnowledge: (keys, window) => knowledge.context(keys, window),
+    hostMemory: (keys, window) => memory.context(keys, window),
     // 跨主机提问：只给名称 / id / 分组 / 环境；只读判定同巡检白名单
     fleetHosts: () => hostStore.list().map((h) => ({ id: h.id, label: h.label, ...(h.group ? { group: h.group } : {}), ...(h.env ? { env: h.env } : {}) })),
     runOnHosts: (hosts, command, ms, signal, sid) => runOnHosts(hosts, sid && unattended.has(sid) ? fleetOpenUnattended : fleetOpen, command, ms, signal),
@@ -409,6 +409,9 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('agent:createSession', (_e, opts) => controller.createSession(opts))
   // 子代理列表（会话标题栏下拉）：某个会话派过哪些子代理、各自状态
   ipcMain.handle('subagent:list', (_e, sessionId: string) => controller.subagentsOf(String(sessionId ?? '')))
+  // 后台任务（start_background 起的）：状态条 / 任务面板按会话拉还在跑的；取消=真的停掉进程
+  ipcMain.handle('bg:list', (_e, sessionId: string) => controller.bgTasksOf(String(sessionId ?? '')))
+  ipcMain.handle('bg:cancel', (_e, sessionId: string, jobId?: string) => controller.cancelBgOfSession(String(sessionId ?? ''), jobId ? String(jobId) : undefined))
   ipcMain.handle('agent:listSessions', () => controller.listSessions())
   // 兜底：输入框已限长（INPUT_MAX），这里防绕过界面直接把几 MB 文本塞进模型请求
   const guardPrompt = (p: string): string => {

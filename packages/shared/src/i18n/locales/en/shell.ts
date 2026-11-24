@@ -9,7 +9,7 @@ export const shell: Record<string, string> = {
   '新会话': 'New session',
   '资源管理器（会话工作目录）': 'Explorer (session working directory)',
   '会话授权 / 执行记录': 'Session permissions / execution log',
-  '知识库（主机 / 分组 / 全局知识卡）': 'Knowledge base (host / group / global cards)',
+
   '拖动调整宽度': 'Drag to resize',
   '删除会话': 'Delete session',
   '确定删除会话 {title}？此操作不可恢复，该会话的对话历史将永久删除。': 'Delete session {title}? This cannot be undone; its chat history will be permanently deleted.',
@@ -24,14 +24,14 @@ export const shell: Record<string, string> = {
   '去处理': 'Review',
   '还有 {n} 条，请在主窗口处理': '{n} more; handle them in the main window',
   '进行中的会话': 'Running sessions',
-  '运行中': 'Running',
+
   '还有 {n} 个会话，请在主窗口查看': '{n} more sessions; see the main window',
   '「{title}」出错了': '"{title}" failed',
-  '状态': 'Status',
-  '看门狗': 'Watchdog',
+
+
   '已暂停': 'Paused',
   '{n} 个告警': '{n} alerts',
-  '正常': 'OK',
+
   '传输': 'Transfers',
   '{n} 个进行中': '{n} in progress',
   '内存 {pct}%': 'Mem {pct}%',
@@ -45,10 +45,10 @@ export const shell: Record<string, string> = {
   // lib/keybindings.ts
   '（{keys}）': ' ({keys})',
   // features/common/ConfirmDialog.tsx
-  '删除': 'Delete',
-  '取消': 'Cancel',
+
+
   // features/hosts/hostPrefs.ts
-  '本地终端': 'Local terminal',
+
   '已删除的主机': 'Deleted host',
   '{name}：{err}': '{name}: {err}',
   // features/lock/LockGate.tsx
@@ -66,15 +66,15 @@ export const shell: Record<string, string> = {
   '这不会泄露已保存的密码和密钥——它们由操作系统密钥链加密，与应用锁无关。应用锁只是防止他人在你离开时使用本应用的访问屏障，不是加密。': 'This does not expose saved passwords or keys: they are encrypted by the OS keychain, independent of App lock. App lock only stops others from using the app while you are away; it is not encryption.',
   // features/shell/TitleBar.tsx
   '主机与工作区': 'Hosts & workspaces',
-  '主机': 'Host',
+
   '主机仪表盘：所有主机的 CPU / 内存 / 磁盘 / 负载一览': 'Host dashboard: CPU / memory / disk / load for all hosts',
   '仪表盘': 'Dashboard',
-  '命令面板': 'Command palette',
+
   '搜索主机、会话、命令、帮助…': 'Search hosts, sessions, commands, help…',
-  '立即锁定': 'Lock now',
+
   '用量统计': 'Usage',
-  '使用帮助': 'Help',
-  '设置': 'Settings',
+
+
   '切换主题': 'Switch theme',
   '最小化': 'Minimize',
   '还原': 'Restore',
@@ -113,11 +113,11 @@ export const shell: Record<string, string> = {
   '没有匹配的会话': 'No matching sessions',
   '暂无会话': 'No sessions yet',
   '当前': 'Current',
-  '确定': 'OK',
+
   '{kind}：{text}\n点击打开会话并定位': '{kind}: {text}\nClick to open the session at this message',
   // features/hosts/HostPanel.tsx
-  '主机面板': 'Host panel',
-  '工作区': 'Workspaces',
+
+
   '已复制为「{name}」': 'Duplicated as "{name}"',
   '复制失败：{err}': 'Duplicate failed: {err}',
   '延迟探测：开（面板打开时每分钟 TCP 连一次 SSH 端口计时，不登录）。点击关闭': 'Latency probe: on (while the panel is open, times a TCP connection to the SSH port every minute; no login). Click to turn off',
@@ -125,25 +125,25 @@ export const shell: Record<string, string> = {
   '新建主机（打开设置 → 主机与连接 → 新建主机）': 'New host (opens Settings → Hosts & connections → New host)',
   '搜索标签/地址/用户/分组/备注，Enter 连接第一个': 'Search label/address/user/group/notes; Enter connects the first',
   '还没有已保存的主机。{btn}': 'No saved hosts yet. {btn}',
-  '新建主机': 'New host',
+
   '收藏': 'Favorite',
   '取消收藏': 'Unfavorite',
   '最近连接': 'Recent',
   '无匹配主机': 'No matching hosts',
-  '未分组': 'Ungrouped',
+
   '整组打开：每台主机开一个终端（≤4 台自动分屏）': 'Open group: one terminal per host (auto split for ≤4 hosts)',
   '整组打开': 'Open group',
   '双击连接 · 右键更多 · Ctrl+Shift+H 开关': 'Double-click to connect · Right-click for more · Ctrl+Shift+H to toggle',
   'action|连接': 'Connect',
   '新标签连接': 'Connect in new tab',
-  '编辑': 'Edit',
+
   '复制主机': 'Duplicate host',
-  '知识库': 'Knowledge base',
+  '记忆库': 'Memory',
   '规则…': 'Rules…',
   '整组打开（{n} 台）': 'Open group ({n} hosts)',
   '在 {group} 所有主机上检查：': 'Check on all hosts in {group}: ',
   '跨主机提问': 'Ask across hosts',
-  '分组知识库': 'Group knowledge base',
+  '分组记忆库': 'Group memory',
   '分组规则…': 'Group rules…',
   '全部连接': 'Connect all',
   '这一组有 {prod} 台生产主机（共 {n} 台），确定全部连接？': 'This group has {prod} production hosts ({n} total). Connect to all of them?',
@@ -172,7 +172,7 @@ export const shell: Record<string, string> = {
   '还没有模型，用过后自动列出，也可手动添加': 'No models yet. They are listed after use, or add one manually',
   '提供商': 'Provider',
   '模型': 'Model',
-  '模型 id': 'Model id',
+
   '添加模型': 'Add model',
   '保存单价': 'Save prices',
   '总览': 'Overview',
@@ -219,13 +219,13 @@ export const shell: Record<string, string> = {
   '模型明细': 'Model breakdown',
   '花费按「单价设置」里的单价估算；没设单价的模型显示「未设置单价」。': 'Cost is estimated from the prices under Prices; models without a price show "No price set".',
   '巡检': 'Inspection',
-  // features/knowledge/KnowledgeModal.tsx
+  // features/memory/MemoryModal.tsx
   '全局（所有主机）': 'Global (all hosts)',
   '{name}（已删除）': '{name} (deleted)',
-  '编辑知识卡': 'Edit knowledge card',
-  '新建知识卡': 'New knowledge card',
-  '知识卡': 'Knowledge cards',
-  '给主机、分组或全局记下部署方式、日志位置、启停方式、已知问题等长期知识。AI 用到某台主机后，会自动读到该主机、所属分组与全局的知识卡（按更新时间，总长约 4000 字）；': 'Record long-term knowledge for a host, group or globally: how it is deployed, where logs live, how to start/stop it, known issues. When the AI works on a host it automatically reads the cards for that host, its group and global (newest first, about 4000 characters in total).',
+  '编辑记忆卡': 'Edit memory card',
+  '新建记忆卡': 'New memory card',
+  '记忆卡': 'Memory cards',
+  '给主机、分组或全局记下部署方式、日志位置、启停方式、已知问题等长期知识。AI 用到某台主机后，会自动读到该主机、所属分组与全局的记忆卡（按更新时间，总长约 4000 字）；': 'Record long-term memory for a host, group or globally: how it is deployed, where logs live, how to start/stop it, known issues. When the AI works on a host it automatically reads the cards for that host, its group and global (newest first, about 4000 characters in total).',
   '排障中发现值得记住的事，AI 会在对话里提议保存，你点「保存」才写入。旧的「主机备注」已自动迁移成该主机的一张「主机备注」卡。': 'When troubleshooting turns up something worth remembering, the AI proposes saving it in the chat; nothing is written until you click Save. Old host notes were migrated into a "Host notes" card for each host.',
   '新建卡片': 'New card',
   '归属': 'Scope',
@@ -234,17 +234,17 @@ export const shell: Record<string, string> = {
   '内容（Markdown）': 'Content (Markdown)',
   '如：\n- 访问日志：/var/log/nginx/access.log\n- 重载配置：nginx -t && systemctl reload nginx': 'e.g.\n- Access log: /var/log/nginx/access.log\n- Reload config: nginx -t && systemctl reload nginx',
   '搜索标题 / 内容（空格分隔多个词）': 'Search title / content (separate words with spaces)',
-  '搜索知识卡': 'Search knowledge cards',
+  '搜索记忆卡': 'Search memory cards',
   '分类筛选': 'Filter by category',
   '全部分类': 'All categories',
-  '没有匹配的知识卡': 'No matching cards',
-  '还没有知识卡。点右上角「新建卡片」，或在排障对话里让 AI 提议保存。': 'No knowledge cards yet. Click "New card" at the top right, or let the AI propose one during troubleshooting.',
+  '没有匹配的记忆卡': 'No matching cards',
+  '还没有记忆卡。点右上角「新建卡片」，或在排障对话里让 AI 提议保存。': 'No memory cards yet. Click "New card" at the top right, or let the AI propose one during troubleshooting.',
   'AI 提议、你确认保存的': 'Proposed by AI, saved after your confirmation',
   '手动添加 / 编辑的': 'Added / edited manually',
   'AI 提议': 'AI proposed',
   '手动': 'Manual',
-  '删除知识卡': 'Delete knowledge card',
-  '确定删除「{title}」？删除后 AI 不再读到这条知识。': 'Delete "{title}"? The AI will no longer see this knowledge.',
+  '删除记忆卡': 'Delete memory card',
+  '确定删除「{title}」？删除后 AI 不再读到这条知识。': 'Delete "{title}"? The AI will no longer see this memory.',
   // features/table/TableViewer.tsx
   '自动识别': 'Auto detect',
   '按空白分隔': 'Split on whitespace',
@@ -260,7 +260,7 @@ export const shell: Record<string, string> = {
   '终端「{title}」里命令 `{cmd}` 输出的 JSON：': 'JSON output of `{cmd}` in terminal "{title}":',
   '…（后面省略 {n} 字）': '… ({n} more characters omitted)',
   '切法：认不准时手动改': 'Split mode: change it manually if detection is wrong',
-  '列{n}': 'Col {n}',
+
   '搜索全部列': 'Search all columns',
   '显示 / 隐藏列': 'Show / hide columns',
   '列（{shown}/{n}）': 'Columns ({shown}/{n})',
@@ -289,7 +289,7 @@ export const shell: Record<string, string> = {
   '{n} 项': '{n} items',
   // features/shell/CommandPalette.tsx
   'AI 会话未就绪': 'AI session not ready',
-  '新建本地终端': 'New local terminal',
+
   '新建 SSH 连接…': 'New SSH connection…',
   '新建会话': 'New session',
   '打开历史会话列表': 'Open session history',
@@ -302,9 +302,9 @@ export const shell: Record<string, string> = {
   '只读，如 nginx.conf / sshd_config': 'Read-only, e.g. nginx.conf / sshd_config',
   '配置按键对比': 'Compare config keys',
   '.env / yaml / json / ini / properties 按键对齐比较两份配置（本机或远程任意路径）': 'Compare two .env / yaml / json / ini / properties configs key by key (any local or remote path)',
-  '证书与域名巡检': 'Certificate & domain inspection',
+
   '查 HTTPS 证书到期、证书链、域名匹配，每天自动检查（设置 → 定时巡检）': 'Checks HTTPS certificate expiry, chain and domain match daily (Settings → Scheduled inspections)',
-  '批量执行': 'Batch run',
+
   '多台主机跑同一条命令，结果汇总成表': 'Run one command on many hosts and collect the results in a table',
   '多主机日志': 'Multi-host logs',
   '多台主机的日志按时间合成一个流，每行标出主机': 'Merge logs from many hosts into one time-ordered stream, each line tagged with its host',
@@ -315,7 +315,7 @@ export const shell: Record<string, string> = {
   '连通性探测：多台源主机 × 多个目标，测 DNS / TCP / HTTP': 'Connectivity probe: multiple source hosts × multiple targets, test DNS / TCP / HTTP',
   '表格查看：选一个文件（CSV / TSV / JSON / 命令输出）按表格看': 'Table viewer: pick a file (CSV / TSV / JSON / command output) and view it as a table',
   '读取文件失败：{msg}': 'Failed to read file: {msg}',
-  '目录同步': 'Directory sync',
+
   '本地 ⇄ 远程目录比较与同步（SFTP）': 'Compare and sync local ⇄ remote directories (SFTP)',
   '接口调试': 'API debugger',
   '类似 REST Client：从本机或某台主机发 HTTP 请求': 'Like REST Client: send HTTP requests from this computer or a host',
@@ -324,7 +324,7 @@ export const shell: Record<string, string> = {
   '当前终端：{name}（本地终端看本机 Docker）': 'Current terminal: {name} (local terminals show local Docker)',
   'Git 助手': 'Git assistant',
   '当前终端：{name} · 改动 / 分支 / 历史 / 储藏 / 推送 / AI 审查': 'Current terminal: {name} · changes / branches / history / stash / push / AI review',
-  '监听端口': 'Listening ports',
+
   '当前终端：{name}（本地终端看本机：谁占了端口）': 'Current terminal: {name} (local terminals show this computer: who holds a port)',
   '进程': 'Processes',
   '当前终端：{name}（本地终端看本机进程）': 'Current terminal: {name} (local terminals show local processes)',
@@ -358,7 +358,7 @@ export const shell: Record<string, string> = {
   '参数填一次，命令块逐条执行到当前终端，显示退出码与耗时': 'Fill in parameters once, run command blocks one by one in the current terminal, see exit codes and durations',
   '逐条执行：{name}': 'Step through: {name}',
   '手册视图 · {n} 步': 'Runbook view · {n} steps',
-  '批量合规检查': 'Batch compliance check',
+
   '对分组 / 多台主机跑 Linux 基线检查，出「主机 × 条目」矩阵，可导出 CSV': 'Run Linux baseline checks on a group / several hosts and get a host × item matrix, exportable as CSV',
   '部署评审': 'Deploy review',
   '导入部署文档和产物，AI 解读成部署清单、找风险，目标主机只读预检，出评审报告': 'Import deploy docs and artifacts; the AI turns them into a checklist, finds risks, runs read-only prechecks on target hosts and writes a review report',
@@ -372,8 +372,8 @@ export const shell: Record<string, string> = {
   '当前终端 + 分屏': 'Current terminals + splits',
   '管理工作区': 'Manage workspaces',
   '打开工作区：{name}': 'Open workspace: {name}',
-  '打开知识库': 'Open knowledge base',
-  '主机 / 分组 / 全局知识卡：部署、日志位置、启停方式、已知问题': 'Host / group / global knowledge cards: deployment, log locations, start/stop, known issues',
+  '打开记忆库': 'Open memory',
+  '主机 / 分组 / 全局记忆卡：部署、日志位置、启停方式、已知问题': 'Host / group / global memory cards: deployment, log locations, start/stop, known issues',
   '跨主机提问：所有主机': 'Ask across hosts: all hosts',
   '预填「{text}」，AI 并行跑只读命令后汇总对比': 'Prefills "{text}"; the AI runs read-only commands in parallel and compares the results',
   '在所有主机上检查：': 'Check on all hosts: ',
@@ -394,10 +394,10 @@ export const shell: Record<string, string> = {
   '↑↓ 选择': '↑↓ Select',
   'Enter 执行': 'Enter Run',
   'Esc 关闭': 'Esc Close',
-  // features/knowledge/ConsolidateDialog.tsx：知识库梳理
-  '知识库梳理': 'Consolidate knowledge',
-  'AI 读一遍全部知识卡，把重复的合并、过时的更新、没用的删掉。清单只是建议——勾选你想采纳的，点「应用」才会改。': 'The AI reads every knowledge card and merges duplicates, updates stale ones and drops useless ones. The list is only a suggestion — tick the items you want and click Apply to make the change.',
-  'AI 正在读全部知识卡，请稍等…（已等待 {n} 秒）': 'The AI is reading all knowledge cards — {n}s elapsed…',
+  // features/memory/ConsolidateDialog.tsx：记忆库梳理
+  '记忆库梳理': 'Consolidate memory',
+  'AI 读一遍全部记忆卡，把重复的合并、过时的更新、没用的删掉。清单只是建议——勾选你想采纳的，点「应用」才会改。': 'The AI reads every memory card and merges duplicates, updates stale ones and drops useless ones. The list is only a suggestion — tick the items you want and click Apply to make the change.',
+  'AI 正在读全部记忆卡，请稍等…（已等待 {n} 秒）': 'The AI is reading all memory cards — {n}s elapsed…',
   '没发现需要整理的地方：{n} 张卡已经比较整齐了。': 'Nothing to tidy up: the {n} cards are already in good shape.',
   '任务：': 'Task:',
   '卡片 {n} 张 → 应用全部后约 {m} 张': '{n} cards → about {m} after applying everything',
@@ -405,8 +405,8 @@ export const shell: Record<string, string> = {
   '应用中…': 'Applying…',
   '应用选中的 {k} 项': 'Apply {k} selected',
   '改写': 'Rewrite',
-  // features/knowledge/KnowledgeModal.tsx：梳理入口
-  '让 AI 把重复 / 过时的知识卡整理一遍（清单由你勾选后才生效）': 'Have the AI tidy up duplicate / stale knowledge cards (nothing changes until you tick and apply)',
+  // features/memory/MemoryModal.tsx：梳理入口
+  '让 AI 把重复 / 过时的记忆卡整理一遍（清单由你勾选后才生效）': 'Have the AI tidy up duplicate / stale memory cards (nothing changes until you tick and apply)',
   '梳理': 'Tidy up',
   '选择这一项': 'Select this item',
   // features/chat/items/ToolItem.tsx：子代理结果

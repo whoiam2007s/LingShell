@@ -24,7 +24,7 @@ function setup(o: { sys?: Partial<SystemSettings>; complete?: SafetyDeps['comple
     handle: (ch, fn) => { handlers.set(ch, fn) }, dir,
     hosts: () => [host('h1', 'db-1', { group: 'db', env: 'prod' }), host('h2', 'web-1', { group: 'web' }), host('h3', 'root-box', { username: 'root' })],
     sys: () => ({ ...DEFAULT_SYSTEM_SETTINGS, ...o.sys }),
-    auth, isReadOnly: (c) => /^(ls|cat)\b/.test(c), knowledgeTitles: (k) => (k === 'h1' ? ['mysql 日志位置'] : []),
+    auth, isReadOnly: (c) => /^(ls|cat)\b/.test(c), memoryTitles: (k) => (k === 'h1' ? ['mysql 日志位置'] : []),
     complete: o.complete ?? (async (_s, user, _sig, _src, profileId) => { calls.push({ user, profileId }); return '{"verdict":"risky","reason":"会重启数据库"}' }),
     profileName: (id) => (id ? `配置 ${id}` : '默认'),
     preview: { get: (sid) => preview.has(sid), set: (sid, on) => { if (on) preview.add(sid); else preview.delete(sid) }, approve: (sid) => { preview.delete(sid); return 1 } },
@@ -69,7 +69,7 @@ describe('AI 复核', () => {
     expect(await s.review(req({ command: 'cat /etc/my.cnf' }))).toBeUndefined()   // 只读
     expect(calls).toHaveLength(0)
   })
-  it('命中范围：用指定配置调复核模型，提示带规则 / 知识卡标题 / 上下文', async () => {
+  it('命中范围：用指定配置调复核模型，提示带规则 / 记忆卡标题 / 上下文', async () => {
     const { s, call, calls } = setup({ sys: { aiReview: { enabled: true, profileId: 'cheap', scope: 'prodWrite', onBlock: 'deny', autoAllowSafe: false } } })
     call('safety:setGroupRules', 'db', '禁止重启 mysqld')
     const r = await s.review(req())

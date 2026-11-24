@@ -1,5 +1,5 @@
 // 端到端：真实 DshController + 真实 dsh 运行时 + 本地假模型（OpenAI 兼容，回「答:<最后一条用户消息>」），验证
-//  - fork：从第 1 条消息之前分叉 = 新的空会话（标题「原标题（分叉）」、工作目录照搬），发改后的内容，请求里没有原会话的内容；
+//  - fork：从第 1 条消息之前分叉 = 新的空会话（标题「原标题 · 2」、工作目录照搬），发改后的内容，请求里没有原会话的内容；
 //  - fork：从第 2 条消息之前分叉 = 继承第 1 轮，回放给界面；
 //  - regenerate：原地重跑最后一轮——前面的轮不变，请求里第 2 条消息只出现一次；
 //  - 重启（新控制器读同一目录）后原会话、分叉会话都能恢复并回放。
@@ -15,7 +15,7 @@ import type { DshController, DshControllerConfig } from './DshController.js'
 
 const textOf = (c: any): string => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b: any) => b?.text ?? '').join('') : '')
 // 请求里用户说的话（去掉 dsh 注入的 runtime-context 等非用户消息：只认我们发的「问」字开头）
-const askedIn = (body: any): string[] => body.messages.filter((m: any) => m.role === 'user').map((m: any) => textOf(m.content)).filter((t: string) => t.startsWith('问'))
+const askedIn = (body: any): string[] => body.messages.filter((m: any) => m.role === 'user').map((m: any) => textOf(m.content).replace(/<context[\s\S]*?<\/context>/g, '').trim()).filter((t: string) => t.startsWith('问'))
 
 function fake(reqs: any[]): Server {
   return createServer((req, res) => {
@@ -101,7 +101,7 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
     expect(r.text).toBe('问一')
     expect(r.session.id).not.toBe(sid)
     const m = store.get(r.session.id)!
-    expect(m.title).toBe('排查（分叉）')
+    expect(m.title).toBe('排查 · 2')   // 新命名：原标题 · 第几个分支（不再追加（分叉））
     expect(m.workDir).toBe(dir)
     expect(msgsOf(r.session.id)).toEqual([])
     reqs.length = 0
@@ -111,19 +111,32 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
   }, 60_000)
 
   let fork2 = ''
-  it('从第 2 条之前分叉：把「最近一轮」重组成种子，新会话一打开就有历史', async () => {
+  it('从第 2 条之前分叉：摘要 + 最近几轮（只读展示）一起带过去', async () => {
     events.length = 0
     const r = await ctrl.forkSession(sid, ids[1], 'fork')
     fork2 = r.session.id
     expect(r.text).toBe('问二')
-    expect(msgsOf(fork2)).toEqual(['U:问一', 'A:答:问一'])   // 切点之前那一轮是真实历史，不是空白会话
-    expect(r.digest).toBe('')                              // 有种子就不再额外带 digest（同一段上下文别发两遍）
+    // 最近几轮不再拷真事件（长会话里拷种子会被 dsh 拒收，新会话直接空白），改成 meta 上的只读展示
+    expect(msgsOf(fork2)).toEqual([])
+    expect(store.get(fork2)!.forkPreview).toEqual([{ role: 'user', text: '问一' }, { role: 'ai', text: '答:问一' }])
+    expect(r.digest).toBe('')                              // 摘要记在 meta 上，界面不再拼一遍
     // 从 AI 回复分叉：这一轮也要带上（用户反馈「丢了最新的一轮」）
     const r2 = await ctrl.forkSession(sid, ids[1], 'fork', { includeTurn: true })
-    expect(msgsOf(r2.session.id)).toEqual(['U:问一', 'A:答:问一', 'U:问二', 'A:答:问二'])
+    expect(store.get(r2.session.id)!.forkPreview).toEqual([
+      { role: 'user', text: '问一' }, { role: 'ai', text: '答:问一' },
+      { role: 'user', text: '问二' }, { role: 'ai', text: '答:问二' },
+    ])
     reqs.length = 0
     await runTurn(fork2, '问三')
-    expect(askedIn(reqs[0])).toEqual(['问一', '问三'])       // 种子那一轮真的进了模型上下文
+    expect(askedIn(reqs[0])).toEqual(['问三'])             // 历史不在事件里：模型靠下面那份摘要
+    // 摘要以 <context type="session"> 块随第一条消息发出去，且用的是模型生成的摘要 ——
+    // 本地兜底会以【上一会话的压缩摘要】开头，不应出现
+    const body = JSON.stringify(reqs[0])
+    expect(body).toContain('上一会话摘要')   // 摘要作为上下文块挂在这条消息上（JSON 里会转义引号，所以按名字断言）
+    // 最近几轮原文也一起带给模型（只给界面看气泡的话，模型还得重新翻一遍）
+    expect(body).toContain('【上一会话最近几轮原文】')
+    expect(body).toContain('答:问一')
+    expect(body).not.toContain('【上一会话的压缩摘要】')
   }, 60_000)
 
   it('重新生成最后一轮：前面不变，最后一条只问一次', async () => {
@@ -152,6 +165,6 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
     await ctrl.reconnectSession(store.get(sid)!)
     await ctrl.reconnectSession(store.get(fork2)!)
     expect(msgsOf(sid)).toEqual(['U:问一', 'A:答:问一', 'U:问二', 'A:答:问二'])
-    expect(msgsOf(fork2)).toEqual(['U:问一', 'A:答:问一', 'U:问三', 'A:答:问三'])   // 分叉会话 = 种子那一轮 + 自己那一轮
+    expect(msgsOf(fork2)).toEqual(['U:问三', 'A:答:问三'])   // 分叉会话只有自己那一轮（上一段历史是只读气泡）
   }, 60_000)
 })

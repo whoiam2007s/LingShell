@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../common/index.js'
 import { Checkbox } from '../../components/ui/Checkbox.js'
 import { dockerSupported, processSupported, portsSupported, tk, tr } from '@lingshell/shared'
 import { trx } from '../../lib/trx.js'
+import { emitPanelOpened, onPanelOpened } from '../../lib/panelBus.js'
 import { PortsDrawer } from './drawers/PortsDrawer.js'
 import { HostCheckDrawer } from '../hostcheck/index.js'
 import { Stethoscope } from 'lucide-react'
@@ -104,6 +105,9 @@ export function TerminalView() {
   const openDual = (id: string) => { setDrawer(null); setDual({ terminalId: id, root: getTermCwd(id) || '/' }) }
   const [drawer, setDrawer] = useState<'history' | 'explorer' | 'docker' | 'processes' | 'ports' | 'hostcheck' | 'systemd' | 'alerts' | 'git' | OpsView | null>(null)
   const alertUnread = useAlertHits().unread   // 告警汇总未读数（活动栏角标）
+  // 左右抽屉互斥：右侧打开时广播一声（App 收到会把左侧收起）；左侧打开时这里把自己关掉
+  useEffect(() => { if (drawer) emitPanelOpened('right') }, [drawer])
+  useEffect(() => onPanelOpened((side) => { if (side === 'left') setDrawer(null) }), [])
   const opsView = isOpsView(drawer) ? drawer : null   // 「更多视图」里的抽屉
   const [diskPath, setDiskPath] = useState<string | undefined>()   // 磁盘占用抽屉预填的目录（体检「分析占用」/ 资源管理器右键）
   const [uploadPaths, setUploadPaths] = useState<string[] | null>(null)

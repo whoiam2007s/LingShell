@@ -19,18 +19,36 @@ export function resolveUpdateSource(o: { isPackaged: boolean; envUrl?: string; a
 
 // electron-updater 事件 → 状态。progress 事件不带版本号，沿用上一状态的；未知事件返回 undefined
 export function nextUpdateStatus(prev: UpdateStatus, event: string, arg?: unknown): UpdateStatus | undefined {
-  const a = (arg ?? {}) as { version?: unknown; percent?: unknown; message?: unknown }
+  const a = (arg ?? {}) as { version?: unknown; percent?: unknown; message?: unknown; total?: unknown; transferred?: unknown; bytesPerSecond?: unknown }
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
   const version = typeof a.version === 'string' ? a.version : prev.version
   switch (event) {
     case 'checking-for-update': return { state: 'checking' }
     case 'update-not-available': return { state: 'none' }
     case 'update-available': return { state: 'available', version }
     case 'download-progress':
-      return { state: 'downloading', version, percent: typeof a.percent === 'number' ? Math.round(a.percent) : prev.percent }
+      return {
+        state: 'downloading',
+        version,
+        percent: typeof a.percent === 'number' ? Math.round(a.percent) : prev.percent,
+        total: num(a.total),
+        transferred: num(a.transferred),
+        bytesPerSecond: num(a.bytesPerSecond),
+        // 回退标志在下载过程中一直保留，界面才知道要不要提示「整包下载」
+        fullDownload: prev.fullDownload,
+      }
     case 'update-downloaded': return { state: 'downloaded', version }
     case 'error': return { state: 'error', version, error: arg instanceof Error ? arg.message : typeof a.message === 'string' ? a.message : String(arg) }
     default: return undefined
   }
+}
+
+// electron-updater 差分下载失败时会打这条日志、然后自己回退整包下载：
+// "Cannot download differentially, fallback to full download: HttpError: 501"（GitHub 的下载 CDN 不支持多段 Range）。
+// 认出来只是为了在界面上解释「这次为什么慢」，不是错误、也不影响更新本身。
+const FULL_FALLBACK_RE = /cannot download differentially|fallback to full download/i
+export function isDifferentialFallback(msg: string): boolean {
+  return FULL_FALLBACK_RE.test(msg)
 }
 
 // 更新失败归类：electron-updater 的 error message 五花八门，按关键词给出「下一步该查什么」。

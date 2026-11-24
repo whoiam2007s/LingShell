@@ -74,9 +74,9 @@ describe('AI 复核', () => {
     expect(reviewAction({ verdict: 'risky', reason: '' }, base)).toBe('ask')
     expect(reviewAction({ verdict: 'unreviewed', reason: '' }, base)).toBe('ask')
   })
-  it('复核提示含命令、主机（生产）、规则、知识卡标题、上下文', () => {
+  it('复核提示含命令、主机（生产）、规则、记忆卡标题、上下文', () => {
     const p = buildReviewPrompt({ tool: 'exec_in_terminal', command: 'systemctl restart mysqld', explain: '重启数据库', hosts: [{ label: 'db-1', env: 'prod' }],
-      context: '用户：数据库慢', rules: '### 分组「db」\n禁止重启 mysqld', knowledge: ['mysql 日志位置'] })
+      context: '用户：数据库慢', rules: '### 分组「db」\n禁止重启 mysqld', memory: ['mysql 日志位置'] })
     expect(p.system).toContain('"verdict"')
     for (const s of ['systemctl restart mysqld', 'db-1（生产）', '禁止重启 mysqld', 'mysql 日志位置', '用户：数据库慢', '重启数据库']) expect(p.user).toContain(s)
   })

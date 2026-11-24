@@ -121,15 +121,18 @@ export function HistoryDrawer({ sessions, activeId, onSelect, onRename, onDelete
                   const t = sessionTime(s, now)
                   return t && <span data-session-time className="shrink-0 tabular-nums text-[10.5px] text-[var(--color-text-muted)]" title={t.title}>{t.text}</span>
                 })()}
-                <div className="hidden shrink-0 items-center gap-0.5 group-hover:flex group-focus-within:flex">
+                <div className="hidden shrink-0 items-center gap-1.5 group-hover:flex group-focus-within:flex">
                   {editing === s.id ? (
-                    <button onClick={(e) => { e.stopPropagation(); commit(s.id, s.title) }} title={tr('确定')}><Check className="h-3 w-3 text-[var(--color-success)]" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); commit(s.id, s.title) }} title={tr('确定')}
+                      className="flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-[var(--color-bg-hover)]"><Check className="h-3 w-3 text-[var(--color-success)]" /></button>
                   ) : (
-                    <button onClick={(e) => { e.stopPropagation(); setEditing(s.id); setDraft(s.title) }} title={tr('重命名')}><Pencil className="h-3 w-3 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setEditing(s.id); setDraft(s.title) }} title={tr('重命名')}
+                      className="flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-[var(--color-bg-hover)]"><Pencil className="h-3 w-3 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]" /></button>
                   )}
                   {/* 当前会话不显示删除图标，防误删正在用的会话 */}
                   {!isActive && (
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(s.id, s.title) }} title={tr('删除')}><Trash2 className="h-3 w-3 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(s.id, s.title) }} title={tr('删除')}
+                      className="flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-[var(--color-bg-hover)]"><Trash2 className="h-3 w-3 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]" /></button>
                   )}
                 </div>
               </div>
