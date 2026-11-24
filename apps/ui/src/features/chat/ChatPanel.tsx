@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert, MoreHorizontal } from 'lucide-react'
+import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert, MoreHorizontal, History } from 'lucide-react'
 import { useConversation, type ContextState, type ConvItem, type SessionPhase, type OutgoingAttachments } from './useConversation.js'
 import { SessionFlowDrawer } from './SessionFlowDrawer.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
@@ -20,7 +20,7 @@ import { ProposalItem } from './items/ProposalItem.js'
 import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
-import type { TurnTimes, SessionMeta, SubagentView } from '@lingshell/shared'
+import type { TurnTimes, SessionMeta, SubagentView, ForkTurnPreview } from '@lingshell/shared'
 import { tr, tk , type ThinkingLevel , type ExecMode, INPUT_MAX, insertCapped, capInput } from '@lingshell/shared'
 import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
 import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
@@ -64,7 +64,7 @@ import { usePreview, PreviewBanner, PreviewPlanCard, previewPlanOfTurn } from '.
 const log = logger.scope('chat')
 
 // 受控对话面板：会话生命周期（创建/重连/选择/phase）由 App 管，这里只按 activeSessionId 渲染对话流。
-export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession, onOpenGit }: {
+export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, forkPreview, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession, onOpenGit }: {
   onBack?: () => void          // 错误态「返回上一个会话」（没有可回的会话时不传）
   onOpenSession?: (id: string) => Promise<void>   // 切到某会话（分叉出的新会话：刷新列表并打开）
   onOpenGit?: () => void       // 标题前的分支 tag 点开 Git 面板
@@ -72,7 +72,8 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   activeSessionId: string
   sessionPhase: SessionPhase
   sessionTitle?: string
-  seedDigest?: string          // 分叉 / 接续带过来的上下文（上一会话摘要 + 最近几轮），显示成只读历史块
+  seedDigest?: string          // 分叉 / 接续带过来的摘要（第一次发言时随消息发给模型）
+  forkPreview?: NonNullable<SessionMeta['forkPreview']>   // 分叉带过来的最近几轮：只读气泡展示
   workDir?: string
   onPickWorkDir?: () => void
   onRename?: (title: string) => void
@@ -818,8 +819,9 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto py-2">
        {/* 空会话时撑满高度，欢迎页才能上下居中 */}
        <div ref={contentRef} className={items.length === 0 ? 'h-full' : undefined}>
-        {seedDigest && items.length === 0 && <SeedHistoryCard digest={seedDigest} />}
-        {items.length === 0 && sessionPhase.phase === 'ready' && !seedDigest && (
+        {seedDigest && <SeedHistoryCard digest={seedDigest} />}
+        {!!forkPreview?.length && <ForkHistoryPreview turns={forkPreview} />}
+        {items.length === 0 && sessionPhase.phase === 'ready' && !seedDigest && !forkPreview?.length && (
           <EmptyState onPick={(text) => setInput(text)} />
         )}
         {hasMore && (
@@ -1215,12 +1217,38 @@ function SeedHistoryCard({ digest }: { digest: string }) {
     <div data-seed-history className="mx-3 mb-2 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-bg-raised)]">
       <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
         <Info className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-        <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{tr('上一会话摘要 + 最近几轮对话（分叉时带过来的上下文）')}</span>
+        <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{tr('上一会话摘要（分叉时带过来的上下文）')}</span>
         <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{open ? tr('收起') : tr('展开')}</span>
         <ChevronUp className={`h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? '' : 'rotate-180'}`} />
       </button>
       {open && (
         <div className="max-h-56 overflow-auto whitespace-pre-wrap border-t border-[var(--color-border-subtle)] px-3 py-2 text-[12px] leading-relaxed text-[var(--color-text-secondary)]">{digest}</div>
+      )}
+    </div>
+  )
+}
+
+// 分叉带过来的「最近几轮」：只读气泡（不是真实事件、不触发模型——模型看到的是上面那份摘要）。
+// 打开新会话就能看到上一段对话说到哪儿了；嫌长可以收起。
+function ForkHistoryPreview({ turns }: { turns: ForkTurnPreview[] }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div data-fork-history className="mx-3 mb-2 rounded-md border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
+        <History className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
+        <span className="flex-1 text-[12px] text-[var(--color-text-muted)]">{tr('上一会话最近几轮（只读，模型看到的是上面的摘要）')}</span>
+        <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{open ? tr('收起') : tr('展开')}</span>
+        <ChevronUp className={`h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? '' : 'rotate-180'}`} />
+      </button>
+      {open && (
+        <div className="max-h-72 space-y-2 overflow-auto border-t border-[var(--color-border-subtle)] px-3 py-2">
+          {turns.map((t, i) => (
+            <div key={i} className="flex gap-2">
+              <span className={`mt-[2px] w-6 shrink-0 text-[11px] ${t.role === 'user' ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}`}>{t.role === 'user' ? tr('你') : 'AI'}</span>
+              <div className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-[var(--color-text-secondary)]">{t.text}</div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

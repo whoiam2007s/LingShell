@@ -111,23 +111,26 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
   }, 60_000)
 
   let fork2 = ''
-  it('从第 2 条之前分叉：摘要 + 最近一轮一起带过去', async () => {
+  it('从第 2 条之前分叉：摘要 + 最近几轮（只读展示）一起带过去', async () => {
     events.length = 0
     const r = await ctrl.forkSession(sid, ids[1], 'fork')
     fork2 = r.session.id
     expect(r.text).toBe('问二')
-    // 切点之前那一轮是真实历史，不是空白会话（界面文本里 <context> 被拆成 chip，这里剥掉再比）
-    const stripCtx = (t: string) => t.replace(/\n*<context[\s\S]*<\/context>\s*$/, '').trim()
-    expect(msgsOf(fork2).map(stripCtx)).toEqual(['U:问一', 'A:答:问一'])
-    expect(r.digest).toBe('')                              // 摘要已在种子里，不再额外随首条消息发一遍
+    // 最近几轮不再拷真事件（长会话里拷种子会被 dsh 拒收，新会话直接空白），改成 meta 上的只读展示
+    expect(msgsOf(fork2)).toEqual([])
+    expect(store.get(fork2)!.forkPreview).toEqual([{ role: 'user', text: '问一' }, { role: 'ai', text: '答:问一' }])
+    expect(r.digest).toBe('')                              // 摘要记在 meta 上，界面不再拼一遍
     // 从 AI 回复分叉：这一轮也要带上（用户反馈「丢了最新的一轮」）
     const r2 = await ctrl.forkSession(sid, ids[1], 'fork', { includeTurn: true })
-    expect(msgsOf(r2.session.id).map(stripCtx)).toEqual(['U:问一', 'A:答:问一', 'U:问二', 'A:答:问二'])
+    expect(store.get(r2.session.id)!.forkPreview).toEqual([
+      { role: 'user', text: '问一' }, { role: 'ai', text: '答:问一' },
+      { role: 'user', text: '问二' }, { role: 'ai', text: '答:问二' },
+    ])
     reqs.length = 0
     await runTurn(fork2, '问三')
-    expect(askedIn(reqs[0])).toEqual(['问一', '问三'])       // 种子那一轮真的进了模型上下文
-    // 摘要以 <context type="session"> 块挂在种子第一轮消息末尾（模型看得到全文，界面显示成 chip），
-    // 且用的是模型生成的摘要 —— 本地兜底会以【上一会话的压缩摘要】开头，不应出现
+    expect(askedIn(reqs[0])).toEqual(['问三'])             // 历史不在事件里：模型靠下面那份摘要
+    // 摘要以 <context type="session"> 块随第一条消息发出去，且用的是模型生成的摘要 ——
+    // 本地兜底会以【上一会话的压缩摘要】开头，不应出现
     const body = JSON.stringify(reqs[0])
     expect(body).toContain('上一会话摘要')   // 摘要作为上下文块挂在这条消息上（JSON 里会转义引号，所以按名字断言）
     expect(body).not.toContain('【上一会话的压缩摘要】')
@@ -159,6 +162,6 @@ describe.skipIf(!hasZstd)('对话分叉 / 重新生成端到端', () => {
     await ctrl.reconnectSession(store.get(sid)!)
     await ctrl.reconnectSession(store.get(fork2)!)
     expect(msgsOf(sid)).toEqual(['U:问一', 'A:答:问一', 'U:问二', 'A:答:问二'])
-    expect(msgsOf(fork2)).toEqual(['U:问一', 'A:答:问一', 'U:问三', 'A:答:问三'])   // 分叉会话 = 种子那一轮 + 自己那一轮
+    expect(msgsOf(fork2)).toEqual(['U:问三', 'A:答:问三'])   // 分叉会话只有自己那一轮（上一段历史是只读气泡）
   }, 60_000)
 })

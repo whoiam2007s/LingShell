@@ -65,7 +65,7 @@ import { withPathsBlock, withContextBlocks, type TurnAttachment, type ContextAtt
 import { askUserToolDef, ASK_GUIDANCE } from './askUser.js'
 import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
-import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs } from './fork.js'
+import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs, forkPreview } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
 import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
 import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
@@ -2136,39 +2136,19 @@ export class DshController {
         clearTimeout(timer)
       }
       if (!digest.trim()) digest = continuationDigest(upTo, live.lastSummary)
-      // 「摘要 + 最近几轮」重组成种子事件：新会话打开就是真实历史（消息 / 工具卡都在），不用重新输入。
-      // 摘要优先用刚生成的详细摘要（模型可见的 <context> 块 + 界面显示成 chip），
-      // 拿不到时才退回上一次压缩摘要。没有可拷的历史（从第一条消息分叉）时退回只带 digest 的旧行为。
-      const ds = digestSeed(upTo, {
-        summary: '',
-        buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
-      })
+      // 最近几轮只做**界面展示**：不拷真实事件。
+      // 拷事件这条路很脆——长会话里有压缩检查点（surfaceOp: replace）和图片引用（image/offload），
+      // 切片后引用越界，dsh 直接拒收种子，新会话就成空白（用户实测「还是没有最近的对话」）。
+      // 现在模型看到的是 contextDigest（详细摘要），界面看到的是 forkPreview 这几条只读气泡。
+      const preview = idx < 0 ? [] : forkPreview(upTo, { turns: 3 })
       const meta: SessionMeta = {
         ...rest, id, threadId: id, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
-        // 摘要记在 meta 上：界面显示成只读历史块，且由主进程在**第一次发言时**拼进消息
-        // （放进种子那条路不可靠：重放时 <context> 块会丢）
+        // 摘要记在 meta 上：由主进程在**第一次发言时**拼进消息（放种子里不可靠：重放时 <context> 块会丢）
         ...(digest.trim() ? { contextDigest: digest, digestSent: false } : {}),
+        ...(preview.length ? { forkPreview: preview } : {}),
       }
-      // 种子建不起来（dsh 校验没过等）就退一步：换个新 id 用 digest 建，绝不让分叉直接失败
-      if (ds && !seedHasEarlierRefs(ds.seed)) {
-        this.cfg.log?.('warn', 'fork seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
-      } else if (ds) {
-        try {
-          const info = await this.spawn(id, meta, false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
-          this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
-          return { session: info, text: p.text, digest: '' }
-        } catch (e) {
-          this.cfg.log?.('warn', 'fork with seed failed, fallback to digest', { sessionId: id, err: String(e).slice(0, 300) })
-          this.sessions.delete(id)
-        }
-      }
-      const plainId = `sess_${randomUUID().slice(0, 8)}`
-      const plainMeta: SessionMeta = {
-        ...rest, id: plainId, threadId: plainId, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
-        ...(digest.trim() ? { contextDigest: digest, digestSent: false } : {}),
-      }
-      const info = await this.spawn(plainId, plainMeta, false)
-      this.cfg.sessionStore?.upsert({ ...plainMeta, title: info.title })
+      const info = await this.spawn(id, meta, false)
+      this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
       // digest 记在 meta 上，由 sendTurn 在第一次发言时挂进消息；这里返回空串，免得界面再拼一遍
       return { session: info, text: p.text, digest: '' }
     }

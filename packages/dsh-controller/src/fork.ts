@@ -8,7 +8,7 @@
 //     以前一律取「之前」，导致从最新一条回复分叉会把刚刚那一轮整个切掉（用户反馈「丢了最新的一轮对话」）。
 // 找不到更早的 turn/end（第一条消息）→ 不带历史。
 // 一轮里补发的第二条消息（排队消息被并进同一轮）在 includeTurn=false 时按整轮切：同轮的前一条消息一并不带（少见，接受）。
-import { tr } from '@lingshell/shared'
+import { tr, type ForkTurnPreview } from '@lingshell/shared'
 import { userMessageView, type DshEvent } from './relay.js'
 
 export interface ForkPoint {
@@ -186,6 +186,45 @@ export function digestSeed(
     }
   }
   return { seed, inherited: renumbered.length }
+}
+
+/**
+ * 分叉带过去的「最近几轮」：只给界面**只读展示**（用户问 + AI 答的纯文本）。
+ *
+ * 为什么不拷真实事件：长会话里事件带压缩检查点（surfaceOp: replace）和图片引用（image/offload），
+ * 切片后引用越界，dsh 直接拒收种子（`invalid seed event ... target seq N must be user/message or tool/result`），
+ * 新会话就成了空白；而且回放整段事件要十几秒。这里只取文字，任何会话都能带过去。
+ * 模型那边看到的是 contextDigest（详细摘要），不是这几个气泡。
+ */
+export function forkPreview(
+  events: readonly DshEvent[],
+  opts?: { turns?: number; maxChars?: number; maxEach?: number },
+): ForkTurnPreview[] {
+  const want = Math.max(1, opts?.turns ?? 3)
+  const maxChars = Math.max(200, opts?.maxChars ?? 3000)
+  const maxEach = Math.max(120, opts?.maxEach ?? 900)
+  const clip = (s: string): string => (s.length > maxEach ? `${s.slice(0, maxEach)}…` : s)
+  const rows: ForkTurnPreview[] = []
+  for (const ev of events) {
+    if (ev.type === 'user/message' && ev.data?.source?.kind === 'user') {
+      const text = userMessageView(ev.data?.content).text.trim()
+      if (text) rows.push({ role: 'user', text: clip(text) })
+    } else if (ev.type === 'assistant/message') {
+      const blocks = ev.data?.message?.content
+      const text = Array.isArray(blocks)
+        ? blocks.filter((b: any) => b?.type === 'text' && typeof b.text === 'string').map((b: any) => b.text).join('\n').trim()
+        : ''
+      if (text) rows.push({ role: 'ai', text: clip(text) })
+    }
+  }
+  // 一轮 = 一条用户消息及其后的助手回复；只留最后 want 轮
+  const starts: number[] = []
+  rows.forEach((r, i) => { if (r.role === 'user') starts.push(i) })
+  const tail = starts.length > want ? rows.slice(starts[starts.length - want]) : rows.slice()
+  // 总量超了就丢最早的一轮（至少留一轮）
+  let len = tail.reduce((n, r) => n + r.text.length, 0)
+  while (tail.length > 1 && len > maxChars) len -= tail.shift()!.text.length
+  return tail
 }
 
 /**

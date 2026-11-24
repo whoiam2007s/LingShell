@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs } from './fork.js'
+import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs, forkPreview } from './fork.js'
 import { splitContextBlocks } from '@lingshell/shared'
 import type { DshEvent } from './relay.js'
 import { withPathsBlock } from '@lingshell/shared'
@@ -13,6 +13,41 @@ const log: DshEvent[] = [
   ev('agent/inbox/spliced'), ev('turn/start', { turn: 2 }), ev('step/start', { step: 1 }),
   user('u2', withPathsBlock('再看内存', [{ kind: 'file', path: '/var/log/syslog' }], 'linux')), ev('tool/call', { callId: 'c2' }), ev('turn/end', { turn: 2, reason: { kind: 'completed' } }),
 ].map((e, seq) => ({ ...e, seq }))
+
+describe('forkPreview（分叉带过去的最近几轮，只读展示）', () => {
+  const say = (text: string, extra?: any[]) => ev('assistant/message', { message: { content: [{ type: 'text', text }, ...(extra ?? [])] } })
+  const mk = (): DshEvent[] => ([
+    user('u1', '第一问'), say('第一答'),
+    user('u2', '第二问'), say('第二答'),
+    user('u3', '第三问'), say('第三答', [{ type: 'reasoning', text: '想一想' }]),
+    user('u4', '第四问'), say('第四答'),
+  ] as Omit<DshEvent, 'seq'>[]).map((e, seq) => ({ ...e, seq })) as DshEvent[]
+
+  it('默认只留最后 3 轮（用户问 + 助手答），思考块不掺进来', () => {
+    expect(forkPreview(mk())).toEqual([
+      { role: 'user', text: '第二问' }, { role: 'ai', text: '第二答' },
+      { role: 'user', text: '第三问' }, { role: 'ai', text: '第三答' },
+      { role: 'user', text: '第四问' }, { role: 'ai', text: '第四答' },
+    ])
+    expect(forkPreview(mk(), { turns: 1 })).toEqual([{ role: 'user', text: '第四问' }, { role: 'ai', text: '第四答' }])
+  })
+
+  it('用户消息里的附件路径块不进气泡；超长文本截断', () => {
+    const rows = ([
+      user('u1', withPathsBlock('看看这个日志', [{ kind: 'file', path: '/var/log/syslog' }], 'linux')),
+      say('x'.repeat(2000)),
+    ] as Omit<DshEvent, 'seq'>[]).map((e, seq) => ({ ...e, seq })) as DshEvent[]
+    const got = forkPreview(rows, { maxEach: 150 })
+    expect(got[0]).toEqual({ role: 'user', text: '看看这个日志' })
+    expect(got[1].text).toBe(`${'x'.repeat(150)}…`)
+  })
+
+  it('没有用户消息时返回空（不会凭空造历史）', () => {
+    expect(forkPreview([])).toEqual([])
+    expect(forkPreview(([say('孤立的一句')] as Omit<DshEvent, 'seq'>[]).map((e, seq) => ({ ...e, seq })) as DshEvent[]))
+      .toEqual([{ role: 'ai', text: '孤立的一句' }])
+  })
+})
 
 describe('forkPoint（分叉切点）', () => {
   it('第一条消息：没有更早的轮 → 空会话', () => {
