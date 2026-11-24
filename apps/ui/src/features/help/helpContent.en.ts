@@ -154,7 +154,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         '"Add context" ▸ File / Folder: attach the path of a local file (images show as images) or folder to this message; see "Chat attachments and images".',
         '"Working directory": shows the currently bound directory; click to change it. Local terminals the AI opens in this session start here, and it\'s also the Explorer root; the default is your home directory. Terminals already running don\'t switch directories (each keeps its own current directory; SSH terminals use the remote directory). When the AI needs to work in this directory it opens a new local terminal; if you ask "which directory", it explains the working directory and each terminal\'s actual directory separately.',
         '"Skills" ▸: pick a skill for the AI to load first for this message; see "Skills".',
-        '"Common tasks" ▸: a submenu lists templates; picking one fills the input box (templates with `{{placeholders}}` show a form first) and doesn\'t send automatically. "Manage templates…" at the bottom opens "Settings → Task templates".',
+        '"Common tasks" ▸: a submenu lists templates; picking one fills the input box (templates with `{{placeholders}}` show a form first) and doesn\'t send automatically. Templates with a "host" parameter turn it into a picker listing saved hosts (production hosts are marked); you can still type one if none is saved. "Manage templates…" at the bottom opens "Settings → Task templates".',
         '"Runbooks" ▸: a submenu lists runbooks; pick one, fill in the parameters, check the target terminals, and click "Send to AI"; see "Runbooks".',
         'You can keep asking while the AI works: press Enter and the message is inserted into the chat after the current step and before the AI\'s next request (marked "Follow-up during this turn"), and the AI handles it within this turn instead of waiting until it\'s all done. Until it\'s delivered, you can "Withdraw" it from "Waiting to insert" at the bottom (the text goes back to the input box). Press Alt+Enter instead to queue it as a new turn after this one. Running commands aren\'t interrupted; to block a command awaiting permission, click "Deny". The red "Stop" ends the turn, and follow-ups not yet inserted are sent as a new turn once it stops.',
       ] },
@@ -168,6 +168,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Nodes show only an icon and a short name (`exec` / `write` / file name): hover for a summary, click for full details in the bottom bar.',
         'Edges carry no text, only colour: blue = prompt to tools, yellow = writes to outputs, grey dashed = files produced by a command, green = previous turn to the next prompt, purple = chip to the tool that used it.',
         'Long sessions draw only the latest 8 turns: one tick per turn at the top (click to jump) with "Earlier / Later" at both ends; a column folds into "Other +N" only past 40 nodes.',
+        'The "SVG" / "PNG" buttons at the top-right export the current group of turns as an image: SVG is vector with selectable text, PNG is rendered at 2x; the image is built from the node and edge data, not a screenshot.',
       ], tips: [
         'Chips are the attachments and references sent with the prompt (images, @-files, @-terminals); they hang in a vertical chain under the prompt.',
         'Click empty space to clear the selection; drag the canvas and scroll to zoom.',
@@ -950,7 +951,7 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Click "Save" to store it as `skills/<name>/SKILL.md`. Later, click "Edit" on the card to change it, or "Delete" (resource files are deleted too).',
       ] },
       { h: 'Use in a chat', steps: [
-        'Click "+" before the input box → "Skills" ▸ and pick a skill.',
+        'Type `/` in the input box to open the skill picker (arrow keys + Enter), or click "+" before the input box → "Skills" ▸ and pick one.',
         'A tag with its name appears above the input box (click × on the tag to remove it). Write what you want done and press Enter.',
         'The message starts with `/name`, so the AI gets the skill\'s full instructions before it starts. The tag applies to this message only.',
       ], tips: ['The list only shows skills that are enabled and allow manual invocation (skills with `user-invocable: false` in SKILL.md are hidden).'] },
@@ -990,28 +991,23 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
     ],
   },
   {
-    id: 'messages', title: 'Message actions (copy / regenerate / edit and resend / fork)', icon: GitBranchPlus,
+    id: 'messages', title: 'Message actions (copy / regenerate / fork)', icon: GitBranchPlus,
     blocks: [
-      { p: 'Hover a message in the chat and a few small icon buttons appear next to the bubble (left of your messages, right of AI replies). While the current turn is still running, Edit, Fork and Regenerate are grayed out; use them after the turn ends (or after stopping it).' },
+      { p: 'Hover a message in the chat and a few small icon buttons appear next to the bubble (left of your messages, right of AI replies). While the current turn is still running, Fork and Regenerate are grayed out; use them after the turn ends (or after stopping it).' },
       { h: 'Copy', p: 'Both your messages and AI replies have "Copy". For AI replies it copies the original Markdown (code blocks and tables intact), so formatting survives when you paste into notes.' },
       { h: 'Regenerate', p: 'The last AI reply of the last turn has "Regenerate" (circular arrows): it reruns the turn with the same message (including its attachments). The turn\'s original reply and execution steps are replaced; earlier conversation is unchanged and it stays the same session.', tips: [
         'The replaced turn is no longer shown but is still stored locally, and Session history search can still find its content.',
         'Regenerating makes the AI run the turn\'s commands again (with permission as usual). Changes already made in the terminal are not undone.',
       ] },
-      { h: 'Edit and resend', steps: [
-        'Click "Edit" (pencil) on one of your messages. The bubble turns into an input box; after editing, press Enter or click "Send" (Shift+Enter for a new line, Esc or "Cancel" to discard).',
-        'The app forks a new session "Original title (fork)" from just before this message, switches to it and sends the edited text: the new session contains only the conversation before this message plus the edited turn.',
-        'The original session is kept in full; switch back any time from "Session history" on the left.',
-      ] },
-      { h: 'Fork from here', p: '"Fork from here" (branch icon) forks a new session "Original title (fork)" at this message and switches to it.', steps: [
-        'The new session opens with the history before the fork point: "latest compaction summary + the last 2 turns" are rebuilt as the session\'s real history — message bubbles and tool cards included, copyable and clickable, still there after a restart, and you don\'t have to retype anything.',
-        'The summary is attached to the first message of that history and shown as a "previous session summary" chip; click it to read the summary instead of having a wall of text in the bubble.',
-        'This message\'s text is put into the input box so you can edit it before sending, or ask a different way.',
-        'Forking from an AI reply includes that whole turn (question + reply) in the history carried over.',
+      { h: 'Fork from here', p: '"Fork from here" (branch icon) starts a new session at this message and switches to it; the title is "Original title · 2" (then · 3, · 4 for the same session).', steps: [
+        'The new session does not copy the original events: the AI first summarizes the history before the fork point with the current session model, then attaches that summary plus the last 3 turns verbatim as context to your first message in the new session (sent once).',
+        'The top of the chat shows a collapsible summary card and the last 3 turns as read-only bubbles; their text is also sent to the model with the first message, not just shown to you.',
+        'The input box is not pre-filled: the message at the fork point and its reply are already covered by the summary / recent turns, so just write your new question. Forking from an AI reply includes that whole turn (question + reply).',
       ], tips: [
+        'Summarizing takes a moment; the original session shows "Summarizing the previous session" meanwhile. On failure it falls back to a locally generated brief digest.',
+        'The summary is generated at fork time and does not follow later changes in the original session; fork again for a fresh one.',
         'The forked session keeps the original session\'s working directory, model profile and thinking depth. Terminal permissions aren\'t inherited; like a new session, they\'re granted again as needed.',
-        'If the slice contains compaction checkpoints or other special events, the app safely falls back to "summary only": the new session shows an expandable read-only history block at the top instead.',
-        'Forking the same session repeatedly adds a number to the title ("… (fork) 2", "… (fork) 3") so they are easy to tell apart.',
+        'Existing "(fork)" suffixes and trailing numbers are stripped first, then "· N" is appended, so repeated forks do not pile up.',
       ] },
       { h: 'Code blocks in AI replies', p: 'Hover a code block in an AI reply and buttons appear in the top-right corner. Every code block has "Copy code"; command code blocks (bash / sh / shell / zsh / console / PowerShell / cmd, or no language) also have "Insert into terminal" and "Run in current terminal". The "current terminal" is the one showing in the terminal area on the right (the focused pane when split). With no terminal open, these two buttons are grayed out.', steps: [
         'Insert into terminal (cursor icon): a single-line command is written after the current terminal\'s prompt without pressing Enter, and keyboard focus moves to the terminal so you can check or edit it and press Enter yourself. A multi-line command opens the "Compose bar" at the bottom of the terminal and fills it in (without running); review it and send from the Compose bar.',
@@ -1414,9 +1410,10 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
         'Turn on "Double-tap Alt to summon" under Settings → General → "Window" (saved automatically); it takes effect when "On" appears beside it.',
         'When the app is in the background (minimized or covered), quickly tap Alt twice: the window shows and the cursor goes to the current terminal. Double-tap again while it\'s in front to minimize.',
       ], tips: ['Taps must be within 0.4 s of each other, each held no more than 0.3 s. Alt combined with other keys (Alt+Tab, Ctrl+Alt+…) doesn\'t trigger it.', 'If the app is locked, summoning shows the lock screen; unlock first.', 'Windows only for now.'] },
-      { h: 'AI background jobs stay out of your terminal', p: 'When the AI runs long commands as background jobs (builds, installs, `python3 -m http.server` and the like), starting them, checking status and reading logs all use a separate channel: a separate channel on the same SSH connection, or a separate bash process locally. Wrapper commands like `mkdir -p /tmp/lingshell-jobs …` and polling loops no longer show up in your terminal, and the terminal stays free. Jobs start in that terminal\'s current directory; tool cards in the chat still show commands and results.', tips: [
+      { h: 'AI background jobs stay out of your terminal', p: 'When the AI runs long commands as background jobs (builds, installs, `python3 -m http.server` and the like), starting them, checking status and reading logs all use a separate channel: a separate channel on the same SSH connection, or a separate bash process locally. Wrapper commands like `mkdir -p /tmp/lingshell-jobs …` and polling loops no longer show up in your terminal, and the terminal stays free. When a job finishes it wakes the session automatically to continue, so the AI does not have to keep polling. Jobs start in that terminal\'s current directory; tool cards in the chat still show commands and results.', tips: [
         'Variables you exported or virtual environments you activated in the terminal aren\'t inherited; the AI writes them into the command itself.',
         'WSL terminals have no separate channel, so jobs still run in the terminal, but wrapper commands and output are hidden.',
+        'The status line shows "N background jobs running (will continue automatically)"; the subagent panel lists only running jobs and each has its own stop button, while the main "Stop" also stops this session\'s background jobs.',
       ] },
     ],
   },

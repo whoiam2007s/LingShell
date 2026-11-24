@@ -210,10 +210,13 @@ export function forkPreview(
       const text = userMessageView(ev.data?.content).text.trim()
       if (text) rows.push({ role: 'user', text: clip(text) })
     } else if (ev.type === 'assistant/message') {
-      const blocks = ev.data?.message?.content
-      const text = Array.isArray(blocks)
-        ? blocks.filter((b: any) => b?.type === 'text' && typeof b.text === 'string').map((b: any) => b.text).join('\n').trim()
-        : ''
+      const blocks: unknown[] = Array.isArray(ev.data?.message?.content) ? ev.data.message.content : []
+      const text = blocks
+        .filter((b): b is { type: 'text'; text: string } =>
+          typeof b === 'object' && b !== null && (b as { type?: unknown }).type === 'text' && typeof (b as { text?: unknown }).text === 'string')
+        .map((b) => b.text)
+        .join('\n')
+        .trim()
       if (text) rows.push({ role: 'ai', text: clip(text) })
     }
   }
