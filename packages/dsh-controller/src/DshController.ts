@@ -65,7 +65,7 @@ import { withPathsBlock, withContextBlocks, type TurnAttachment, type ContextAtt
 import { askUserToolDef, ASK_GUIDANCE } from './askUser.js'
 import { searchDocs, sessionDigest } from './chatIndex.js'
 import { deepseekModels } from './providers.js'
-import { forkPoint, forkTitle, digestSeed, seedHasEarlierRefs, forkPreview } from './fork.js'
+import { forkPoint, forkTitle, seedHasEarlierRefs, forkPreview } from './fork.js'
 import { installRulesSection, previewBlocks, previewBlocksMcp, recentContext, PREVIEW_DENY, PREVIEW_GUIDANCE } from './safety.js'
 import { ToolGrants, modeFacts, relaxByMode, grantKeyOf, modeLabelOf, type ExistingGate } from './execGate.js'
 import { MAX_AUTO_RETRIES, RetryBudget, isRetryableFormatError, retryPrompt } from './turnRetry.js'
@@ -2007,6 +2007,14 @@ export class DshController {
   }
 
   /**
+   * 接续标题：先剥掉历史累加的后缀（（分叉）/（接续）/ · N），再补一个「（接续）」。
+   * 以前直接把「原标题（接续）」接上去，多接续几次就滚成「X（分叉）5（分叉）（接续）」。
+   */
+  private continueTitleOf(title: string): string {
+    return this.uniqueTitle(`${forkTitle(title)}${tr('（接续）')}`)
+  }
+
+  /**
    * 分叉前给旧会话做一份「交接摘要」：用当前会话的模型生成结构化摘要，供新会话接着干活。
    *
    * 输入 = 已有压缩摘要 + 切点之后的**全部**尾部。尾部本来就是「上次压缩之后没被压过的对话」，
@@ -2042,9 +2050,9 @@ export class DshController {
    *
    * 0.1.6 修（B3）：以前是把源会话的整段事件前缀原样拷过去（buildForkSeed）——压缩过的会话
    * 带的是「摘要 + 压缩后保留的原文」（保留量能到上下文窗口 60%，最多 600K），没压缩过的直接
-   * 搬整段历史，新会话一开局就几十万 token。现在改成**只带「最近一次压缩摘要 + 最近几轮对话
-   * 的文字摘录」（digest）**，由界面作为新会话第一条消息的上下文发出去；结构化历史（工具调用、
-   * 附件引用）不带。工作目录 / 模型配置 / 思考深度照搬，标题由界面给（如「原标题（接续）」）。
+   * 搬整段历史，新会话一开局就几十万 token。现在和「分叉」同一套：**模型写的详细摘要 + 最近几轮原文**，
+   * 由主进程在第一条发言时作为上下文块发一次；结构化历史（工具调用 / 附件引用）不带。
+   * 工作目录 / 模型配置 / 思考深度照搬，标题统一成「原标题（接续）」（先剥掉历史累加的（分叉）后缀）。
    */
   async continueSession(srcId: string, opts?: { title?: string }): Promise<{ session: SessionInfo; digest: string }> {
     const src = this.cfg.sessionStore?.list().find((x) => x.id === srcId)
@@ -2056,41 +2064,35 @@ export class DshController {
     if (live.turning) throw new Error(tr('turn_in_progress: 本轮还在进行，等它结束（或先停止）再开新会话'))
     const session = (live.handle.agent as any)?.session
     const events: DshEvent[] = typeof session?.snapshotEvents === 'function' ? session.snapshotEvents() : []
-    const digest = continuationDigest(events, live.lastSummary)
-    // 「摘要 + 最近几轮」重组成种子事件：新会话打开即能看到上一会话的真实历史。
-    // 段里只要有一个引用不可靠（压缩检查点 / 越界引用），digestSeed 返回 undefined，退回「只带 digest」。
-    const ds = digestSeed(events, {
-      summary: live.lastSummary ?? '',
-      buildSeed: (evts, boundary) => buildForkSeed(evts as any, boundary as any),
-    })
+    // 与分叉同一套：让**当前会话的模型**写一份详细摘要（拿不到就退回本地拼接），
+    // 再取最近几轮做只读展示；原文随第一条消息作为上下文带给模型。
+    // 不再拷真事件：长会话里压缩检查点 / 图片引用会让 dsh 拒收种子，退回的截断文字又难读又喂不准。
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(), 90_000)
+    let digest = ''
+    try {
+      digest = (await this.summarizeForFork({ events, lastSummary: live.lastSummary, signal: ac.signal, profileId: this.profileOfSession(srcId) })) ?? ''
+    } catch (e) {
+      this.cfg.log?.('warn', 'continue summary failed, fallback to local digest', { sessionId: srcId, err: String(e).slice(0, 300) })
+    } finally {
+      clearTimeout(timer)
+    }
+    if (!digest.trim()) digest = continuationDigest(events, live.lastSummary)
+    const preview = forkPreview(events, { turns: 3 })
     const id = `sess_${randomUUID().slice(0, 8)}`
     const createdAt = new Date().toISOString()
-    const mkMeta = (sid: string, seeded: boolean): SessionMeta => ({
-      id: sid, title: opts?.title || src.title, threadId: sid, createdAt, lastActiveAt: createdAt,
+    const meta: SessionMeta = {
+      id, title: this.continueTitleOf(opts?.title ?? src.title), threadId: id, createdAt, lastActiveAt: createdAt,
       workDir: src.workDir,
       ...(src.modelProfileId ? { modelProfileId: src.modelProfileId } : {}),
       ...(src.thinking ? { thinking: src.thinking } : {}),
-      ...(seeded || !digest.trim() ? {} : { contextDigest: digest }),
-    })
-    // 带种子 = 新会话里已经有真实历史（回放给界面）；建不起来就退一步用 digest，绝不让接续失败
-    // 交给 dsh 之前先本地验一次引用自洽：历史里有过压缩替换 / buildForkSeed 补的收尾事件可能带着
-    // 源会话的原始 seq，dsh 会直接抛「sourceEventSeqs must reference earlier events: X >= current seq Y」
-    if (ds && !seedHasEarlierRefs(ds.seed)) {
-      this.cfg.log?.('warn', 'continue seed rejected by local check, using digest', { sessionId: id, events: ds.seed.length })
-    } else if (ds) {
-      try {
-        const info = await this.spawn(id, mkMeta(id, true), false, { seed: ds.seed as any, inherited: ds.inherited, parent: live.dshId })
-        this.cfg.sessionStore?.upsert({ ...mkMeta(id, true), title: info.title })
-        return { session: info, digest: '' }
-      } catch (e) {
-        this.cfg.log?.('warn', 'continue with seed failed, fallback to digest', { sessionId: id, err: String(e).slice(0, 300) })
-        this.sessions.delete(id)
-      }
+      // 摘要 + 最近几轮原文都记在 meta 上：主进程在第一条发言时拼成上下文块发一次（不再拷事件当种子）
+      ...(digest.trim() ? { contextDigest: digest, digestSent: false, digestFrom: 'continue' as const } : {}),
+      ...(preview.length ? { forkPreview: preview } : {}),
     }
-    const plainId = `sess_${randomUUID().slice(0, 8)}`
-    const info = await this.spawn(plainId, mkMeta(plainId, false), false)
-    this.cfg.sessionStore?.upsert({ ...mkMeta(plainId, false), title: info.title })
-    return { session: info, digest }
+    const info = await this.spawn(id, meta, false)
+    this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
+    return { session: info, digest: '' }
   }
 
   /**
@@ -2153,7 +2155,7 @@ export class DshController {
       const meta: SessionMeta = {
         ...rest, id, threadId: id, title: this.forkTitleOf(src.title), createdAt: now, lastActiveAt: now,
         // 摘要记在 meta 上：由主进程在**第一次发言时**拼进消息（放种子里不可靠：重放时 <context> 块会丢）
-        ...(digest.trim() ? { contextDigest: digest, digestSent: false } : {}),
+        ...(digest.trim() ? { contextDigest: digest, digestSent: false, digestFrom: 'fork' as const } : {}),
         ...(preview.length ? { forkPreview: preview } : {}),
       }
       const info = await this.spawn(id, meta, false)

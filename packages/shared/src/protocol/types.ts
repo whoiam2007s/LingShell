@@ -868,6 +868,8 @@ export interface SessionMeta {
   contextDigest?: string    // 分叉 / 接续带过来的上下文（上一会话摘要）；只在第一次发言时随消息发给模型
   /** 分叉带过来的最近几轮：界面按只读气泡展示（不拷真实事件——长会话里拷种子会被 dsh 拒收，新会话直接空白） */
   forkPreview?: ForkTurnPreview[]
+  /** 这份摘要从哪来：分叉 / 接续（界面卡片文案不同） */
+  digestFrom?: 'fork' | 'continue'
   /** 摘要是否已经随第一次发言带给模型（分叉会话用：只拼一次，之后不再重复占上下文） */
   digestSent?: boolean
 }

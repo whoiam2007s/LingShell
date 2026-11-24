@@ -53,7 +53,7 @@ const FORK_MARKS = ['（分叉）', '（fork）', '(fork)']   // i18n-ignore 标
 const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 export const forkTitle = (title: string): string => {
   let s = title.trim()
-  const marks = [tr('（分叉）'), ...FORK_MARKS].filter(Boolean)
+  const marks = [tr('（分叉）'), tr('（接续）'), ...FORK_MARKS].filter(Boolean)
   for (let i = 0; i < 8; i++) {
     const before = s
     // 后缀后面可能还跟着计数（旧版会滚成「排查（分叉）5（分叉）」），所以连数字一起剥

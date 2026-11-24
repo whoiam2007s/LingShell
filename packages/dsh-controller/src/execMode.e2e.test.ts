@@ -219,17 +219,22 @@ describe.skipIf(!hasZstd)('四档执行模式真机验收（真实控制器 + �
     expect(approvals).toHaveLength(2)
   }, 90_000)
 
-  it('接续：把「摘要 + 最近几轮」重组成种子，新会话一打开就有历史（B3）', async () => {
+  it('接续：摘要 + 最近几轮（只读展示 + 随首条消息带给模型），标题不滚后缀（B3）', async () => {
     const s = await newSession()
     await runTurn(s.id, '你好第一句')
     await runTurn(s.id, '你好第二句')
     const r = await ctrl.continueSession(s.id, { title: '接续测试' })
     expect(r.session.id).not.toBe(s.id)
-    expect(store.get(r.session.id)?.title).toBe('接续测试')
-    expect(r.digest).toBe('')                              // 有种子就不再额外带 digest（同一段上下文别发两遍）
-    // 种子那一轮真的进了模型上下文（新会话不用重新输入）
+    expect(store.get(r.session.id)?.title).toBe('接续测试（接续）')   // 标题统一「原标题（接续）」
+    expect(r.digest).toBe('')                              // 摘要记在 meta 上，第一次发言时由主进程挂
+    // 最近几轮改成 meta 上的只读展示（不再拷真事件：长会话里拷种子会被 dsh 拒收）
+    const pv = store.get(r.session.id)?.forkPreview ?? []
+    expect(pv.some((t) => t.role === 'user' && t.text === '你好第二句')).toBe(true)
+    expect(store.get(r.session.id)?.digestFrom).toBe('continue')
     await runTurn(r.session.id, '你好第三句')
-    expect(JSON.stringify(reqs.at(-1))).toContain('你好第二句')
+    const body = JSON.stringify(reqs.at(-1))
+    expect(body).toContain('上一会话摘要')     // 摘要块挂在这条消息上
+    expect(body).toContain('你好第二句')       // 最近几轮原文也带过去了（模型不用重新翻）
   }, 90_000)
 
   it('思考深度：写进会话记录，关掉再恢复还在，「跟随配置」= 删掉（B7）', async () => {

@@ -580,6 +580,8 @@ export const chat: Record<string, string> = {
   '压缩时对话又变了（有新消息进来），再点一次压缩就好': 'The conversation changed while compacting (a new message came in) — just click compact again',
   '上下文还很短（约 {n}K tokens），不用压缩': 'The context is still short (about {n}K tokens) — no need to compact',
   '上一会话摘要（分叉时带过来的上下文）': 'Previous session summary (context carried over by the fork)',
+  '上一会话摘要（接续时带过来的上下文）': 'Previous session summary (context carried over when continuing)',
+  '（接续）': '(continued)',
   '上一会话最近几轮（会随下一条消息一起带给模型，这里只读）': 'Most recent turns of the previous session (sent to the model with your next message; read-only here)',
   '你': 'You',
   '【上一会话的压缩摘要】': '[Summary of the previous session]',

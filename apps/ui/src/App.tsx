@@ -95,6 +95,8 @@ function AppShell() {
   const activeSeed = sessions.find((s) => s.id === activeId)?.contextDigest
   // 分叉带过来的「最近几轮」：只在界面按只读气泡显示（模型看到的是上面那份摘要）
   const activeForkPreview = sessions.find((s) => s.id === activeId)?.forkPreview
+  // 这份摘要是分叉来的还是接续来的（顶部卡片文案不同）
+  const activeDigestFrom = sessions.find((s) => s.id === activeId)?.digestFrom
   // 资源管理器：这个对话上次停在的目录，没有就用工作目录（每次打开 / 切对话时取一次）
   const explorerRoot = useMemo(() => (drawer === 'explorer' ? getLastDir(`session:${activeId}`) ?? activeWorkDir : undefined), [drawer, activeId, activeWorkDir])
 
@@ -402,6 +404,7 @@ function AppShell() {
             sessionTitle={activeTitle}
             seedDigest={activeSeed}
             forkPreview={activeForkPreview}
+            seedDigestFrom={activeDigestFrom}
             workDir={activeWorkDir}
             onOpenGit={() => void openGit()}
             onPickWorkDir={pickWorkDir}

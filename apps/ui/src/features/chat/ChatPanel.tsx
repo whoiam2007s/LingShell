@@ -58,13 +58,13 @@ import { bangCommand, shellBlockText, terminalRefText, hostRefText, sessionRefTe
 import { getActiveTerminal } from '../../lib/activeTerminal.js'
 import { isAction } from '../../lib/keybindings.js'
 import { PasteConfirmDialog } from '../../components/PasteConfirm.js'
-import { contextAtt, errMsg, toTurn, toView, type DraftAtt } from './attachments.js'
+import { errMsg } from './attachments.js'
 import { usePreview, PreviewBanner, PreviewPlanCard, previewPlanOfTurn } from './PreviewMode.js'
 
 const log = logger.scope('chat')
 
 // 受控对话面板：会话生命周期（创建/重连/选择/phase）由 App 管，这里只按 activeSessionId 渲染对话流。
-export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, forkPreview, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession, onOpenGit }: {
+export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, forkPreview, seedDigestFrom, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession, onOpenGit }: {
   onBack?: () => void          // 错误态「返回上一个会话」（没有可回的会话时不传）
   onOpenSession?: (id: string) => Promise<void>   // 切到某会话（分叉出的新会话：刷新列表并打开）
   onOpenGit?: () => void       // 标题前的分支 tag 点开 Git 面板
@@ -74,6 +74,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   sessionTitle?: string
   seedDigest?: string          // 分叉 / 接续带过来的摘要（第一次发言时随消息发给模型）
   forkPreview?: NonNullable<SessionMeta['forkPreview']>   // 分叉带过来的最近几轮：只读气泡展示
+  seedDigestFrom?: SessionMeta['digestFrom']              // 摘要来源：分叉 / 接续（卡片文案）
   workDir?: string
   onPickWorkDir?: () => void
   onRename?: (title: string) => void
@@ -819,7 +820,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto py-2">
        {/* 空会话时撑满高度，欢迎页才能上下居中 */}
        <div ref={contentRef} className={items.length === 0 ? 'h-full' : undefined}>
-        {seedDigest && <SeedHistoryCard digest={seedDigest} />}
+        {seedDigest && <SeedHistoryCard digest={seedDigest} from={seedDigestFrom} />}
         {!!forkPreview?.length && <ForkHistoryPreview turns={forkPreview} />}
         {items.length === 0 && sessionPhase.phase === 'ready' && !seedDigest && !forkPreview?.length && (
           <EmptyState onPick={(text) => setInput(text)} />
@@ -891,9 +892,8 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
           onCancel={() => { setResetAsk(null); doSend() }}
           onReset={() => {
             setResetAsk(null)
-            // 旧对话原样留在会话列表里；新会话**不播种子**，带过去的只有
-            // 「最近一次压缩摘要 + 最近几轮对话」（主进程算好的 digest），
-            // 这里把它作为第一条消息的上下文附件，和用户这条消息一起发出去。
+            // 旧对话原样留在会话列表里；新会话带过去的是「模型写的详细摘要 + 最近几轮原文」，
+            // 记在新会话 meta 上，由主进程在你第一条消息时挂上（这里不用自己拼，免得带两遍）。
             const from = titleOf(sessionTitle)
             const out = att.outgoing()
             if (out === null) return   // 有图片但当前模型不支持：已提示，保留输入
@@ -901,13 +901,7 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
             const skillN = skill
             void onContinueSession?.(tr('{title}（接续）', { title: from })).then((r) => {
               if (!r) return   // 建失败：旧会话和历史都没动，这条消息还在输入框里
-              const a = contextAtt('session', tr('上一会话摘要'), r.digest) as Exclude<DraftAtt, { kind: 'termBlock' }>
-              pendingContinue.current = {
-                sid: r.id, text, skill: skillN,
-                atts: r.digest.trim()
-                  ? { send: [...(out?.send ?? []), toTurn(a, true)], view: [...(out?.view ?? []), toView(a)] }
-                  : out,
-              }
+              pendingContinue.current = { sid: r.id, text, skill: skillN, atts: out }
               setInput(''); draftRef.current.delete(activeSessionId); setSkill(undefined); att.clear()
             })
           }} />
@@ -1211,13 +1205,16 @@ const SUGGESTIONS = [
 // 分叉 / 接续带过来的上下文：新会话一打开就能看到「上一会话摘要 + 最近几轮原文」，
 // 不用重新输入，也不会看着像空会话。它是只读文本：不触发模型，用户发下一条消息时
 // 作为上下文附件一起发出去（见 doSend 里的 pendingDigest）。
-function SeedHistoryCard({ digest }: { digest: string }) {
+function SeedHistoryCard({ digest, from }: { digest: string; from?: 'fork' | 'continue' }) {
   const [open, setOpen] = useState(false)   // 默认收起：只占一行 chip，点开才看摘要原文
+  const label = from === 'continue'
+    ? tr('上一会话摘要（接续时带过来的上下文）')
+    : tr('上一会话摘要（分叉时带过来的上下文）')
   return (
     <div data-seed-history className="mx-3 mb-2 rounded-md border border-[var(--color-border-subtle)] bg-[var(--color-bg-raised)]">
       <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
         <Info className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-        <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{tr('上一会话摘要（分叉时带过来的上下文）')}</span>
+        <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">{label}</span>
         <span className="shrink-0 text-[11px] text-[var(--color-text-muted)]">{open ? tr('收起') : tr('展开')}</span>
         <ChevronUp className={`h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? '' : 'rotate-180'}`} />
       </button>
