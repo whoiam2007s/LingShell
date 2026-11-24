@@ -167,7 +167,7 @@ export function registerMemory(d: {
         applied++
         continue
       }
-      // merge：先建合并后的新卡，再删掉被合并的旧卡（合并后的长度按整理上限写入，不受单卡 2000 字限制）
+      // merge：先建合并后的新卡，再删掉被合并的旧卡（合并后的长度按整理上限写入，不受单卡上限限制）
       store.save({ ...first, id: undefined, title: a.title ?? first.title, content: a.content ?? first.content, ...patchOf() }, MEMORY_CONSOLIDATE_MAX)
       for (const id of a.ids) store.delete(id)
       applied++

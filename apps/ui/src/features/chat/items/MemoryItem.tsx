@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BookMarked, Check, X, ExternalLink } from 'lucide-react'
+import { BookMarked, Check, ChevronDown, X, ExternalLink } from 'lucide-react'
 import { MEMORY_CATEGORIES, tr, type MemoryCategory } from '@lingshell/shared'
 import type { ConvItem } from '../useConversation.js'
 import { client } from '../../../client/index.js'
@@ -17,9 +17,11 @@ export function MemoryItem({ item }: { item: ConvItem }) {
   const [content, setContent] = useState(p?.draft.content ?? '')
   const [category, setCategory] = useState<MemoryCategory>(p?.draft.category ?? 'other')
   const [state, setState] = useState(p ? done.get(p.proposalId) : undefined)
+  const [open, setOpen] = useState(!state)
   const [error, setError] = useState('')
   if (!p) return null
-  const finish = (s: 'saved' | 'ignored') => { done.set(p.proposalId, s); setState(s) }
+  // 确认（保存 / 忽略）后自动收起，只留标题行；点标题行还能再展开
+  const finish = (s: 'saved' | 'ignored') => { done.set(p.proposalId, s); setState(s); setOpen(false) }
   const save = async () => {
     setError('')
     try { await client.memory.save({ ...p.draft, title, content, category, source: 'ai' }); finish('saved') }
@@ -31,11 +33,15 @@ export function MemoryItem({ item }: { item: ConvItem }) {
   return (
     <div className="animate-fade-in px-3 py-1" data-memory-proposal>
       <div className="overflow-hidden rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)]">
-        <div className="flex items-center gap-2 px-2.5 py-1.5">
+        <div className="flex cursor-pointer select-none items-center gap-2 px-2.5 py-1.5" onClick={() => setOpen((o) => !o)} title={tr('展开 / 收起详情')}>
           <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
           <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">{p.previous ? tr('AI 建议更新记忆卡') : tr('AI 建议记入记忆库')}</span>
+          {state === 'saved' && <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-success)]"><Check className="h-3.5 w-3.5" />{tr('已保存')}</span>}
+          {state === 'ignored' && <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-text-muted)]"><X className="h-3.5 w-3.5" />{tr('已忽略')}</span>}
           <code className="ml-auto truncate rounded bg-[var(--color-bg-base)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)]">{p.targetLabel}</code>
+          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)] transition-transform ${open ? '' : '-rotate-90'}`} />
         </div>
+        {open && (
         <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3 py-2">
           {state ? (
             <>
@@ -78,6 +84,7 @@ export function MemoryItem({ item }: { item: ConvItem }) {
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   )

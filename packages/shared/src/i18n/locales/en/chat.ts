@@ -199,6 +199,7 @@ export const chat: Record<string, string> = {
   'AI 建议更新记忆卡': 'AI suggests updating a memory card',
   'AI 建议记入记忆库': 'AI suggests adding to the memory',
   '已保存到记忆库': 'Saved to the memory',
+  '已保存': 'Saved',
   '在记忆库中查看': 'View in memory',
   '已忽略': 'Ignored',
   '原卡片：{title}': 'Original card: {title}',
