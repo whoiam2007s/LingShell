@@ -103,8 +103,8 @@ export function composeSubagentTask(task: string, contextHint?: string): string 
 }
 
 // ── 工具拦截 ────────────────────────────────────────────────────────
-/** 子代理永远不能用的工具（交互 / 递归 / 删除） */
-const ALWAYS_DENY = new Set(['ask_user', 'spawn_subagent'])
+/** 子代理永远不能用的工具（交互 / 递归 / 删除）。propose_plan 会 await 用户审批，子代理里没人拍板只会挂到超时 */
+const ALWAYS_DENY = new Set(['ask_user', 'spawn_subagent', 'propose_plan'])
 /** 自检测试用：子代理永远不能用的工具（写工具可以靠这张表挡，不必再进 WRITE_TOOLS） */
 export const SUBAGENT_ALWAYS_DENY: ReadonlySet<string> = ALWAYS_DENY
 const DENY_PREFIXES = ['delete_', 'remove_']

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ListChecks, ShieldAlert, ShieldCheck, ShieldX, Clock, Check, X, Trash2 } from 'lucide-react'
+import { ListChecks, ShieldAlert, ShieldCheck, ShieldX, Clock, Check, X, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import { tr, type HostSummary, type PlanStepView } from '@lingshell/shared'
 import type { ConvItem } from '../useConversation.js'
 import { cn } from '../../../lib/cn.js'
@@ -19,6 +19,7 @@ function PlanCard({ plan: p }: { plan: NonNullable<ConvItem['plan']> }) {
   const [hosts, setHosts] = useState<HostSummary[]>([])
   const [steps, setSteps] = useState<PlanStepView[]>(p.steps)
   const [denying, setDenying] = useState(false)
+  const [collapsed, setCollapsed] = useState(!!resolved)   // 已处理的计划默认收起，待审批的展开
   const [note, setNote] = useState('')
   const [sentNote, setSentNote] = useState<string>()
 
@@ -55,9 +56,12 @@ function PlanCard({ plan: p }: { plan: NonNullable<ConvItem['plan']> }) {
           <ListChecks className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[var(--color-text-primary)]" title={p.title}>{tr('执行计划：{title}', { title: p.title })}</span>
           <span className="shrink-0 rounded bg-[var(--color-bg-base)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)]">{tr('{n} 步', { n: steps.length })}</span>
+          <button onClick={() => setCollapsed((v) => !v)} title={collapsed ? tr('展开') : tr('收起')} className="shrink-0 rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]">
+            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
         </div>
 
-        <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3 py-2">
+        {!collapsed && <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3 py-2">
           <ol className="space-y-1.5">
             {steps.map((s, i) => (
               <li key={i} className={cn('rounded border px-2 py-1.5', s.dangerous ? 'border-[color:color-mix(in_srgb,var(--color-danger)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-danger)_5%,transparent)]' : 'border-[var(--color-border-subtle)]')}>
@@ -136,7 +140,7 @@ function PlanCard({ plan: p }: { plan: NonNullable<ConvItem['plan']> }) {
               {resolved === 'deny' && sentNote && <div className="mt-1 text-[11px] text-[var(--color-text-muted)]">{tr('原因：{reason}', { reason: sentNote })}</div>}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   )

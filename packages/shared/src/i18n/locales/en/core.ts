@@ -117,6 +117,7 @@ export const core: Record<string, string> = {
   // dsh-controller/relay.ts
   '图片': 'Image',
   '已中止：参数还没生成完模型输出就停了（用户停止或请求出错），工具未执行': 'Aborted: the model stopped before it finished generating the arguments (the user stopped it or the request failed), so the tool didn\'t run',
+  '工具结果未返回（轮已结束）': 'Tool result never arrived (turn ended)',
   // dsh-controller/safety.ts
   'preview_mode: 预演模式：请把要执行的命令列成计划，不要执行。用 propose_plan 列出完整步骤（每步写清命令、目的和影响），用户在「方案步骤」卡片里勾选后才会真正执行。只读排查可以照常进行。': 'preview_mode: preview mode is on: list the commands as a plan instead of running them. Use propose_plan to list every step (command, purpose, and impact for each); nothing runs until the user selects steps on the "Plan steps" card. Read-only investigation is fine as usual.',
   // dsh-controller/secretVault.ts
