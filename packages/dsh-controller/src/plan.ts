@@ -77,8 +77,9 @@ export function sanitizeSteps(raw: unknown): PlanStep[] {
   })
 }
 
-export const PLAN_GUIDANCE = '计划模式：要做多步改动（3 条及以上会写入/修改系统的命令，如安装、改配置、重启服务、部署）时，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-  + '先调用 propose_plan 把全部步骤一次列给用户批准，再按批准结果逐条执行：命令步骤用 exec_in_terminal，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+export const PLAN_GUIDANCE = '计划模式：只有【3 条及以上会写入/修改系统的命令】（安装、改配置、重启服务、部署、批量改文件）才用 propose_plan；'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+  + '1–2 条命令、只读排查、单次修改、只是问问题：直接做，不要走计划审批——给简单任务加一道审批只会拖慢用户。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+  + '要动用时，先调用 propose_plan 把全部步骤一次列给用户批准，再按批准结果逐条执行：命令步骤用 exec_in_terminal，'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
   + '写文件步骤（step 带 path）用 write_file 写同一路径；'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
   + '执行时命令必须与批准的步骤逐字一致（用户可能改过命令或删掉步骤，以返回结果为准），一步对应一次调用，不要合并或改写。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
   + '计划外的命令仍需逐条授权；计划只在本轮有效。只读排查（查看日志、状态、配置）不需要也不要用 propose_plan。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
@@ -100,7 +101,7 @@ export function planToolDef(deps: PlanToolDeps, book: PlanBook) {
     description: '提交一个多步执行计划给用户审批（用户可删步骤、改命令，然后批准或拒绝）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       + '批准后，exec_in_terminal 执行与批准步骤逐字一致的命令、write_file 写批准步骤里的同一路径时免逐条授权（每步一次，本轮有效）。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       + '要用 write_file 写文件的步骤必须填 path（文件绝对路径），command 写一句「写入 <路径>：内容要点」即可。'   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
-      + '用于 3 条及以上写操作的多步改动，执行前先调用；只读排查不要用。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
+      + '只在【3 条及以上写操作】的多步改动（安装 / 改配置 / 重启服务 / 部署 / 批量改文件）时才调用；1–2 条命令、只读排查、单次修改直接做，不要用——计划审批只会让简单任务多一道卡。',   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
     parameters: {
       title: { type: 'string' as const, required: true as const, description: '计划标题，一句话说明要做什么' },   // i18n-ignore 模型提示词 / 工具说明 / 给模型的结果
       steps: {
@@ -122,6 +123,10 @@ export function planToolDef(deps: PlanToolDeps, book: PlanBook) {
       const sessionId = deps.sessionIdOf?.(String(exec?.agent?.id ?? '')) ?? String(exec?.agent?.id ?? '')
       const steps = sanitizeSteps(args.steps)
       if (!steps.length) throw new Error(tr('steps 为空：每步需有 terminal_id 与 command'))
+      // 简单任务不走计划：工具层兜底（模型有时会滥用），预演模式除外（那边 plan 只出方案卡）
+      if (!deps.isPreview?.(sessionId) && steps.length < 3) {
+        throw new Error(tr('简单任务不要提交计划：直接执行即可。只有 3 条及以上会写入/修改系统的命令（安装 / 改配置 / 重启服务 / 部署 / 批量改文件）才用 propose_plan'))
+      }
       const title = String(args.title ?? '').trim() || tr('执行计划')
       const view = steps.map((s) => ({ ...s, hostKey: deps.resolveHostKey(s.terminal_id), dangerous: dangerCheck(s.command) === 'dangerous' }))
       if (deps.isPreview?.(sessionId)) return JSON.stringify({ preview: true, approved: false, title, steps: view, note: PREVIEW_PLAN_NOTE })

@@ -77,6 +77,7 @@ export const core: Record<string, string> = {
   '用户拒绝了计划。原因：{reason}': 'The user rejected the plan. Reason: {reason}',
   '用户拒绝了计划': 'The user rejected the plan',
   '用户删掉了计划的全部步骤，等同拒绝': 'The user removed every step of the plan, which counts as a rejection',
+  '简单任务不要提交计划：直接执行即可。只有 3 条及以上会写入/修改系统的命令（安装 / 改配置 / 重启服务 / 部署 / 批量改文件）才用 propose_plan': 'Don\'t submit a plan for a simple task: just do it. Use propose_plan only for 3+ commands that write or change the system (install / config change / service restart / deploy / batch file edits)',
   // dsh-controller/askUser.ts
   '提问卡不可用': 'Question cards aren\'t available',
   'question 不能为空': 'question can\'t be empty',
