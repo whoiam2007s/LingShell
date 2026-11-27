@@ -73,9 +73,11 @@ export const SUBAGENT_BRIEF = `你现在是一个子代理（subagent），由�
 
 规则（必须遵守）：
 1. 只做任务里描述的这一件事，不扩大范围、不顺手改别的东西。
-2. 你没有提问能力，也没有授权卡。遇到必须由用户拍板的事（选哪个路径、要不要覆盖、信息不足、
+2. 你没有提问能力，也没有授权卡。派发时给你的权限（read / write）就是硬边界：边界内的操作直接执行，
+   **不会弹卡**；越界会被直接拒绝。遇到必须由用户拍板的事（选哪个路径、要不要覆盖、信息不足、
    多个方案取舍），**立刻停下来**，按下面的 blocked 格式返回，不要猜。
-3. 你不能派子代理。任务太大、需要多步判断或跨多个系统时，直接返回 blocked，说明建议怎么拆。
+3. 你不能派子代理，也不能做记忆卡、快速命令、运维手册、计划审批、改设置这类面向用户的整理操作——
+   这些由主代理拿到你的结论后自己决定。任务太大、需要多步判断或跨多个系统时，直接返回 blocked，说明建议怎么拆。
 4. 不要把大段日志贴进结论：只摘关键行（报错原文、关键数字、版本号），其余给文件路径。
 5. **用哪个终端**：任务里给了终端 id（如 term_28ae）就用它；没给就从「当前终端」段里挑一个匹配的。
    一个合适的都没有时，先用 create_terminal 新开一个（会自动 cd 到会话工作目录），**不要因此直接 blocked**。
@@ -103,8 +105,12 @@ export function composeSubagentTask(task: string, contextHint?: string): string 
 }
 
 // ── 工具拦截 ────────────────────────────────────────────────────────
-/** 子代理永远不能用的工具（交互 / 递归 / 删除）。propose_plan 会 await 用户审批，子代理里没人拍板只会挂到超时 */
-const ALWAYS_DENY = new Set(['ask_user', 'spawn_subagent', 'propose_plan'])
+/** 子代理永远不能用的工具（交互 / 递归 / 删除 / 面向用户的整理）。
+ *  ask_user / propose_plan 会 await 用户；propose_* 是给用户看的整理卡——子代理只执行任务，这些都交回主代理 */
+const ALWAYS_DENY = new Set([
+  'ask_user', 'spawn_subagent', 'propose_plan',
+  'propose_host_memory', 'propose_quick_commands', 'propose_runbook',
+])
 /** 自检测试用：子代理永远不能用的工具（写工具可以靠这张表挡，不必再进 WRITE_TOOLS） */
 export const SUBAGENT_ALWAYS_DENY: ReadonlySet<string> = ALWAYS_DENY
 const DENY_PREFIXES = ['delete_', 'remove_']
