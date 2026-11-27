@@ -90,11 +90,11 @@ export function GitDrawer({ term, onClose, initialDir }: { term?: TerminalInfo; 
         if (refetch.current) { refetch.current = false; refresh(dirRef.current) }
       })
   }, [ok, tid, dir])
-  // 起始目录：左边活动栏进来时用「对话工作目录」（同一个项目，省得再选一次）；否则用终端当前目录
+  // 起始目录：打开面板时带来的「会话项目目录」优先（用户要求：默认就是当前会话的项目），
+  // 其次这台终端上次看的仓库，最后终端当前目录
   const followTerm = useCallback(async () => {
-    // 优先用这台终端上次看的仓库（用户上次选过的），其次 initialDir / 终端当前目录
     const last = tid ? localStorage.getItem(`lingshell.git.lastRepo.${tid}`) : null
-    const d = last || initialDir || getTermCwd(tid) || await client.terminal.pwd(tid).catch(() => '') || ''
+    const d = initialDir || last || getTermCwd(tid) || await client.terminal.pwd(tid).catch(() => '') || ''
     if (!d) { setErr(tr('取不到终端当前目录：在下面输入仓库目录后回车')); return }
     setDir(d); setDirDraft(d); refresh(d)
   }, [tid, refresh, initialDir])

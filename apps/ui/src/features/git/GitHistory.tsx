@@ -45,7 +45,10 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
   const [grep, setGrep] = useState(''), [author, setAuthor] = useState('')
   const [mode, setMode] = useState<'msg' | 'code'>('msg')
   const [applied, setApplied] = useState({ grep: '', pickaxe: '', author: '' })
-  const apply = () => setApplied({ grep: mode === 'msg' ? grep.trim() : '', pickaxe: mode === 'code' ? grep.trim() : '', author: author.trim() })
+  const apply = () => {
+    if (/^[0-9a-f]{4,40}$/i.test(grep.trim())) return   // 提交号：实时过滤当前列表，不走 --grep
+    setApplied({ grep: mode === 'msg' ? grep.trim() : '', pickaxe: mode === 'code' ? grep.trim() : '', author: author.trim() })
+  }
   // 多选（Ctrl / Shift 点击）：一次拣选 / 还原多个提交
   const [picked, setPicked] = useState<string[]>([])
   const [commits, setCommits] = useState<GitCommit[]>()
@@ -68,7 +71,10 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
       .catch((e) => { if (id === req.current) setErr(errText(e)) }).finally(() => { if (id === req.current) setLoading(false) })
   }, [tid, root, all, applied, filter])
   useEffect(() => { load(0) }, [load, ctx.version])
-  const rows = useMemo(() => gitGraph(commits ?? []), [commits])
+  // 提交号搜索：输入是十六进制前缀（4–40 位）时，直接在当前已加载的提交里按前缀过滤，不走 --grep
+  const hashQuery = /^[0-9a-f]{4,40}$/i.test(grep.trim()) ? grep.trim().toLowerCase() : ''
+  const shown = useMemo(() => (hashQuery && commits ? commits.filter((c) => c.hash.startsWith(hashQuery)) : commits), [commits, hashQuery])
+  const rows = useMemo(() => gitGraph(shown ?? []), [shown])
   const width = useMemo(() => Math.min(Math.max(1, ...rows.map((r) => r.width)), 12), [rows])
 
   useEffect(() => {
@@ -89,9 +95,9 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
   const clickRow = (e: React.MouseEvent, hash: string, i: number) => {
     // 同常见列表：Ctrl 点击时，已经选中（正在看详情）的那一行也算进多选
     if (e.ctrlKey || e.metaKey) { setPicked((p) => { const base = !p.length && sel && sel !== hash ? [sel] : p; return base.includes(hash) ? base.filter((x) => x !== hash) : [...base, hash] }); return }
-    if (e.shiftKey && commits) {
-      const last = picked.length ? commits.findIndex((c) => c.hash === picked[picked.length - 1]) : commits.findIndex((c) => c.hash === sel)
-      if (last >= 0) { const [a, b] = last < i ? [last, i] : [i, last]; setPicked(commits.slice(a, b + 1).map((c) => c.hash)); return }
+    if (e.shiftKey && shown) {
+      const last = picked.length ? shown.findIndex((c) => c.hash === picked[picked.length - 1]) : shown.findIndex((c) => c.hash === sel)
+      if (last >= 0) { const [a, b] = last < i ? [last, i] : [i, last]; setPicked(shown.slice(a, b + 1).map((c) => c.hash)); return }
     }
     setPicked([]); setSel(sel === hash ? undefined : hash)
   }
@@ -142,13 +148,13 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
         </div>
         <div className="flex overflow-hidden rounded border border-[var(--color-border-default)] text-[11px]">
           {([['msg', tr('git|说明'), tr('按提交说明搜')], ['code', tr('代码'), tr('按代码内容搜（git log -S）：找加入或删除了这段内容的提交')]] as const).map(([k, l, t]) => (
-            <button key={k} data-git-search-mode={k} title={t} onClick={() => { setMode(k); if (grep.trim()) setApplied({ grep: k === 'msg' ? grep.trim() : '', pickaxe: k === 'code' ? grep.trim() : '', author: author.trim() }) }}
+            <button key={k} data-git-search-mode={k} title={t} onClick={() => { setMode(k); if (grep.trim() && !/^[0-9a-f]{4,40}$/i.test(grep.trim())) setApplied({ grep: k === 'msg' ? grep.trim() : '', pickaxe: k === 'code' ? grep.trim() : '', author: author.trim() }) }}
               className={cn('px-2 py-0.5', mode === k ? 'bg-[var(--color-bg-raised)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]')}>{l}</button>
           ))}
         </div>
         <div className="relative min-w-[140px] flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-muted)]" />
-          <Input size="sm" className="pl-7" value={grep} placeholder={mode === 'code' ? tr('搜代码内容，如函数名 / 配置项（回车）') : tr('搜提交说明（回车）')} data-git-log-grep onChange={(e) => setGrep(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} />
+          <Input size="sm" className="pl-7" value={grep} placeholder={mode === 'code' ? tr('搜代码内容，如函数名 / 配置项（回车）') : tr('搜提交说明或提交号前缀（回车）')} data-git-log-grep onChange={(e) => setGrep(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} />
         </div>
         <Input size="sm" className="w-28" value={author} placeholder={tr('作者（回车）')} onChange={(e) => setAuthor(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} />
         {(filter.path || filter.ref) && !filter.select && (
@@ -173,8 +179,8 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
       ) : commits && commits.length > 1 && !sel && <div className="shrink-0 px-3 pt-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('提示：Ctrl / Shift 点击可以多选提交，一次拣选或还原')}</div>}
       <div className={cn('min-h-0 overflow-auto', sel ? 'flex-[3]' : 'flex-1')} data-git-log>
         {!commits && loading && <div className="flex items-center gap-1.5 px-3 py-3 text-[12px] text-[var(--color-text-muted)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{tr('读取中…')}</div>}
-        {commits && !commits.length && <div className="px-3 py-3 text-[12px] text-[var(--color-text-muted)]">{applied.grep || applied.pickaxe || applied.author || filter.path ? tr('没有提交（换个过滤条件试试）') : tr('没有提交')}</div>}
-        {commits?.map((c, i) => (
+        {shown && !shown.length && <div className="px-3 py-3 text-[12px] text-[var(--color-text-muted)]">{hashQuery ? tr('当前列表里没有匹配的提交号（可点「再加载」或检查提交号是否完整）') : applied.grep || applied.pickaxe || applied.author || filter.path ? tr('没有提交（换个过滤条件试试）') : tr('没有提交')}</div>}
+        {shown?.map((c, i) => (
           <div key={c.hash} data-git-commit-row={c.hash.slice(0, 7)} onClick={(e) => clickRow(e, c.hash, i)}
             className={cn('group flex h-6 cursor-pointer items-center gap-2 pr-2 text-[11.5px] hover:bg-[var(--color-bg-hover)]', sel === c.hash && 'bg-[color:color-mix(in_srgb,var(--color-accent)_15%,transparent)]', picked.includes(c.hash) && 'bg-[color:color-mix(in_srgb,var(--color-accent)_22%,transparent)] ring-1 ring-inset ring-[var(--color-accent)]')}>
             <span className="pl-1"><Graph row={rows[i]} width={width} /></span>
@@ -188,7 +194,7 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
             <span className="hidden group-hover:block group-focus-within:block"><RowMenu items={menu(c)} title={tr('提交操作')} /></span>
           </div>
         ))}
-        {more && <button onClick={() => load(commits?.length ?? 0)} disabled={loading} className="m-2 text-[11.5px] text-[var(--color-accent)] hover:underline">{loading ? tr('加载中…') : tr('再加载 {n} 条', { n: PAGE })}</button>}
+        {more && !hashQuery && <button onClick={() => load(commits?.length ?? 0)} disabled={loading} className="m-2 text-[11.5px] text-[var(--color-accent)] hover:underline">{loading ? tr('加载中…') : tr('再加载 {n} 条', { n: PAGE })}</button>}
       </div>
       {sel && (
         <div className="flex min-h-0 flex-[2] flex-col border-t border-[var(--color-border-default)]" data-git-commit-detail>
