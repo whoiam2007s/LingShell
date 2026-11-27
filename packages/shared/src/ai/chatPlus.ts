@@ -70,9 +70,10 @@ export function bangCommand(input: string): string | null {
 
 // ── @ 引用 ───────────────────────────────────────────
 /** 光标前正在输入的 @ 引用：@ 在行首或空白后，到光标之间没有空白。返回 @ 的下标与过滤词 */
-export function atQueryAt(text: string, caret: number): { start: number; q: string } | null {
+export function atQueryAt(text: string, caret: number, trigger = '@'): { start: number; q: string } | null {
   const before = text.slice(0, caret)
-  const m = /(^|\s)@([^\s@]*)$/.exec(before)
+  const t = trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const m = new RegExp(`(^|\\s)${t}([^\\s${t}]*)$`).exec(before)
   if (!m) return null
   return { start: before.length - m[2].length - 1, q: m[2] }
 }

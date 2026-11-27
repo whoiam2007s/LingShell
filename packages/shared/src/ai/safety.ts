@@ -10,7 +10,7 @@ export const RULE_TEXT_MAX = 4000        // 单条规则保存上限（字）
 export const RULE_BLOCK_MAX = 1500       // 注入时单层上限
 export const RULES_INJECT_MAX = 6000     // 注入总上限
 /** 会话工作目录里会读的规则文件（相对工作目录） */
-export const WORKDIR_RULE_FILES = ['AGENTS.md', '.lingshell/rules.md']
+export const WORKDIR_RULE_FILES = ['AGENTS.md', 'CLAUDE.md', '.lingshell/rules.md', '.claude/CLAUDE.md']
 
 export type RuleLayerKind = 'group' | 'host' | 'workdir'
 export interface RuleLayer { kind: RuleLayerKind; label: string; text: string }

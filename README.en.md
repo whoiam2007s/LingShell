@@ -1,6 +1,6 @@
 # LingShell (灵壳)
 
-> A thinking terminal and operations workbench: AI investigates and executes, you stay in control.
+> A thinking terminal and dev + ops workbench: AI investigates, executes and writes code, you stay in control.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#install)
@@ -9,13 +9,13 @@
 
 English · [简体中文](README.md) · [Feature guide](#feature-guide) · [Docs site](https://whoiam2007s.github.io/LingShell/)
 
-LingShell is an open-source AI terminal and operations workbench: an AI chat on the left, local and SSH terminals on the right. After your approval, the AI can execute commands, read the output, and continue. Every action has approval cards, dangerous-command confirmation, execution plans, rollback plans, and a full audit trail.
+LingShell is an open-source AI terminal workbench built for **developers and operators**: an AI chat on the left, local and SSH terminals on the right. After your approval, the AI can execute commands, read and write files, run tests, read the output, and continue. Every action has approval cards, dangerous-command confirmation, execution plans, rollback plans, and a full audit trail.
 
 ![LingShell main window: chat and terminals](guide/assets/hero.png)
 
 - **Local-first**: configuration, hosts, sessions, audit data, and credentials stay on your machine. Bring your own model API key.
 - **Model-agnostic**: 18 providers (DeepSeek, Qwen, Kimi, GLM, Gemini, Ollama…), with model ids you can type in; three API protocols (Anthropic Messages / OpenAI-compatible / OpenAI Responses) are available for every provider, and a mismatch can be switched and retested in one click.
-- **Built for real operations**: multi-host, file transfer, Git, databases, Docker, Kubernetes, scheduled inspection, certificates, compliance, deployment review, logs, and troubleshooting.
+- **Built for both coding and ops**: on the dev side — AI reads and writes code, runs tests, code-review agents, a Git panel (diff / stage / commit / branch / merge / rebase / stash / blame), error-to-editor jump, importing agents and skills from Claude Code / Codex; on the ops side — multi-host, file transfer, databases, Docker, Kubernetes, scheduled inspection, certificates, compliance, deployment review, logs, and troubleshooting.
 - **Controllable by design**: app lock, secret vault, four execution modes (confirm each / confirm once / trust / dry run), command rules, per-host authorization, AI review, time-limited sudo elevation, and local audit.
 
 > Early preview (0.1.x). APIs, configuration formats, and features may change. Try it in a test environment first.

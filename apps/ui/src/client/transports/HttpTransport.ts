@@ -43,7 +43,7 @@ export class HttpTransport implements AppClient {
   lock: AppClient['lock'] = { status: ni, lock: ni, unlock: ni, setPassword: ni, disable: ni }
   batch: AppClient['batch'] = { exec: ni, cancel: ni }
   docker: AppClient['docker'] = { list: ni, stats: ni, logs: ni, action: ni, openTerminal: ni, composeList: ni, composeLogs: ni, composeAction: ni }
-  usage: AppClient['usage'] = { summary: ni, session: ni, getPrices: ni, savePrices: ni }
+  usage: AppClient['usage'] = { summary: ni, session: ni, lastRequest: ni, getPrices: ni, savePrices: ni }
   sshAuth: AppClient['sshAuth'] = { answer: ni }
   proxy: AppClient['proxy'] = { get: ni, save: ni }
   hostPanel: AppClient['hostPanel'] = { probe: ni, duplicate: ni }
@@ -57,7 +57,9 @@ export class HttpTransport implements AppClient {
   sshUrl: AppClient['sshUrl'] = { takePending: ni }
   gitBash: AppClient['gitBash'] = { status: ni, redetect: ni, pick: ni, clear: ni }
   modelProfiles: AppClient['modelProfiles'] = { test: ni, sessionModel: ni, setSessionModel: ni, setSessionThinking: ni, sessionThinking: ni }
-  skills: AppClient['skills'] = { list: ni, read: ni, save: ni, remove: ni, resetBuiltin: ni, setFlags: ni, pickImport: ni, inspect: ni, commitImport: ni, cancelImport: ni, openDir: ni }
+  skills: AppClient['skills'] = { list: ni, listProject: ni, read: ni, save: ni, remove: ni, resetBuiltin: ni, setFlags: ni, pickImport: ni, inspect: ni, commitImport: ni, cancelImport: ni, openDir: ni }
+  agents: AppClient['agents'] = { list: ni, read: ni, save: ni, remove: ni, setEnabled: ni, openDir: ni, sessionAgent: ni, setSessionAgent: ni }
+  importer: AppClient['importer'] = { platforms: ni, scan: ni, commit: ni, openDir: ni }
   attachments: AppClient['attachments'] = { pickFiles: ni, pickDirs: ni, pickImages: ni, kinds: ni, imageFile: ni, clipboardPaths: ni, send: ni, image: ni, open: ni }
   ports: AppClient['ports'] = { list: ni, forwards: ni, forward: ni, stop: ni }
   turnChanges: AppClient['turnChanges'] = { list: ni, check: ni, diff: ni, undo: ni }

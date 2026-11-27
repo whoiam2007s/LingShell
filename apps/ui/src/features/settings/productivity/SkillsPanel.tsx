@@ -6,7 +6,8 @@ import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
 import { Switch } from '../../../components/ui/Switch.js'
 import { Radio } from '../../../components/ui/Radio.js'
-import { Page, Section, Row, SaveBar, INPUT, BTN2, taCls, BTN1, ICON_BTN, ICON_DEL, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
+import { Page, Section, Row, INPUT, BTN2, taCls, BTN1, ICON_BTN, ICON_DEL, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
+import { ThirdPartyImportButton } from './ThirdPartyImport.js'
 
 const PAGE_TIP = tk('Skill 是一份可复用的任务指令（SKILL.md，可附带脚本、参考文档等资源文件）。AI 平时只看到每个 skill 的名称和描述，任务匹配时才加载完整指令；你也可以在输入框「+」→「Skills」里点名使用。Skill 正文只是给 AI 的提示词，不会自动执行包里的任何文件；AI 读取资源文件时照常经过授权与脱敏。改动立即生效，不用重启。')
 const ORIGIN: Record<SkillInfo['origin'], string> = { imported: tk('skill|导入'), created: tk('skill|新建'), manual: tk('目录里放入') }
@@ -57,7 +58,7 @@ export function SkillsPanel() {
     }
     return (
       <Page>
-        <BackLink onClick={() => { setForm(null); setErr('') }}>{tr('返回 Skills 列表')}</BackLink>
+        <BackLink onClick={() => { setForm(null); setErr('') }} actions={<>{err && <span className="max-w-[240px] truncate text-[11px] text-[var(--color-text-muted)]" title={err}>{err}</span>}<button onClick={save} disabled={!form.name.trim() || !form.description.trim()} className={BTN1}>{tr('保存')}</button></>}>{tr('返回 Skills 列表')}</BackLink>
         <Section title={form.old ? tr('编辑 Skill') : tr('新建 Skill')} tip={tr('保存为 skills/<名称>/SKILL.md（frontmatter 写 name 和 description，下面是正文）。编辑时 SKILL.md 里的其它字段原样保留。')}>
           <Row label={tr('名称')} hint={tr(NAME_HINT)}>
             <input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="disk-check" className={`w-64 font-mono ${INPUT}`} />
@@ -73,7 +74,6 @@ export function SkillsPanel() {
               placeholder={tr('## 步骤\n1. df -h 看各分区使用率\n2. du -xh --max-depth=1 / | sort -h 找大目录\n\n## 注意\n- 只读排查，不要删除文件')} />
           </Row>
         </Section>
-        <SaveBar onSave={save} disabled={!form.name.trim() || !form.description.trim()} msg={err ? { ok: false, text: err } : null} />
       </Page>
     )
   }
@@ -82,6 +82,7 @@ export function SkillsPanel() {
   return (
     <Page>
       <Toolbar hint={tr('AI 按需加载的任务指令包')} tip={tr(PAGE_TIP)}>
+        <ThirdPartyImportButton kind="skill" onImported={refresh} />
         <button onClick={() => client.skills.openDir().catch((e) => setErr(errText(e)))} className={`flex items-center gap-1 ${BTN2}`}><FolderOpen className="h-3.5 w-3.5" />{tr('打开 Skills 目录')}</button>
         <ImportMenu open={importMenu} setOpen={setImportMenu} onPick={pick} />
         {createBtn}

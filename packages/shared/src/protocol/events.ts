@@ -120,12 +120,25 @@ export type HistoryUnrecoverableEvent = {
 // firstAt 不在 dsh 日志里（流式帧不落盘），由主进程补记到侧车文件，回放时取回；旧会话没有就不给
 export type TurnTimingEvent = { type: 'agent:turnTiming'; sessionId: string; turnId: string; startedAt?: number; firstAt?: number; endedAt?: number }
 
+// 每次模型请求结束时的性能快照（输入框底栏展示）：输出 token、耗时、缓存命中。
+// 只在实时回合发（重连回放不发）；纯工具调用（outputTokens=0）或时长过短时主进程不发。
+export type TurnStatsEvent = {
+  type: 'agent:turnStats'; sessionId: string
+  outputTokens: number
+  inputTokens: number        // 未命中缓存的输入
+  cacheReadTokens: number    // 命中缓存的输入
+  ms: number                 // 请求耗时（step 开始 → usage 到达）
+  thinkingTokens?: number    // 思考 token（provider 给了才有）
+  thinkingChars?: number     // 思考过程字符数（provider 不给 token 时用它兜底，界面显示「N 字」）
+}
+
 export type AgentEvent =
   | TurnStartedEvent | TurnCompletedEvent | TurnFailedEvent | TurnRetryingEvent | RequestRetryingEvent
   | ItemStartedEvent | ItemDeltaEvent | ItemUpdatedEvent
   | ContextCompactingEvent | ContextCompactedEvent | ResetSuggestedEvent | ContextUsageEvent
   | HistoryUnrecoverableEvent
   | TurnTimingEvent
+  | TurnStatsEvent
 
 export type AuthRequestEvent = {
   type: 'auth:request'

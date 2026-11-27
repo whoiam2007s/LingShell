@@ -1,8 +1,9 @@
-// 输入框 @ 引用（参考 Cursor @、Claude Code @file）：打 @ 弹出候选——终端（当前打开的）、主机（已保存，按分组）、
-// 历史会话（标题 + 时间）、文件（本机文件选择框）。↑↓ 选、Enter / Tab 确认、Esc 关；选中后变成输入框上方的上下文标签。
+// 输入框引用菜单：`@` 选 Agent（角色），`#` 引用上下文（终端 / 主机 / 历史会话 / 本机文件）。
+// 两个触发符都要求「行首或空白之后」；`#!` 不触发（shell 脚本 shebang 别弹菜单）。
+// ↑↓ 选、Enter / Tab 确认、Esc 关；上下文选中后变成输入框上方的标签，Agent 选中后绑定到本会话。
 import { useEffect, useRef, useState } from 'react'
-import { TerminalSquare, Server, MessageSquare, FileText, type LucideIcon } from 'lucide-react'
-import { atQueryAt, sessionTime, tr, type HostSummary, type SessionMeta, type TerminalInfo } from '@lingshell/shared'
+import { Bot, TerminalSquare, Server, MessageSquare, FileText, type LucideIcon } from 'lucide-react'
+import { atQueryAt, sessionTime, tr, type AgentView, type HostSummary, type SessionMeta, type TerminalInfo } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { cn } from '../../lib/cn.js'
 
@@ -11,6 +12,7 @@ export type AtPick =
   | { type: 'host'; h: HostSummary }
   | { type: 'session'; s: SessionMeta; when: string }
   | { type: 'file' }
+  | { type: 'agent'; a: AgentView }
 interface AtItem { key: string; group: string; icon: LucideIcon; title: string; sub?: string; pick: AtPick }
 
 const MAX_PER_GROUP = 8
@@ -34,24 +36,46 @@ export function atItems(q: string, terms: TerminalInfo[], hosts: HostSummary[], 
   return out
 }
 
-/** 输入框里的 @ 状态：input / caret 变化时重算；onKey 在 textarea 的 onKeyDown 里先调，返回 true = 已处理 */
-export function useAtMenu(input: string, caret: number, sessionId: string, onPick: (p: AtPick, range: { start: number; end: number }) => void) {
-  const at = atQueryAt(input, caret)
-  const [dismissed, setDismissed] = useState(-1)   // Esc 关掉的那个 @ 的位置（继续打字不再弹，换个 @ 再弹）
+/** Agent 候选：只列已启用且解析成功的；描述一起参与搜索 */
+export function agentItems(q: string, agents: AgentView[]): AtItem[] {
+  const x = q.toLowerCase()
+  return agents
+    .filter((a) => a.enabled && !a.error && (!x || a.name.toLowerCase().includes(x) || a.description.toLowerCase().includes(x)))
+    .slice(0, MAX_PER_GROUP)
+    .map((a) => ({
+      key: `a:${a.id}`, group: tr('Agent'), icon: Bot, title: a.name,
+      sub: [a.description, a.external ? tr('项目 / 外部') : ''].filter(Boolean).join(' · '),
+      pick: { type: 'agent', a } as AtPick,
+    }))
+}
+
+type Trigger = { kind: 'agent' | 'ctx'; start: number; q: string }
+
+/**
+ * 输入框里的引用状态：input / caret 变化时重算；onKey 在 textarea 的 onKeyDown 里先调，返回 true = 已处理。
+ * agents 由 ChatPanel 拉好传进来（只有按 @ 时才用得到）。
+ */
+export function useAtMenu(input: string, caret: number, sessionId: string, onPick: (p: AtPick, range: { start: number; end: number }) => void, agents: AgentView[] = []) {
+  const atAgent = atQueryAt(input, caret, '@')
+  const atCtxRaw = atQueryAt(input, caret, '#')
+  // `#!` 是 shebang，不当引用
+  const atCtx = atCtxRaw && !atCtxRaw.q.startsWith('!') ? atCtxRaw : null
+  const at: Trigger | null = atAgent ? { kind: 'agent', ...atAgent } : atCtx ? { kind: 'ctx', ...atCtx } : null
+  const [dismissed, setDismissed] = useState(-1)   // Esc 关掉的那个触发符的位置（继续打字不再弹，换个位置再弹）
   const open = !!at && at.start !== dismissed
   const [data, setData] = useState<{ terms: TerminalInfo[]; hosts: HostSummary[]; sessions: SessionMeta[] }>({ terms: [], hosts: [], sessions: [] })
   const [sel, setSel] = useState(0)
   const wasOpen = useRef(false)
   useEffect(() => {
-    if (open && !wasOpen.current) {
+    if (open && !wasOpen.current && at?.kind === 'ctx') {
       void Promise.all([client.terminal.list().catch(() => []), client.hosts.list().catch(() => []), client.agent.listPersisted().catch(() => [])])
         .then(([terms, hosts, sessions]) => setData({ terms, hosts, sessions }))
     }
     wasOpen.current = open
-  }, [open])
+  }, [open, at?.kind])
   useEffect(() => { setSel(0) }, [at?.q, at?.start])
   useEffect(() => { if (!at) setDismissed(-1) }, [!at])
-  const items = open ? atItems(at!.q, data.terms, data.hosts, data.sessions, sessionId) : []
+  const items = open && at ? (at.kind === 'agent' ? agentItems(at.q, agents) : atItems(at.q, data.terms, data.hosts, data.sessions, sessionId)) : []
   const cur = Math.min(sel, Math.max(0, items.length - 1))
   const pick = (i: number) => { const it = items[i]; if (it && at) onPick(it.pick, { start: at.start, end: at.start + 1 + at.q.length }) }
   const onKey = (e: React.KeyboardEvent): boolean => {
@@ -62,7 +86,7 @@ export function useAtMenu(input: string, caret: number, sessionId: string, onPic
     if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pick(cur); return true }
     return false
   }
-  return { open, items, cur, setSel, pick, onKey, close: () => at && setDismissed(at.start) }
+  return { open, kind: at?.kind ?? null, items, cur, setSel, pick, onKey, close: () => at && setDismissed(at.start) }
 }
 
 export function AtMenuPopup({ m }: { m: ReturnType<typeof useAtMenu> }) {
@@ -78,9 +102,13 @@ export function AtMenuPopup({ m }: { m: ReturnType<typeof useAtMenu> }) {
   if (!m.open) return null
   let last = ''
   return (
-    <div data-at-menu ref={listRef} role="listbox" aria-label={tr('@ 引用')}
+    <div data-at-menu ref={listRef} role="listbox" aria-label={m.kind === 'agent' ? tr('@ 选择 Agent') : tr('# 引用上下文')}
       className="absolute bottom-full left-0 right-0 z-30 mb-1 max-h-[300px] overflow-y-auto rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-raised)] p-1 shadow-lg">
-      {!m.items.length && <div className="px-2 py-2 text-[11.5px] text-[var(--color-text-muted)]">{tr('没有匹配的终端 / 主机 / 会话')}</div>}
+      {!m.items.length && (
+        <div className="px-2 py-2 text-[11.5px] text-[var(--color-text-muted)]">
+          {m.kind === 'agent' ? tr('没有匹配的 Agent（可在 设置 → Agents 里新建或启用）') : tr('没有匹配的终端 / 主机 / 会话')}
+        </div>
+      )}
       {m.items.map((it, i) => {
         const head = it.group !== last ? (last = it.group) : ''
         return (

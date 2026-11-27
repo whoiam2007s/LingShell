@@ -71,9 +71,9 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
       .catch((e) => { if (id === req.current) setErr(errText(e)) }).finally(() => { if (id === req.current) setLoading(false) })
   }, [tid, root, all, applied, filter])
   useEffect(() => { load(0) }, [load, ctx.version])
-  // 提交号搜索：输入是十六进制前缀（4–40 位）时，直接在当前已加载的提交里按前缀过滤，不走 --grep
+  // 提交号搜索：输入是十六进制串（4–40 位）时，直接在当前已加载的提交里按包含匹配过滤，不走 --grep
   const hashQuery = /^[0-9a-f]{4,40}$/i.test(grep.trim()) ? grep.trim().toLowerCase() : ''
-  const shown = useMemo(() => (hashQuery && commits ? commits.filter((c) => c.hash.startsWith(hashQuery)) : commits), [commits, hashQuery])
+  const shown = useMemo(() => (hashQuery && commits ? commits.filter((c) => c.hash.includes(hashQuery)) : commits), [commits, hashQuery])
   const rows = useMemo(() => gitGraph(shown ?? []), [shown])
   const width = useMemo(() => Math.min(Math.max(1, ...rows.map((r) => r.width)), 12), [rows])
 
@@ -154,7 +154,7 @@ export function GitHistory({ ctx, filter, setFilter }: { ctx: GitCtx; filter: Hi
         </div>
         <div className="relative min-w-[140px] flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-muted)]" />
-          <Input size="sm" className="pl-7" value={grep} placeholder={mode === 'code' ? tr('搜代码内容，如函数名 / 配置项（回车）') : tr('搜提交说明或提交号前缀（回车）')} data-git-log-grep onChange={(e) => setGrep(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} />
+          <Input size="sm" className="pl-7" value={grep} placeholder={mode === 'code' ? tr('搜代码内容，如函数名 / 配置项（回车）') : tr('搜提交说明或提交号（回车）')} data-git-log-grep onChange={(e) => setGrep(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} />
         </div>
         <Input size="sm" className="w-28" value={author} placeholder={tr('作者（回车）')} onChange={(e) => setAuthor(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} />
         {(filter.path || filter.ref) && !filter.select && (

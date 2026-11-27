@@ -103,7 +103,7 @@ export function SshManager({ newHostSeq }: { newHostSeq?: number }) {
         {/* 返回按钮 sticky 顶部固定：滚动容器是 SettingsModal 的 p-4 区(-m-4 抵消其内边距铺满宽)，表单长时"返回"不随滚 */}
         <div className="sticky -top-4 z-10 -mx-4 -mt-4 mb-4 flex items-center gap-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-2.5">
           <button onClick={() => setMode('list')} className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]"><ArrowLeft className="h-3.5 w-3.5" />{tr('返回主机列表')}</button>
-          <span className="ml-2 text-[13px] font-semibold text-[var(--color-text-primary)]">{editId ? tr('编辑主机') : tr('新建主机')}</span>
+          <span className="ml-2 text-[13px] font-semibold text-[var(--color-text-primary)]" />
           {editId && !rulesReady && <span className="text-[11px] text-[var(--color-text-muted)]">{tr('规则读取中…（本次保存不会改主机规则）')}</span>}
         </div>
         <Page><NewConnectionForm form={form} setForm={setF} editId={editId} onConnected={saveHost} hostOptions /></Page>

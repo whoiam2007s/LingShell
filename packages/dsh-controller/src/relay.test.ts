@@ -127,10 +127,10 @@ describe('contextTokensOf：每次请求的精确上下文大小', () => {
 })
 
 describe('requestUsageOf：每次请求的 tokens 明细（用量统计）', () => {
-  it('从真实轨迹取出 input / cacheRead / output', () => {
+  it('从真实轨迹取出 input / cacheRead / output（thinking 为可选字段，不参与强比对）', () => {
     const us = trace.map(requestUsageOf).filter((u) => u !== undefined)
-    expect(us[0]).toEqual({ input: 463, cacheRead: 0, output: 95 })
-    expect(us[1]).toEqual({ input: 96, cacheRead: 512, output: 97 })
+    expect(us[0]).toMatchObject({ input: 463, cacheRead: 0, output: 95 })
+    expect(us[1]).toMatchObject({ input: 96, cacheRead: 512, output: 97 })
     expect(us).toHaveLength(3)
   })
   it('缺字段按 0；非 usage 事件 undefined', () => {

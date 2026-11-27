@@ -22,8 +22,8 @@ function StatusIcon({ status }: { status: SubagentView['status'] }) {
   return <X className="h-3 w-3" />
 }
 
-/** 浮层统一位置：按钮正下方居中（窗口再窄也不出屏） */
-const BELOW_CENTER = 'absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2'
+/** 浮层统一位置：按钮正下方、右边缘对齐（贴着窗口右边也不会出屏） */
+const BELOW_CENTER = 'absolute right-0 top-full z-40 mt-1'
 
 /** 记录里的时间是 ISO（UTC）：必须转成本地时区再显示，否则东八区会差 8 小时 */
 const clockOf = (iso: string): string => {

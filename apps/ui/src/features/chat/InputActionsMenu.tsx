@@ -1,22 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Folder, ClipboardList, BookOpen, ChevronRight, Settings2, Sparkles, FileText, FolderOpen, Paperclip } from 'lucide-react'
-import { tr, type PromptTemplate, type Runbook, type SkillInfo } from '@lingshell/shared'
+import { Plus, Folder, ClipboardList, BookOpen, ChevronRight, Settings2, Sparkles, FileText, FolderOpen, Paperclip, Bot } from 'lucide-react'
+import { tr, type AgentView, type ProjectSkillView, type PromptTemplate, type Runbook, type SkillInfo } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 
-type Sub = 'context' | 'templates' | 'runbooks' | 'skills' | null
+type Sub = 'context' | 'templates' | 'runbooks' | 'skills' | 'agents' | null
 
 // 「Skills」二级菜单：列出启用且可由用户调用的 skill，选中后作为本轮显式调用（输入框上方显示标签）
-export interface SkillMenuProps { onPick: (name: string) => void; onManage?: () => void }
+export interface SkillMenuProps { onPick: (name: string, body?: string) => void; onManage?: () => void }
+/** 「Agents」二级菜单：选中即把本会话绑定到这个 Agent（角色），不是每条消息的 skill */
+export interface AgentMenuProps { onPick: (id: string) => void; onManage?: () => void }
 // 「添加上下文」▸ 文件 / 目录（图片也是文件：选到图片自动显示为图片 tag，模型支持图片时按图片发送）
 export interface AttachMenuProps { multimodal: boolean; onFiles: () => void; onDirs: () => void }
 
 // 输入框前的「+」：一级菜单 工作目录 / 添加上下文 ▸ / Skills ▸ / 常用任务 ▸ / 运维手册 ▸（切换模型在对话头部的模型标签）。
 // 二级菜单只负责「选哪个」，选中后交给原来的 TemplatePicker / RunbookPicker（经 onTemplate / onRunbook → preset）去填参数、选终端。
-export function InputActionsMenu({ workDir, canChat, hasSession, onPickWorkDir, onTemplate, onRunbook, onManageTemplates, onManageRunbooks, skills, attach }: {
+export function InputActionsMenu({ workDir, canChat, hasSession, onPickWorkDir, onTemplate, onRunbook, onManageTemplates, onManageRunbooks, skills, agents, attach }: {
   workDir?: string; canChat: boolean; hasSession: boolean
   onPickWorkDir?: () => void; onTemplate: (id: string) => void; onRunbook: (id: string) => void
   onManageTemplates?: () => void; onManageRunbooks?: () => void
   skills?: SkillMenuProps
+  agents?: AgentMenuProps
   attach?: AttachMenuProps
 }) {
   const [open, setOpen] = useState(false)
@@ -24,6 +27,8 @@ export function InputActionsMenu({ workDir, canChat, hasSession, onPickWorkDir, 
   const [tpls, setTpls] = useState<PromptTemplate[]>([])
   const [rbs, setRbs] = useState<Runbook[]>([])
   const [sks, setSks] = useState<SkillInfo[]>([])
+  const [psks, setPsks] = useState<ProjectSkillView[]>([])
+  const [ags, setAgs] = useState<AgentView[]>([])
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -31,6 +36,8 @@ export function InputActionsMenu({ workDir, canChat, hasSession, onPickWorkDir, 
     client.templates.list().then(setTpls).catch(() => {})
     client.runbooks.list().then(setRbs).catch(() => {})
     if (skills) client.skills.list().then((l) => setSks(l.filter((s) => s.enabled && s.userInvocable && !s.error))).catch(() => {})
+    if (skills) client.skills.listProject(workDir).then(setPsks).catch(() => setPsks([]))
+    if (agents) client.agents.list(workDir).then((l) => setAgs(l.filter((a) => a.enabled && !a.error))).catch(() => {})
     const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }
     document.addEventListener('mousedown', onDown); document.addEventListener('keydown', onKey, true)
@@ -73,6 +80,7 @@ export function InputActionsMenu({ workDir, canChat, hasSession, onPickWorkDir, 
               </button>
             )}
             {attach && subRow('context', <Paperclip className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />, tr('添加上下文'), '')}
+            {agents && subRow('agents', <Bot className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />, 'Agents', ags.length)}
             {skills && subRow('skills', <Sparkles className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />, 'Skills', sks.length)}
             {subRow('templates', <ClipboardList className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />, tr('常用任务'), tpls.length)}
             {subRow('runbooks', <BookOpen className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />, tr('运维手册'), rbs.length)}
@@ -88,9 +96,41 @@ export function InputActionsMenu({ workDir, canChat, hasSession, onPickWorkDir, 
               </button>
             </div>
           )}
+          {sub === 'agents' && agents && (
+            <div data-agents-menu className="w-[300px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl">
+              <div className="max-h-[260px] overflow-y-auto">
+                <button onClick={() => { close(); agents.onPick('') }} className={ROW} title={tr('不绑定角色，用默认 Agent')}>
+                  <Bot className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
+                  <span className="text-[var(--color-text-primary)]">{tr('默认（不绑定）')}</span>
+                </button>
+                {ags.length ? ags.map((a) => (
+                  <button key={a.id} onClick={() => { close(); agents.onPick(a.id) }} title={a.description} className={`${ROW} flex-col !items-start gap-0.5`}>
+                    <span className="font-mono text-[var(--color-text-primary)]">{a.name}
+                      {a.external && <span className="ml-1.5 text-[10.5px] text-[var(--color-text-muted)]">{a.origin}</span>}
+                    </span>
+                    <span className="w-full truncate text-[11px] text-[var(--color-text-muted)]">{a.description}</span>
+                  </button>
+                )) : <div className="px-2.5 py-3 text-center text-[12px] text-[var(--color-text-muted)]">{tr('暂无 Agent，可在设置里新建或启用项目内的')}</div>}
+              </div>
+              {manage(tr('管理 Agents…'), agents.onManage)}
+            </div>
+          )}
           {sub === 'skills' && skills && (
             <div data-skills-menu className="w-[300px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl">
               <div className="max-h-[260px] overflow-y-auto">
+                {psks.length > 0 && (
+                  <div className="mb-1 border-b border-[var(--color-border-subtle)] pb-1">
+                    <div className="px-1 py-1 text-[10.5px] text-[var(--color-text-muted)]">{tr('第三方 / 项目内（只读，不复制进全局）')}</div>
+                    {psks.map((p) => (
+                      <button key={`${p.origin}:${p.name}`} onClick={() => { close(); skills.onPick(p.name, p.body) }} title={p.description} className={`${ROW} flex-col !items-start gap-0.5`}>
+                        <span className="font-mono text-[var(--color-text-primary)]">{p.name}
+                          <span className="ml-1.5 text-[10.5px] text-[var(--color-text-muted)]">{p.origin === 'claude' ? 'Claude' : tr('项目内')}</span>
+                        </span>
+                        <span className="w-full truncate text-[11px] text-[var(--color-text-muted)]">{p.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {sks.length ? sks.map((s) => (
                   <button key={s.name} onClick={() => { close(); skills.onPick(s.name) }} title={s.description} className={`${ROW} flex-col !items-start gap-0.5`}>
                     <span className="font-mono text-[var(--color-text-primary)]">{s.name}</span>

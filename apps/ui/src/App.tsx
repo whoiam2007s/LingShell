@@ -424,6 +424,7 @@ function AppShell() {
             onManageRunbooks={() => openSettingsAt('runbooks')}
             onManageModels={() => openSettingsAt('model')}
             onManageSkills={() => openSettingsAt('skills')}
+            onManageAgents={() => openSettingsAt('agents')}
             onRetry={() => (activeId ? selectSession(activeId) : newSession())}
             onBack={lastReady.current && lastReady.current !== activeId && sessions.some((s) => s.id === lastReady.current) ? () => selectSession(lastReady.current) : undefined}
             onFirstUserMessage={onFirstUserMessage}

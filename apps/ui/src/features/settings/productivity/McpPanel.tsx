@@ -5,7 +5,8 @@ import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
 import { Switch } from '../../../components/ui/Switch.js'
 import { Sel } from '../../../components/ui/form.js'
-import { Page, Section, Row, SaveBar, HelpTip, INPUT, BTN2, taCls, BTN1, ICON_BTN, ICON_DEL, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
+import { Page, Section, Row, HelpTip, INPUT, BTN2, taCls, BTN1, ICON_BTN, ICON_DEL, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
+import { ThirdPartyImportButton } from './ThirdPartyImport.js'
 import { PasswordInput } from '../../../components/ui/PasswordInput.js'
 
 const STATE: Record<McpServerStatus['state'], { text: string; color: string }> = {
@@ -85,7 +86,7 @@ export function McpPanel() {
     const stdio = form.transport === 'stdio'
     return (
       <Page>
-        <BackLink onClick={() => { setForm(null); setErr(''); setTest(undefined) }}>{tr('返回 MCP 服务列表')}</BackLink>
+        <BackLink onClick={() => { setForm(null); setErr(''); setTest(undefined) }} actions={<>{err && <span className="max-w-[240px] truncate text-[11px] text-[var(--color-text-muted)]" title={err}>{err}</span>}<button onClick={() => save(toInput(form))} disabled={!ready} className={BTN1}>{tr('保存')}</button></>}>{tr('返回 MCP 服务列表')}</BackLink>
         <Section title={form.id ? tr('编辑服务') : tr('添加服务')}>
           <Row label={tr('名称')}><input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder={tr('如：grafana、工单系统')} className={`w-64 ${INPUT}`} /></Row>
           <Row label={tr('连接方式')} tip={tr('本机命令：在本机启动一个进程，通过标准输入输出通信（npx、uvx、node 等）。远程 HTTP：连接已部署的 MCP 服务，先试 Streamable HTTP，连不上自动试 SSE。')}>
@@ -124,7 +125,6 @@ export function McpPanel() {
               : <ToolList tools={test.tools ?? []} title={tr('连接成功，共 {n} 个工具', { n: test.tools?.length ?? 0 })} />}
           </div>
         </Section>
-        <SaveBar onSave={() => save(toInput(form))} disabled={!ready} msg={err ? { ok: false, text: err } : null} />
       </Page>
     )
   }
@@ -136,7 +136,9 @@ export function McpPanel() {
   const addBtn = <button onClick={create} className={BTN1}><Plus className="h-3.5 w-3.5" />{tr('添加服务')}</button>
   return (
     <Page>
-      <Toolbar hint={tr('接入后 AI 可调用这些服务提供的工具')} tip={tr(PAGE_TIP)}>{addBtn}</Toolbar>
+      <Toolbar hint={tr('接入后 AI 可调用这些服务提供的工具')} tip={tr(PAGE_TIP)}>
+        <ThirdPartyImportButton kind="mcp" onImported={refresh} />{addBtn}
+      </Toolbar>
       {!list ? null : list.length === 0 ? <EmptyState text={tr('还没有接入 MCP 服务')} action={addBtn} /> : (
         <div className="space-y-2">
           {list.map((s) => {

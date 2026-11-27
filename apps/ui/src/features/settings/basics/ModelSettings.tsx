@@ -8,7 +8,7 @@ import { logger } from '../../../lib/logger.js'
 import { ConfirmDialog } from '../../common/index.js'
 import { Sel } from '../../../components/ui/form.js'
 import { Combobox } from '../../../components/ui/Combobox.js'
-import { BTN2, INPUT, Page, Row, SaveBar, Section, BTN1, ICON_BTN, ICON_DEL, LIST, ITEM, Toolbar, BackLink, errText } from '../ui.js'
+import { BTN2, INPUT, Page, Row, Section, BTN1, ICON_BTN, ICON_DEL, LIST, ITEM, Toolbar, BackLink, errText } from '../ui.js'
 import { notifyModelProfilesChanged } from '../../../lib/modelProfiles.js'
 import { PasswordInput } from '../../../components/ui/PasswordInput.js'
 import { DELAY_QUICK, DELAY_TEXT, profileError } from '../autoSave.js'
@@ -159,7 +159,7 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
   const switchToOpenAi = () => { set({ protocol: 'openai' }, DELAY_QUICK); void runTest(cur.current) }
   return (
     <Page onBlur={auto.onBlur}>
-      <BackLink onClick={onBack}>{tr('返回配置列表')}</BackLink>
+      <BackLink onClick={onBack} actions={form.isNew ? <>{err && <span className="max-w-[240px] truncate text-[11px] text-[var(--color-text-muted)]" title={err}>{err}</span>}<button onClick={onCreate} disabled={!form.model.trim()} className={BTN1}>{tr('创建')}</button></> : undefined}>{tr('返回配置列表')}</BackLink>
       <Section title={form.isNew ? tr('新建模型配置') : tr('编辑「{name}」', { name: form.name || form.model })} tip={form.isNew ? tr('填好后点「创建」，之后再改就是自动保存。') : tr('改了自动保存（API Key 在离开输入框时才保存），用这套配置的会话从下一回合起按新设置请求；正在进行的回合不受影响。')}>
         <Row label={tr('名称')} hint={tr('在模型菜单里显示')}>
           <input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder={form.model || tr('如：DeepSeek 官方')} className={`${INPUT} w-60`} />
@@ -228,7 +228,6 @@ function ProfileForm({ form, setForm, onCreate, onAutoSave, onBack, err }: {
             : <button onClick={() => void runTest()} disabled={test === 'running'} className={BTN2}>{tr('测试连接')}</button>}
         </Row>
       </Section>
-      {form.isNew && <SaveBar onSave={onCreate} label={tr('创建')} disabled={!form.model.trim()} msg={err ? { ok: false, text: err } : null} />}
     </Page>
   )
 }

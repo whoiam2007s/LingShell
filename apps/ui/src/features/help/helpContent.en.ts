@@ -15,7 +15,7 @@ export const HELP_SETTINGS_TITLES_EN: Record<SettingsTab, string> = {
   model: 'Model settings', ssh: 'Hosts & connections', terminal: 'Terminal', ai: 'AI & security', general: 'General',
   templates: 'Task templates', runbooks: 'Runbooks', schedules: 'Scheduled inspections', mcp: 'MCP servers',
   keys: 'SSH keys', network: 'Network proxy', recordings: 'Terminal recordings', about: 'About',
-  maintenance: 'Backup & diagnostics', shortcuts: 'Keyboard shortcuts', skills: 'Skills', secrets: 'Secret vault', mobile: 'Mobile access',
+  maintenance: 'Backup & diagnostics', shortcuts: 'Keyboard shortcuts', skills: 'Skills', agents: 'Agents', secrets: 'Secret vault', mobile: 'Mobile access',
   compliance: 'Compliance baseline',
 }
 
@@ -59,6 +59,12 @@ export const HELP_SECTIONS_EN: HelpSection[] = [
   {
     id: 'chat', title: 'AI chat and permissions', icon: MessageSquare,
     blocks: [
+      { h: 'Agent roles', p: 'An agent is a system prompt plus a name and description: it decides what identity and working habits the AI uses. Global agents live under Settings → Agents (create / edit / delete). Project-level ones go in `<project>/.lingshell/agents` or `<project>/.claude/agents` — they only show up in that project\'s sessions and need no import. Type `@` in the composer to switch roles; the dropdown at the bottom of the composer shows the current one.', tips: [
+        'The description is what the model sees in the role list — say what it does and when to use it.',
+        '"AI can pick it" controls whether the model may choose this role on its own (on by default).',
+        '"Import from third-party" scans agents / skills / MCP configs from 14 platforms (Claude Code, Codex, Cursor, DeepSeek Harness and more). It only reads the other tools\' folders; imported items become yours, and name clashes are greyed out.',
+        'The composer footer is "Agent · Model · Usage · Mode": model, reasoning level, tok/s, cache hit rate and context usage all live there.',
+      ] },
       { h: 'Sessions', p: 'The top of the chat area, left to right: session title (hovering shows the session name and its bound working directory, the "⋯" menu next to it holds "Rename", "Export session" and "Session flow"; drawer edges can be dragged to resize (up to half the window, double-click resets); unbound ones say "No working directory bound (using the default workspace)"; a small "▾" after the title lists recent sessions on hover, click one to switch), current model name (click to switch), a small usage tag (total tokens + context percentage), and "New session" (+). The vertical activity bar on the far left of the chat area, top to bottom: "Explorer", "Session history", "Session permissions / Execution log" (shield), "Memory base", and after a separator "Table viewer", "Git", "Database", "API debugger", "Deploy review" — those five relate to the current project / machine but don\'t depend on which terminal is active, so they now live here instead of the terminal activity bar. Drawers slide out next to their own activity bar, and the open one\'s icon is highlighted. Session history can be searched by title, chat content, and commands that were run.' },
       { h: 'Folder / branch tags before the title', p: 'Two small tags sit in front of the session title: on the left the **bound working folder name** (e.g. `source`), on the right the **current Git branch** (e.g. `feat/0.1.16`). Both are capped at 100px with an ellipsis; hover for the full value. The folder tag is hidden when no folder is bound, the branch tag when it is not a Git repository.', tips: [
         'Click the folder tag: open that folder in the system file manager.',

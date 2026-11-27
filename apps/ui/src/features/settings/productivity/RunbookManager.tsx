@@ -5,7 +5,7 @@ import { parseRunbookJson, tr, type Runbook, type RunbookInput } from '@lingshel
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
 import { RunbookEditor, emptyRunbook } from '../../runbooks/index.js'
-import { Page, Section, SaveBar, BTN2, BTN1, ICON_BTN, ICON_DEL, LIST, ITEM, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
+import { Page, Section, BTN2, BTN1, ICON_BTN, ICON_DEL, LIST, ITEM, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
 
 // 设置弹窗内的「运维手册」页：列表、编辑、删除、导入/导出单个手册 JSON
 export function RunbookManager() {
@@ -40,11 +40,10 @@ export function RunbookManager() {
   if (form) {
     return (
       <Page>
-        <BackLink onClick={() => { setForm(null); setErr('') }}>{tr('返回手册列表')}</BackLink>
+        <BackLink onClick={() => { setForm(null); setErr('') }} actions={<>{err && <span className="max-w-[240px] truncate text-[11px] text-[var(--color-text-muted)]" title={err}>{err}</span>}<button onClick={save} disabled={!form.name.trim()} className={BTN1}>{tr('保存')}</button></>}>{tr('返回手册列表')}</BackLink>
         <Section title={form.id ? tr('编辑手册') : tr('新建手册')}>
           <div className="px-3.5 py-3"><RunbookEditor value={form} onChange={setForm} /></div>
         </Section>
-        <SaveBar onSave={save} disabled={!form.name.trim()} msg={err ? { ok: false, text: err } : null} />
       </Page>
     )
   }

@@ -81,11 +81,26 @@ function usageOf(ev: DshEvent): any {
 }
 
 /** 这次请求的 tokens 明细（用量统计）：input 只含未命中缓存的部分，命中的在 cacheRead */
-export function requestUsageOf(ev: DshEvent): { input: number; cacheRead: number; output: number } | undefined {
+export function requestUsageOf(ev: DshEvent): { input: number; cacheRead: number; output: number; thinking?: number } | undefined {
   const u = usageOf(ev)
   if (typeof u?.inputTokens !== 'number') return undefined
   const n = (v: unknown) => (typeof v === 'number' ? v : 0)
-  return { input: u.inputTokens, cacheRead: n(u.cacheReadTokens), output: n(u.outputTokens) }
+  // 思维链 token：各家字段名不一样，按优先级全试一遍
+  //  - OpenAI Responses（DeepSeek）：output_tokens_details.reasoning_tokens
+  //  - OpenAI Chat Completions（GLM / Qwen / xAI）：completion_tokens_details.reasoning_tokens
+  //  - Gemini 原生：usageMetadata.thoughtsTokenCount（OpenAI 兼容层不暴露）
+  //  - Anthropic：不单列，含在 output_tokens 里（取不到就走字符数兜底）
+  const thinking = n(
+    u.output_tokens_details?.reasoning_tokens
+      ?? u.completion_tokens_details?.reasoning_tokens
+      ?? u.thoughtsTokenCount
+      ?? u.thoughts_token_count
+      ?? u.reasoning_tokens
+      ?? u.reasoningTokens
+      ?? u.thinkingTokens
+      ?? u.reasoning?.tokens,
+  )
+  return { input: u.inputTokens, cacheRead: n(u.cacheReadTokens), output: n(u.outputTokens), ...(thinking ? { thinking } : {}) }
 }
 
 /**
@@ -180,6 +195,8 @@ export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, o
   const blockStart = new Map<string, number | undefined>()
   const blockCall = new Map<string, string>()
   const preparing = new Map<string, { turnId: string; stepKey: string }>()
+  // 已发 tool/call、还在等 tool/result 的调用：轮结束时还没结果的就是异常，统一收尾，别让卡一直转
+  const executing = new Map<string, { turnId: string }>()
   const seenAt = new Map<string, number>()
   let turn: unknown = 0
   let step: unknown = 0
@@ -244,6 +261,11 @@ export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, o
         if (at) emit({ type: 'agent:turnTiming', sessionId, turnId, endedAt: at })
         // 还在「生成参数」的工具：轮都结束了也等不到 tool/call 了
         failPreparing(() => true, at, tr(PREP_ABORTED))
+        // 执行中的工具在轮结束时还没有结果：dsh 的结果提交已中断，收尾成失败，避免卡片永久「运行中」
+        for (const [callId, p] of executing) {
+          emit({ type: 'agent:itemUpdated', sessionId, turnId: p.turnId, itemId: callId, kind: 'tool_call', status: 'failed', tool: { toolId: callId, name: '' }, error: tr('工具结果未返回（轮已结束）'), at })
+        }
+        executing.clear()
         closeOpen('', turnId, at)
         blockStart.clear(); blockCall.clear(); seenAt.clear(); reasoning.clear()
         if (opts.replay) {
@@ -390,6 +412,7 @@ export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, o
         const start = known ? seen : at
         preparing.delete(callId)
         seenAt.delete(callId)
+        executing.set(callId, { turnId: turnIdOf(d.turn ?? turn) })
         emit({
           type: 'agent:itemStarted', sessionId, turnId: turnIdOf(d.turn ?? turn),
           itemId: callId, kind: 'tool_call', status: 'in_progress',
@@ -405,6 +428,7 @@ export function createRelay(sessionId: string, emit: (ev: AgentEvent) => void, o
         const block = (d.message?.content ?? []).find((b: any) => b?.type === 'tool-result') ?? d.message
         const callId = String(block?.toolCallId ?? d.callId ?? '')
         if (!callId) break
+        executing.delete(callId)
         const failed = block?.isError === true
         emit({
           type: 'agent:itemUpdated', sessionId, turnId: turnIdOf(d.turn ?? turn),

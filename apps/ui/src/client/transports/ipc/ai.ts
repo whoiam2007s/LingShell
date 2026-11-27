@@ -50,6 +50,7 @@ export function createAiIpc(): AiApi {
     usage: {
       summary: (range: UsageRange) => window.electronAPI.invoke('usage:summary', range) as Promise<UsageSummary>,
       session: (sid: string) => window.electronAPI.invoke('usage:session', sid) as Promise<UsageTotals & { currency: UsageCurrency }>,
+      lastRequest: (sid: string) => window.electronAPI.invoke('usage:lastRequest', sid) as ReturnType<AppClient['usage']['lastRequest']>,
       getPrices: () => window.electronAPI.invoke('usage:getPrices') as Promise<UsagePrices>,
       savePrices: (p: UsagePrices) => window.electronAPI.invoke('usage:savePrices', p) as Promise<UsagePrices>,
     },
@@ -62,6 +63,7 @@ export function createAiIpc(): AiApi {
     },
     skills: {
       list: () => window.electronAPI.invoke('skills:list') as ReturnType<AppClient['skills']['list']>,
+      listProject: (workDir, includeUser) => window.electronAPI.invoke('skills:listProject', workDir, includeUser) as ReturnType<AppClient['skills']['listProject']>,
       read: (name) => window.electronAPI.invoke('skills:read', name) as ReturnType<AppClient['skills']['read']>,
       save: (input, old) => window.electronAPI.invoke('skills:save', input, old) as Promise<void>,
       remove: (name) => window.electronAPI.invoke('skills:remove', name) as Promise<void>,
@@ -72,6 +74,22 @@ export function createAiIpc(): AiApi {
       commitImport: (token, opts) => window.electronAPI.invoke('skills:commitImport', token, opts) as Promise<string>,
       cancelImport: (token) => window.electronAPI.invoke('skills:cancelImport', token) as Promise<void>,
       openDir: () => window.electronAPI.invoke('skills:openDir') as Promise<void>,
+    },
+    agents: {
+      list: (workDir) => window.electronAPI.invoke('agents:list', workDir) as ReturnType<AppClient['agents']['list']>,
+      read: (id, workDir) => window.electronAPI.invoke('agents:read', id, workDir) as ReturnType<AppClient['agents']['read']>,
+      save: (input, old) => window.electronAPI.invoke('agents:save', input, old) as Promise<void>,
+      remove: (id) => window.electronAPI.invoke('agents:remove', id) as Promise<void>,
+      setEnabled: (id, on) => window.electronAPI.invoke('agents:setEnabled', id, on) as Promise<void>,
+      openDir: () => window.electronAPI.invoke('agents:openDir') as Promise<void>,
+      sessionAgent: (sid) => window.electronAPI.invoke('agent:sessionAgent', sid) as ReturnType<AppClient['agents']['sessionAgent']>,
+      setSessionAgent: (sid, id) => window.electronAPI.invoke('agent:setSessionAgent', sid, id) as ReturnType<AppClient['agents']['setSessionAgent']>,
+    },
+    importer: {
+      platforms: () => window.electronAPI.invoke('import:platforms') as ReturnType<AppClient['importer']['platforms']>,
+      scan: (kind, platform) => window.electronAPI.invoke('import:scan', kind, platform) as ReturnType<AppClient['importer']['scan']>,
+      commit: (kind, ids) => window.electronAPI.invoke('import:commit', kind, ids) as ReturnType<AppClient['importer']['commit']>,
+      openDir: (platform) => window.electronAPI.invoke('import:openDir', platform) as Promise<void>,
     },
     attachments: {
       pickFiles: () => window.electronAPI.invoke('attach:pickFiles') as Promise<string[]>,

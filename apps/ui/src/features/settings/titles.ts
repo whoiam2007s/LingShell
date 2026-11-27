@@ -5,7 +5,7 @@
 // 那几个字符串就会把整个设置模块重新拖进首屏，懒加载等于白做。
 import { tk } from '@lingshell/shared'
 
-export type SettingsTab = 'model' | 'ssh' | 'terminal' | 'ai' | 'general' | 'templates' | 'runbooks' | 'schedules' | 'mcp' | 'keys' | 'network' | 'recordings' | 'about' | 'maintenance' | 'shortcuts' | 'skills' | 'secrets' | 'mobile' | 'compliance'
+export type SettingsTab = 'model' | 'ssh' | 'terminal' | 'ai' | 'general' | 'templates' | 'runbooks' | 'schedules' | 'mcp' | 'keys' | 'network' | 'recordings' | 'about' | 'maintenance' | 'shortcuts' | 'skills' | 'agents' | 'secrets' | 'mobile' | 'compliance'
 
 export const TITLES: Record<SettingsTab, string> = {
   model: tk('模型设置'), ssh: tk('主机与连接'), terminal: tk('终端'), ai: tk('AI 与安全'), general: tk('通用'),
@@ -14,6 +14,7 @@ export const TITLES: Record<SettingsTab, string> = {
   maintenance: tk('备份与诊断'),
   shortcuts: tk('快捷键'),
   skills: 'Skills',
+  agents: 'Agents',
   secrets: tk('密钥保险箱'),
   mobile: tk('手机访问'),
   compliance: tk('合规基线'),

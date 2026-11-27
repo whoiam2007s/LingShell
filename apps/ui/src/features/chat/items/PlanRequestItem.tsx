@@ -10,10 +10,10 @@ import { client } from '../../../client/index.js'
 export function PlanRequestItem({ item }: { item: ConvItem }) {
   const p = item.plan
   if (!p) return null
-  return <PlanCard plan={p} />
+  return <PlanCard plan={p} status={item.status} />
 }
 
-function PlanCard({ plan: p }: { plan: NonNullable<ConvItem['plan']> }) {
+function PlanCard({ plan: p, status }: { plan: NonNullable<ConvItem['plan']>; status: ConvItem['status'] }) {
   const resolved = p.result
   const [remain, setRemain] = useState(Math.ceil(p.deadlineMs / 1000))
   const [hosts, setHosts] = useState<HostSummary[]>([])
@@ -60,6 +60,15 @@ function PlanCard({ plan: p }: { plan: NonNullable<ConvItem['plan']> }) {
             {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
         </div>
+        {/* 批准后到本回合结束之间：一条脉冲光条表示「正在按计划执行」 */}
+        {p.result === 'allow' && status === 'in_progress' && (
+          <div className="flex items-center gap-2 px-2.5 pb-1.5">
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-base)]">
+              <div className="h-full w-full animate-pulse rounded-full bg-[var(--color-accent)] opacity-70" />
+            </div>
+            <span className="shrink-0 text-[11px] text-[var(--color-accent)]">{tr('执行中…')}</span>
+          </div>
+        )}
 
         {!collapsed && <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-3 py-2">
           <ol className="space-y-1.5">

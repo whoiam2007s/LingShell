@@ -3,7 +3,7 @@ import { FileText, Pencil, Trash2, Plus } from 'lucide-react'
 import { tr, type PromptTemplate } from '@lingshell/shared'
 import { client } from '../../../client/index.js'
 import { ConfirmDialog } from '../../common/index.js'
-import { Page, Section, Row, SaveBar, INPUT, BTN1, BackLink, EmptyState, ICON_BTN, ICON_DEL, ITEM, LIST, Toolbar, errText, taCls } from '../ui.js'
+import { Page, Section, Row, INPUT, BTN1, BackLink, EmptyState, ICON_BTN, ICON_DEL, ITEM, LIST, Toolbar, errText, taCls } from '../ui.js'
 
 // 占位符语法原样显示（{{主机}} 是定时巡检认的变量名，不翻译）
 const PH = { a: '{{名字}}', b: '{{主机}}', c: '{{服务名}}' }   // i18n-ignore 占位符语法
@@ -29,7 +29,7 @@ export function TemplateManager() {
   if (form) {
     return (
       <Page>
-        <BackLink onClick={() => { setForm(null); setErr('') }}>{tr('返回模板列表')}</BackLink>
+        <BackLink onClick={() => { setForm(null); setErr('') }} actions={<>{err && <span className="max-w-[240px] truncate text-[11px] text-[var(--color-text-muted)]" title={err}>{err}</span>}<button onClick={save} disabled={!form.name.trim() || !form.prompt.trim()} className={BTN1}>{tr('保存')}</button></>}>{tr('返回模板列表')}</BackLink>
         <Section title={form.id ? tr('编辑模板') : tr('新建模板')}>
           <Row label={tr('名称')}><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={tr('如：检查磁盘与内存')} className={`w-72 ${INPUT}`} /></Row>
           <Row label={tr('内容')} hint={tr('发给 AI 的任务描述，可带 {{占位符}}')} wide
@@ -37,7 +37,6 @@ export function TemplateManager() {
             <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })} rows={8} className={taCls} placeholder={tr('如：检查 {h} 的磁盘、内存占用，列出异常项', { h: PH.b })} />
           </Row>
         </Section>
-        <SaveBar onSave={save} disabled={!form.name.trim() || !form.prompt.trim()} msg={err ? { ok: false, text: err } : null} />
       </Page>
     )
   }

@@ -9,7 +9,7 @@ import { ConfirmDialog } from '../../common/index.js'
 import { Switch } from '../../../components/ui/Switch.js'
 import { NumberInput } from '../../../components/ui/NumberInput.js'
 import { Sel } from '../../../components/ui/form.js'
-import { Page, Section, Row, SaveBar, INPUT, taCls, BTN1, ICON_BTN, ICON_DEL, LIST, ITEM, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
+import { Page, Section, Row, INPUT, taCls, BTN1, ICON_BTN, ICON_DEL, LIST, ITEM, Toolbar, EmptyState, BackLink, errText } from '../ui.js'
 
 const STATUS: Record<InspectionStatus, { text: string; color: string }> = {
   running: { text: tk('运行中'), color: 'var(--color-accent)' },
@@ -76,7 +76,7 @@ export function ScheduleManager({ onOpenSession }: { onOpenSession?: (sessionId:
     const toggleWh = (id: string) => { const cur = nw ?? []; setForm({ ...form, notifyWebhooks: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }) }
     return (
       <Page>
-        <BackLink onClick={() => { setForm(null); setErr('') }}>{tr('返回巡检列表')}</BackLink>
+        <BackLink onClick={() => { setForm(null); setErr('') }} actions={<>{err && <span className="max-w-[240px] truncate text-[11px] text-[var(--color-text-muted)]" title={err}>{err}</span>}<button onClick={() => save(form)} disabled={!form.name.trim() || !form.prompt.trim() || !form.targets.length || leftover.length > 0} className={BTN1}>{tr('保存')}</button></>}>{tr('返回巡检列表')}</BackLink>
         <Section title={form.id ? tr('编辑巡检') : tr('新建巡检')}>
           <Row label={tr('field|名称')}><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={tr('如：每日磁盘巡检')} className={`w-72 ${INPUT}`} /></Row>
           <Row label={tr('巡检内容')} hint={tr('让 AI 检查什么')} wide tip={tr('{v} 会替换为目标主机名；其它占位符巡检时没人填，要先改成实际值。可从常用任务模板填入。', { v: HOST_VAR })}>
@@ -133,7 +133,6 @@ export function ScheduleManager({ onOpenSession }: { onOpenSession?: (sessionId:
             </Row>
           </Section>
         )}
-        <SaveBar onSave={() => save(form)} disabled={!form.name.trim() || !form.prompt.trim() || !form.targets.length || leftover.length > 0} msg={err ? { ok: false, text: err } : null} />
       </Page>
     )
   }

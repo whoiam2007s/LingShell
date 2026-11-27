@@ -7,7 +7,7 @@
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, watch, type FSWatcher } from 'node:fs'
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile, rename as mv } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { tmpdir, homedir } from 'node:os'
 import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { buildSkillMd, isSkillName, parseSkillMd, type SkillMeta } from './skillFile.js'
@@ -86,6 +86,9 @@ export async function extractArchive(file: string, dest: string): Promise<void> 
   if (viaUnzip) await run('unzip', ['-q', '-o', file, '-d', dest])
   else await run(tarBin(), ['-xf', file, '-C', dest])
 }
+
+/** 项目内 skill（只读）：只对绑定了该工作目录的会话生效，不复制、不进全局库 */
+export interface ProjectSkill { name: string; description: string; body: string; origin: 'project' | 'claude'; dir: string }
 
 export class LocalSkills {
   private listeners = new Set<() => void>()
@@ -368,6 +371,37 @@ export class LocalSkills {
     const st = this.staged.get(token)
     this.staged.delete(token)
     if (st) await rm(st.dir, { recursive: true, force: true }).catch(() => {})
+  }
+
+  // ── 项目内 skill（只读，不注册进全局库）────────────────  // <workDir>/.lingshell/skills/<name>/SKILL.md、<workDir>/.claude/skills/<name>/SKILL.md
+  // 只供「这个工作目录的会话」按名取正文，用正文注入的方式使用；不复制、不进 provider，不污染全局。
+  /** 技能库根目录（第三方导入时往这里复制目录） */
+  get dir(): string { return this.root }
+
+  async listProject(workDir?: string, includeUser = false): Promise<ProjectSkill[]> {
+    const wd = workDir?.trim()
+    const roots: { origin: ProjectSkill['origin']; root: string }[] = []
+    if (includeUser) {   // 第三方工具用户级目录（跨项目）：只读候选，不复制进全局库
+      roots.push({ origin: 'claude', root: join(homedir(), '.claude', 'skills') })
+    }
+    if (wd) {
+      roots.push({ origin: 'project', root: join(wd, '.lingshell', 'skills') })
+      roots.push({ origin: 'claude', root: join(wd, '.claude', 'skills') })
+    }
+    if (!roots.length) return []
+    const out: ProjectSkill[] = []
+    for (const { origin, root } of roots) {
+      let names: string[]
+      try { names = (await readdir(root, { withFileTypes: true })).filter((d) => d.isDirectory() && !isHidden(d.name)).map((d) => d.name).sort() } catch { continue }
+      for (const n of names) {
+        try {
+          const p = parseSkillMd(await readFile(join(root, n, 'SKILL.md'), 'utf8'))
+          if (!p.ok) continue
+          out.push({ name: p.meta.name, description: p.meta.description, body: p.body, origin, dir: join(root, n) })
+        } catch { /* 没有 SKILL.md 的子目录跳过 */ }
+      }
+    }
+    return out
   }
 
   // ── dsh-skill provider 契约 ──

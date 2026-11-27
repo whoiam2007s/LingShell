@@ -18,7 +18,8 @@ import { NetworkSettings } from './connection/NetworkSettings.js'
 import { MaintenancePanel } from './maintenance/MaintenancePanel.js'
 import { ShortcutSettings } from './basics/ShortcutSettings.js'
 import { SkillsPanel } from './productivity/SkillsPanel.js'
-import { Sparkles, Vault } from 'lucide-react'
+import { Sparkles, Vault, Bot } from 'lucide-react'
+import { AgentsPanel } from './productivity/AgentsPanel.js'
 import { SecretVaultManager } from './connection/SecretVaultManager.js'
 import { Smartphone } from 'lucide-react'
 import { MobileAccessSettings } from './connection/MobileAccessSettings.js'
@@ -37,13 +38,14 @@ const ICONS: Record<SettingsTab, React.ComponentType<{ className?: string }>> = 
   maintenance: ArchiveRestore,
   shortcuts: Keyboard,
   skills: Sparkles,
+  agents: Bot,
   secrets: Vault,
   mobile: Smartphone,
   compliance: ListChecks,
 }
 const MENU: { group?: string; tabs: SettingsTab[] }[] = [
   { group: tk('基础'), tabs: ['model', 'ssh', 'ai', 'shortcuts', 'terminal', 'general'] },
-  { group: tk('效率'), tabs: ['templates', 'runbooks', 'schedules', 'compliance', 'mcp', 'skills'] },
+  { group: tk('效率'), tabs: ['templates', 'runbooks', 'schedules', 'compliance', 'mcp', 'agents', 'skills'] },
   { group: tk('连接'), tabs: ['keys', 'secrets', 'network', 'mobile'] },
   { group: tk('记录'), tabs: ['recordings'] },
   { group: tk('维护'), tabs: ['maintenance'] },
@@ -138,7 +140,7 @@ export function SettingsModal({ onClose, onSaved, initialTab = 'model', onOpenSe
               : tab === 'ai' ? <AiSecuritySettings /> : tab === 'general' ? <GeneralSettings /> : tab === 'keys' ? <KeyManager /> : tab === 'mcp' ? <McpPanel />
               : tab === 'templates' ? <TemplateManager /> : tab === 'runbooks' ? <RunbookManager /> : tab === 'schedules' ? <ScheduleManager onOpenSession={onOpenSession} />
               : tab === 'shortcuts' ? <ShortcutSettings /> : tab === 'recordings' ? <RecordingsPanel /> : tab === 'network' ? <NetworkSettings />
-              : tab === 'maintenance' ? <MaintenancePanel /> : tab === 'skills' ? <SkillsPanel /> : tab === 'secrets' ? <SecretVaultManager /> : tab === 'mobile' ? <MobileAccessSettings /> : tab === 'compliance' ? <ComplianceSettings /> : <AboutPanel onOpenHelp={onOpenHelp} />}
+              : tab === 'maintenance' ? <MaintenancePanel /> : tab === 'skills' ? <SkillsPanel /> : tab === 'agents' ? <AgentsPanel /> : tab === 'secrets' ? <SecretVaultManager /> : tab === 'mobile' ? <MobileAccessSettings /> : tab === 'compliance' ? <ComplianceSettings /> : <AboutPanel onOpenHelp={onOpenHelp} />}
             </AutoSaveReport.Provider>
           </div>
         </div>

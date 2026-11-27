@@ -49,9 +49,11 @@ import {
   SUBAGENT_BRIEF, SUBAGENT_MAX_CONCURRENT, checkSubagentTask, clampTimeoutSec, composeSubagentTask,
   parseSubagentSummary, subagentTitleOf, subagentToolDeny, type SubagentPermission, type SubagentRecord, type SubagentResult,
 } from './subagent.js'
-import { loadSubagentLog, saveSubagentLog, SUBAGENT_LOG_MAX } from './subagentStore.js'
+import { loadSubagentLog, saveSubagentLog, liveLogDir, SUBAGENT_LOG_MAX } from './subagentStore.js'
+import { quarantineFlatSessionArtifacts } from './sessionStoreRepair.js'
 import { PlanBook, planDecision, planToolDef, sanitizeSteps, PLAN_GUIDANCE, type PlanRequest } from './plan.js'
-import { installPromptSection, installTerminalsSection, installWorkDirSection, installMemorySection, installFleetSection, installLanguageSection, installTodayContext } from './prompt.js'
+import { installPromptSection, installTerminalsSection, installWorkDirSection, installMemorySection, installFleetSection, installLanguageSection, installTodayContext, installAgentSection } from './prompt.js'
+import { agentToolDeny, buildAgentSection, type AgentDef } from './agents.js'
 import { compactionConfig, effectiveLimit, clampCompactRatio, DEEPSEEK_WINDOW, type CompactTarget } from './compaction.js'
 import { routeOf, keyEnvOf, usesPiAi, withRoute, deepseekBaseOf, friendlyError, RETRY_POLICY, NO_KEY_PLACEHOLDER, type PiRoute } from './providers.js'
 import { mcpDecision, mcpArgsView, stripExplain, MCP_GUIDANCE, type McpManager, type McpToolRef } from './mcp.js'
@@ -143,10 +145,12 @@ export interface DshControllerConfig extends TerminalToolDeps {
   setExecMode?(sessionId: string, mode: ExecMode): void
   isUnattended?(sessionId: string): boolean
   // 每次模型请求的用量（实时事件才报，重连回放不报）→ 用量统计
-  recordUsage?(u: { sessionId: string; provider: string; model: string; input: number; cacheRead: number; output: number; unattended?: boolean; source?: string }): void
+  recordUsage?(u: { sessionId: string; provider: string; model: string; input: number; cacheRead: number; output: number; unattended?: boolean; source?: string; ms?: number; thinking?: number; thinkChars?: number }): void
   log?: LogFn
   // 分层规则（分组 → 主机 → 工作目录）：本会话用到过的主机 + 会话工作目录 → 注入文本（已截断），没有返回 ''。每次模型请求现求值
   layeredRules?(hostKeys: string[], workDir?: string): string
+  // Agent（角色）定义：按 id 取（项目内目录随会话工作目录变化）；找不到返回 undefined
+  agentDef?(id: string, workDir?: string): Promise<AgentDef | undefined>
   // AI 复核：弹授权卡前调（主进程判断是否在范围内、调复核模型、按设置给出处理方式）；undefined = 不复核
   reviewCommand?(req: ReviewRequest): Promise<{ review: AiReviewResult; action: AiReviewAction } | undefined>
 }
@@ -175,6 +179,12 @@ interface Live {
   turning: boolean        // 有一轮正在跑
   compacting?: boolean    // 正在（自动）压缩：手动压缩要避开，否则引擎会判 busy / surface changed
   turn?: unknown          // 正在跑的 dsh 轮次（turn/start 记、turn/end 清）：执行记录据此标 turnId（按回合撤销）
+  reqFirstAt?: number     // 本次模型请求首个输出增量的到达时间（未用；保留给 TTFT）
+  reqStartAt?: number     // 本次模型请求开始时间（step/start）—— 速率的分母
+  thinkChars?: number     // 本次请求的思考过程字符数（provider 不给 reasoning token 时用这个兜底）
+  agentId?: string        // 会话绑定的 Agent（角色）id
+  agentPrompt?: string    // Agent 正文拼好的系统提示段（空 = 不注入）
+  agentTools?: string[]   // Agent 的工具白名单（只收窄，不能扩权）
 }
 
 // 内存里最多保留的会话数；超出时释放最久没用且空闲（不在跑、无待授权）的。被释放的会话再用时自动从磁盘日志恢复。
@@ -230,7 +240,19 @@ export class DshController {
       await ctx.plugin(LlmRuntime)
       await ctx.plugin(ApprovalService)
       await ctx.plugin(ToolRuntime, { mode: 'native' })
-      await ctx.plugin(JsonlPersistence as any, { root: join(this.cfg.baseDir, 'dsh-sessions') })
+      const sessionsRoot = join(this.cfg.baseDir, 'dsh-sessions')
+      // dsh 的 JSONL 存档只认 <root>/<项目目录>/<会话id>/；根目录下任意一个目录里直接躺着 *.jsonl 都会被
+      // 判成「不支持的扁平布局」并抛错，而这个异常会顺着列表 / 恢复 / 新建一起去 —— 表现为「所有历史会话
+      // 和新建会话都不能用」。0.1.20 的子代理 live.jsonl 就踩过（现已改到会话存档之外）。老机器上留下的
+      // 坏目录不会自己消失，所以开机先把它们挪进隔离区（一个字节不删），再启动持久化。
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const moved = await quarantineFlatSessionArtifacts(sessionsRoot, join(this.cfg.baseDir, 'repaired', 'session-artifacts', stamp))
+        if (moved.length) this.cfg.log?.('warn', 'flat session artifacts quarantined', { root: sessionsRoot, moved })
+      } catch (e) {
+        this.cfg.log?.('warn', 'flat session artifact repair failed', { err: String(e).slice(0, 300) })
+      }
+      await ctx.plugin(JsonlPersistence as any, { root: sessionsRoot })
       // 图片附件存档（ctx.attachments）：用户消息里的图片块只存引用，适配器发请求时经它读字节（见 attachments.ts）
       await ctx.plugin(LocalImageStore as any, { root: this.attachmentRoot })
       // 历史图片裁剪：每次发送前只保留最近几条消息的原图（见 imagePrune.ts）。
@@ -317,6 +339,8 @@ export class DshController {
         return { ...t, env: this.cfg.hostMeta?.(t.id)?.env, ...(cwd ? { cwd } : {}) }
       }))
       installWorkDirSection(ctx, (agentId) => this.getWorkDir(this.dshToOurs.get(agentId) ?? agentId))
+      // 会话绑定的 Agent 正文（没绑定 = 空段，dsh 会丢掉）
+      installAgentSection(ctx, (agentId) => this.sessions.get(this.dshToOurs.get(agentId) ?? agentId)?.agentPrompt ?? '')
       // 主机记忆库（按会话：只注入本会话用到过的主机）+ 跨主机提问的用法与主机清单
       installMemorySection(ctx, (agentId) => {
         const keys = this.touched.get(this.dshToOurs.get(agentId) ?? agentId)
@@ -459,11 +483,9 @@ export class DshController {
     this.cfg.log?.('info', 'deepseek route registered', { route, baseURL })
   }
 
-  // 弹授权卡前的统一入口：子代理一律不弹卡（它没有交互能力，弹了只会挂到超时），
-  // 直接拒掉让工具报错进它的上下文，它按提示走 blocked 把问题交回主代理。
+  // 弹授权卡前的统一入口。子代理的授权在 approval/request 里按 pendingAsk.subagentId 短路
+  // （派发时已定权限，范围内自动同意），不会走到这里。
   private async askFor(req: ApprovalRequest): Promise<ApprovalAnswer> {
-    const sub = this.subagents.get(req.sessionId)
-    if (sub) return { decision: 'deny', note: tr('子代理不能与你交互：请用 blocked 状态把问题交回主代理') }
     return this.cfg.requestApproval(req)
   }
 
@@ -480,6 +502,22 @@ export class DshController {
       // 子代理：不能跟用户交互、不能再派子代理、不能删除；只读子代理连写工具都不给。
       // 放在最前面——先于预演 / 计划 / 信任档，子代理的任何越权都不进模型重试循环之外的分支
       const sub = this.subagents.get(sessionId)
+      // 工具执行完就发完成事件：dsh 按模型顺序提交 tool/result（commitReady），前面一个慢工具没结束，
+      // 后面已跑完的结果全部压着不发，卡只能等整组提交。状态得在执行结束这一刻自己发，才不被拖住。
+      // 失败原样抛出，超时 / 中断信号照旧往上走。
+      const finishTool = async () => {
+        const live = this.sessions.get(sessionId)
+        const turnId = turnIdOf(live?.turn)
+        const callId = String(exec.callId)
+        try {
+          const r = await next()
+          if (!sub && callId) this.emit({ type: 'agent:itemUpdated', sessionId, turnId, itemId: callId, kind: 'tool_call', status: 'completed', at: Date.now() })
+          return r
+        } catch (e) {
+          if (!sub && callId) this.emit({ type: 'agent:itemUpdated', sessionId, turnId, itemId: callId, kind: 'tool_call', status: 'failed', tool: { toolId: callId, name: '' }, error: e instanceof Error ? e.message : String(e), at: Date.now() })
+          throw e
+        }
+      }
       if (sub) {
         const why = subagentToolDeny(String(exec.name), sub.permission, sub.allowed, exec.arguments, this.cfg.isReadOnly)
         if (why) {
@@ -489,6 +527,16 @@ export class DshController {
         }
       }
       // 授权主体：子代理不另立授权，一切以父会话为准（用户定的口径：主会话授权过写就自动继承）
+      // 会话绑定的 Agent：工具白名单只收窄（子代理已先判过；Agent 的 tools 不能比子代理更宽）
+      const liveAgent = this.sessions.get(sessionId)
+      if (!sub && liveAgent?.agentTools?.length) {
+        const why = agentToolDeny(String(exec.name), liveAgent.agentTools)
+        if (why) {
+          const tids = targetTerminalsOf(exec.name, exec.arguments)
+          for (const tid of tids.length ? tids : ['']) this.cfg.audit({ sessionId, terminalId: tid, command: describeCall(exec.name, exec.arguments), decision: 'deny:agent' })
+          return { kind: 'deny', reason: why }
+        }
+      }
       const subject = sub ? sub.parent : sessionId
       this.touch(sessionId, exec.name, exec.arguments)
       const mcp = this.cfg.mcp?.lookup(String(exec.name))
@@ -503,35 +551,35 @@ export class DshController {
       }
       if (mcp) {
         const d = mcpDecision({ autoApproved: mcp.autoApproved, trust: this.cfg.trustOf?.(sessionId), unattended: this.cfg.isUnattended?.(sessionId) })
-        if (d.kind === 'allow') return next()
+        if (d.kind === 'allow') return finishTool()
         if (d.kind === 'deny') { this.mcpAudit(sessionId, mcp, exec.arguments, `deny:${d.reason}`); return d }
-        this.pendingAsk.set(String(exec.callId), { sessionId: subject, name: exec.name, args: exec.arguments, reason: d.reason })
+        this.pendingAsk.set(String(exec.callId), { sessionId: subject, name: exec.name, args: exec.arguments, reason: d.reason, ...(sub ? { subagentId: sessionId } : {}) })
         return { kind: 'ask', reason: d.reason }
       }
       // 入参带脱敏占位符：不弹卡，放行到工具体直接报错（原因进模型）；记成 fail，执行前用户关了脱敏也照样拒。
       // 只管要授权的工具（它们的工具体先取 override）；propose_* 无需授权，由 withRedaction 拦
       const refused = !String(exec.name).startsWith('propose_') && this.cfg.aiSecrets?.()
         ? placeholderError(String(exec.name), exec.arguments) : undefined
-      if (refused) { this.overrides.set(String(exec.callId), { sessionId, fail: refused }); return next() }
+      if (refused) { this.overrides.set(String(exec.callId), { sessionId, fail: refused }); return finishTool() }
       // 密钥保险箱：引用了不存在 / 不在范围内的密钥 → 不弹卡，同上放行到工具体报错（原因进模型），记一条拒绝；计划内也拒
       const se = secretError(this.cfg.secretVault, String(exec.name), exec.arguments)
       if (se) {
         const tids = targetTerminalsOf(exec.name, exec.arguments)
         for (const tid of tids.length ? tids : ['']) this.cfg.audit({ sessionId, terminalId: tid, command: describeCall(exec.name, exec.arguments), decision: `deny:${se.slice(0, 200)}` })
         this.overrides.set(String(exec.callId), { sessionId, fail: se })
-        return next()
+        return finishTool()
       }
       // 生产主机上缺回滚方案的变更命令：计划内也拒（原因进模型让它补，见 rollbackDeny）
       const rb = rollbackDeny(this.cfg, exec.name, exec.arguments)
       if (rb) return rb
       // 已批准计划内的步骤免卡（只读信任档、命令规则「禁止」照样拒，见 planDecision）
-      if (planDecision(this.cfg, this.plans, sessionId, exec.name, exec.arguments)) return next()
+      if (planDecision(this.cfg, this.plans, sessionId, exec.name, exec.arguments)) return finishTool()
       const d = decideFor(this.cfg, subject, exec.name, exec.arguments)
       // 四档执行模式：auto / trust 档在既有结论之上放宽（只放宽、不收紧）。
       // confirm 与 preview 在这里恒为 false，各自走原路径 —— 默认档行为与升级前完全一致
       if (this.relaxedByMode(subject, String(exec.name), exec.arguments, d)) {
         this.overrides.set(String(exec.callId), { sessionId, rule: this.modeRuleOf(sessionId) })   // 执行记录注明是哪个档放行的
-        return next()
+        return finishTool()
       }
       // 目录外的写：授权记录只到「主机 + 级别」（不带路径），auto / trust 档不能让它替路径判定放行。
       // confirm 本来就每条写都问、preview 已在上面拒掉，这条只补 auto / trust 批过写入后的缺口。
@@ -547,11 +595,11 @@ export class DshController {
           ? this.modeRuleOf(sessionId) : undefined
         const rule = d.rule ?? modeNote
         if (rule) this.overrides.set(String(exec.callId), { sessionId, rule })   // 执行记录里注明按哪条规则 / 哪个档放行
-        return next()
+        return finishTool()
       }
       if (d.kind === 'deny') return d
       // 记住这次 ask 的上下文，approval/request 里拿不到入参
-      this.pendingAsk.set(String(exec.callId), { sessionId: subject, name: exec.name, args: exec.arguments, reason: d.reason, rule: d.rule })
+      this.pendingAsk.set(String(exec.callId), { sessionId: subject, name: exec.name, args: exec.arguments, reason: d.reason, rule: d.rule, ...(sub ? { subagentId: sessionId } : {}) })
       return { kind: 'ask', reason: d.reason }
     }) as any)
 
@@ -560,6 +608,9 @@ export class DshController {
       const pend = this.pendingAsk.get(key)
       this.pendingAsk.delete(key)
       if (!pend) return 'unavailable'
+      // 子代理：派发时已定权限（网关的 subagentToolDeny 先判过），范围内的授权一律自动同意；
+      // 不弹卡、也不写父会话的授权记录（免得子代理的自动执行污染主会话）
+      if (pend.subagentId) return 'allowed-once'
       const mcp = this.cfg.mcp?.lookup(pend.name)
       if (mcp) return this.askMcp(key, pend.sessionId, mcp, pend.args)
       const terminalId = (pend.args as any)?.terminal_id ?? 'local'
@@ -638,7 +689,7 @@ export class DshController {
       return 'allowed-once'
     }) as any)
   }
-  private pendingAsk = new Map<string, { sessionId: string; name: string; args: unknown; reason?: string; rule?: string }>()
+  private pendingAsk = new Map<string, { sessionId: string; name: string; args: unknown; reason?: string; rule?: string; subagentId?: string }>()
 
   // 会话用到过的主机（hostKey）：AI 打开 / 使用了该主机的终端、或 run_on_hosts 访问了它。记忆库段据此注入（只在内存，重启后再用到再记）
   private touched = new Map<string, Set<string>>()
@@ -987,14 +1038,14 @@ export class DshController {
   // ── 会话 ────────────────────────────────────────────
   // 随机 id，删除后不复用：复用会撞上 dsh 磁盘上的旧日志（拒绝新建），还会继承旧会话的授权。
   // hidden：子代理会话——不写进会话列表（UI 上只从主会话的下拉里进去看）
-  async createSession(opts?: { title?: string; hidden?: boolean; modelProfileId?: string; thinking?: ThinkingLevel }): Promise<SessionInfo> {
+  async createSession(opts?: { title?: string; hidden?: boolean; modelProfileId?: string; thinking?: ThinkingLevel; agentId?: string }): Promise<SessionInfo> {
     const id = `sess_${randomUUID().slice(0, 8)}`
     const createdAt = new Date().toISOString()
     const workDir = homedir()
     // 钉住哪套模型：默认取当前默认配置；「跟着某个会话走」的（子代理）由调用方把父会话的传进来
     // —— 以前一律用默认，会话切到别的模型后子代理还是用默认那套，与用户预期不符
     const modelProfileId = opts?.modelProfileId ?? this.cfg.resolveSettings().profileId
-    const meta: SessionMeta = { id, title: opts?.title ?? id, threadId: id, createdAt, lastActiveAt: createdAt, workDir, ...(modelProfileId ? { modelProfileId } : {}), ...(opts?.thinking ? { thinking: opts.thinking } : {}) }
+    const meta: SessionMeta = { id, title: opts?.title ?? id, threadId: id, createdAt, lastActiveAt: createdAt, workDir, ...(modelProfileId ? { modelProfileId } : {}), ...(opts?.thinking ? { thinking: opts.thinking } : {}), ...(opts?.agentId ? { agentId: opts.agentId } : {}) }
     const info = await this.spawn(id, meta)
     if (!opts?.hidden) this.cfg.sessionStore?.upsert({ ...meta, title: info.title })
     return info
@@ -1035,6 +1086,8 @@ export class DshController {
         title: tr('子任务：{t}', { t: t.value.slice(0, 20) }), hidden: true,
         ...(inheritProfile ? { modelProfileId: inheritProfile } : {}),
         ...(parentMeta?.thinking ? { thinking: parentMeta.thinking } : {}),
+        // 父会话绑了 Agent（角色）时子代理也绑同一套：正文进它的系统提示、工具按同一白名单收窄
+        ...(parentMeta?.agentId ? { agentId: parentMeta.agentId } : {}),
       })
     } catch (e) {
       this.subagents.delete(slot)   // 建不起来就把并发位退回去，别把它漏在那
@@ -1086,8 +1139,11 @@ export class DshController {
     // 子代理的**明文**执行记录：dsh 的会话日志是自定义 zstd 分块（主代理读不了、也不适合边跑边读），
     // 这里同步落一份 live.jsonl（一行一个事件，不压缩不加密）。子代理跑很久 / 超时了，
     // 主会话可以据此知道它做到哪一步，接着做，不至于白跑。
-    const liveDir = await this.subagentDirOf(sid)
+    // 目录固定在会话存档之外（见 liveLogDir）：这个时刻子会话还没落盘，拿不到它的会话目录，
+    // 绝不回退到 dsh-sessions/<id>（那是 dsh 拒绝的扁平布局，写一次会把整个会话存储打死）。
+    const liveDir = liveLogDir(this.cfg.baseDir, sid)
     const livePath = join(liveDir, 'live.jsonl')
+    try { await mkdir(liveDir, { recursive: true }) } catch { /* 建不出来就让后面的写失败，不影响执行 */ }
     let liveBuf: string[] = []
     let liveTimer: ReturnType<typeof setTimeout> | undefined
     const flushLive = () => {
@@ -1184,11 +1240,12 @@ export class DshController {
    *
    * 为什么不是会话日志本身：`session.v4.jsonl.zstd` 是 dsh 的自定义分块格式（不是裸 zstd），
    * 模型用 read_file 读出来是二进制垃圾；而且真实目录还多一层「工作目录转义」
-   * （dsh-sessions/<工作目录>/<id>/），以前只拼 dsh-sessions/<id>，照着找必然找不到。
+   * （dsh-sessions/<工作目录>/<id>/）。这时子会话的日志已经落盘，能解析到就写在它旁边；
+   * 解析不到就退回 live.jsonl 的目录，绝不自己拼一个 dsh 不认的扁平路径。
    */
   private async writeSubagentTranscript(dshId: string, task: string): Promise<string> {
     const rec = [...this.subagentLog.values()].flat().find((r) => r.subagentId === dshId)
-    const out = join(await this.subagentDirOf(dshId), 'transcript.md')
+    const out = join((await this.sessionDirOf(dshId)) ?? liveLogDir(this.cfg.baseDir, dshId), 'transcript.md')
     try {
       const lines: string[] = [
         `# 子代理执行记录`,   // i18n-ignore 写给模型 / 用户看的记录文件
@@ -1209,17 +1266,18 @@ export class DshController {
     }
   }
 
-  /** 子会话真实目录（dsh-sessions/<工作目录>/<id>）：findLog 解析，解析不到退回 <baseDir>/dsh-sessions/<id> */
-  private async subagentDirOf(dshId: string): Promise<string> {
-    let dir = join(this.cfg.baseDir, 'dsh-sessions', dshId)
+  /**
+   * 子会话真实目录（dsh-sessions/<工作目录>/<id>）：只认 findLog 解析出来的位置。
+   * 解析不到返回 undefined —— 绝不能退回 `<baseDir>/dsh-sessions/<id>`：那是 dsh 明令拒绝的扁平布局，
+   * 写一次就把整个会话存储（列表 / 恢复 / 新建）打死，见 subagentStore.liveLogDir。
+   */
+  private async sessionDirOf(dshId: string): Promise<string | undefined> {
     try {
       const store = (await this.boot() as any).sessionPersistence
       const found = await store.findLog(dshId)   // 0.2 起返回 { sourcePath, currentPath }，按版本分代
-      const log: string | undefined = typeof found === 'string' ? found : found?.sourcePath
-      if (log) dir = dirname(resolve(log))
-    } catch { /* 解析不到就用兜底目录 */ }
-    try { await mkdir(dir, { recursive: true }) } catch { /* 建不出来就让后面的写失败，不影响执行 */ }
-    return dir
+      const log: string | undefined = typeof found === 'string' ? found : (found?.sourcePath ?? found?.currentPath)
+      return log ? dirname(resolve(log)) : undefined
+    } catch { return undefined }
   }
 
   /** 读文本文件最后几行（子代理超时后给主会话看进度）；读不到返回空串 */
@@ -1276,10 +1334,13 @@ export class DshController {
       }
     } else handle = await (fork ? forkAs(dshId, fork) : createAs(dshId))
     const info: SessionInfo = { id, title: meta.title, createdAt: meta.createdAt }
+    // 会话绑定的 Agent：正文进系统提示、tools 收窄工具集（定义从用户级 / 项目内目录现读）
+    const agentDef = meta.agentId ? await this.cfg.agentDef?.(meta.agentId, meta.workDir) : undefined
     const live: Live = {
       info, dshId, window, compactRatio: clampCompactRatio(s.compactRatio), provider: s.provider, model: s.model, profileId: meta.modelProfileId, applied: s.profileId, route: agentOptions,
       handle: handle as any, relay, ctxTokens: 0, steps: 0, compactions: 0, lastUsed: Date.now(), turning: false,
       ...(meta.thinking ? { thinking: meta.thinking } : {}),   // 会话级思考深度：从会话记录恢复（重启后还在）
+      ...(agentDef ? { agentId: agentDef.id, agentPrompt: buildAgentSection(agentDef), ...(agentDef.tools?.length ? { agentTools: agentDef.tools } : {}) } : {}),
     }
     this.sessions.set(id, live)
     await this.evictIdle(id)
@@ -1318,7 +1379,14 @@ export class DshController {
     const fromFrame = createStreamAdapter()
     handle.agent.ctx.on('agent/assistant-stream' as any, ((p: any) => {
       const ev = fromFrame(p?.frame)
-      if (ev) relay(ev)
+      if (ev) {
+        // 思考过程字符数：界面上「思考过程 · N 字」就是从这里来的，provider 的 usage 不一定给 reasoning token
+        if (ev.type === 'assistant/chunk') {
+          const c = (ev as { data?: { chunk?: { type?: string; text?: string } } }).data?.chunk
+          if (c?.type === 'reasoning-delta' && typeof c.text === 'string') live.thinkChars = (live.thinkChars ?? 0) + c.text.length
+        }
+        relay(ev)
+      }
     }) as any)
 
     // resume 时 dsh 把历史作为**构造种子**载入（Session 文档明确：不会重发到 session/event firehose），
@@ -1395,17 +1463,33 @@ export class DshController {
   // 这里只观测：用量给 UI 进度条；压缩开始/结束给 UI 提示；步数多了且压缩过 → 建议开新会话（一次）。
   // live=true 是实时事件，false 是重连回放（只累计不通知）。
   private track(id: string, s: Live, ev: DshEvent, live: boolean): void {
+    // 首次输出时间：tok/s 的分母从第一个文本 / 思考增量算起（不含排队和首 token 前的等待）
+    if (live && ev.type === 'assistant/chunk') {
+      const chunk = (ev as { data?: { chunk?: { type?: string } } }).data?.chunk
+      if ((chunk?.type === 'text-delta' || chunk?.type === 'reasoning-delta') && !s.reqFirstAt) s.reqFirstAt = Date.now()
+    }
     const tokens = contextTokensOf(ev)
     if (tokens !== undefined) {
       s.ctxTokens = tokens
       if (live) {
         const u = requestUsageOf(ev)
         // 先落用量再发 contextUsage：UI 收到事件去刷「本会话 tokens」时能读到这条
-        if (u) this.cfg.recordUsage?.({ sessionId: id, provider: s.provider, model: s.model, ...u, ...(this.cfg.isUnattended?.(id) ? { unattended: true } : {}) })
+        const st = u ? this.takeTurnStats(s, u) : undefined
+        if (u) this.cfg.recordUsage?.({
+          sessionId: id, provider: s.provider, model: s.model,
+          input: u.input, cacheRead: u.cacheRead, output: u.output,
+          ...(st?.ms ? { ms: st.ms } : {}),
+          ...(u.thinking ? { thinking: u.thinking } : {}),
+          ...(!u.thinking && st?.thinkChars ? { thinkChars: st.thinkChars } : {}),
+          ...(this.cfg.isUnattended?.(id) ? { unattended: true } : {}),
+        })
         this.emitUsage(id, s)
+        if (u && st) this.emitTurnStats(id, u, st)
       }
     }
-    if (ev.type === 'step/start') { s.steps++; if (live) this.maybeSuggestReset(id, s) }
+    if (ev.type === 'step/start') { s.steps++; s.reqStartAt = Date.now(); s.reqFirstAt = undefined; s.thinkChars = 0; if (live) this.maybeSuggestReset(id, s) }
+    else if (ev.type === 'turn/start') { s.reqStartAt = Date.now(); s.reqFirstAt = undefined }
+    else if (ev.type === 'turn/end') { s.reqStartAt = undefined; s.reqFirstAt = undefined }
     else if (ev.type === 'compaction/start' && live) { s.compacting = true; this.emit({ type: 'agent:contextCompacting', sessionId: id }) }
     else if (ev.type === 'compaction/summary') s.lastSummary = textBlocks(ev.data?.summary) || s.lastSummary
     else if (ev.type === 'compaction/end') {
@@ -1450,6 +1534,28 @@ export class DshController {
   private emitUsage(sessionId: string, s: Live): void {
     const compactAt = effectiveLimit(this.cfg.contextLimitTokens?.() ?? 0, s.window, s.compactRatio)
     this.emit({ type: 'agent:contextUsage', sessionId, inputTokens: s.ctxTokens, limit: compactAt, window: s.window, compactAt })
+  }
+
+  // 本次请求的耗时与思维链：算一次，用量落库与 UI 事件共用（避免两处各算一遍时间）
+  private takeTurnStats(s: Live, u: { thinking?: number }): { ms?: number; thinkChars?: number } {
+    const start = s.reqStartAt ?? s.reqFirstAt
+    const chars = s.thinkChars ?? 0
+    s.reqStartAt = undefined
+    s.reqFirstAt = undefined
+    s.thinkChars = 0
+    const ms = start ? Date.now() - start : 0
+    return { ...(ms >= 50 ? { ms } : {}), ...(!u.thinking && chars ? { thinkChars: chars } : {}) }
+  }
+
+  // 单次模型调用的输出速度：从请求开始（step/start）到本次 usage 到达，算的是整段请求耗时。
+  private emitTurnStats(sessionId: string, u: { output: number; input: number; cacheRead: number; thinking?: number }, st: { ms?: number; thinkChars?: number }): void {
+    if (!st.ms) return
+    this.emit({
+      type: 'agent:turnStats', sessionId,
+      outputTokens: u.output, inputTokens: u.input, cacheReadTokens: u.cacheRead, ms: st.ms,
+      ...(u.thinking ? { thinkingTokens: u.thinking } : {}),
+      ...(st.thinkChars ? { thinkingChars: st.thinkChars } : {}),
+    })
   }
 
   /**
@@ -1600,6 +1706,33 @@ export class DshController {
     const live = this.sessions.get(sessionId)
     if (!live) return { level: this.cfg.sessionStore?.list().find((x) => x.id === sessionId)?.thinking, pending: false }
     return { level: live.thinking, pending: live.turning }
+  }
+
+  /**
+   * 会话绑定 Agent（角色）：正文进系统提示、tools 收窄工具集；id 空 = 解绑。
+   * 落库在会话元数据上（重启 / 被驱逐后再点回来还在）。系统提示与工具拦截都是每次请求现读，
+   * 所以这里**立即生效**；返回 pending 只用于提示"本轮仍在按旧角色跑完"。
+   */
+  async setSessionAgent(sessionId: string, agentId?: string): Promise<{ pending: boolean }> {
+    const meta = this.cfg.sessionStore?.list().find((x) => x.id === sessionId)
+    if (!meta) throw new Error('session_not_found')
+    const def = agentId ? await this.cfg.agentDef?.(agentId, meta.workDir) : undefined
+    if (agentId && !def) throw new Error(tr('找不到这个 Agent（可能已被删除或未启用）：{id}', { id: agentId }))
+    const { agentId: _old, ...rest } = meta
+    this.cfg.sessionStore?.upsert(agentId ? { ...rest, agentId } : rest)
+    const live = this.sessions.get(sessionId)
+    if (!live) return { pending: false }
+    live.agentId = def?.id
+    live.agentPrompt = def ? buildAgentSection(def) : undefined
+    live.agentTools = def?.tools
+    return { pending: live.turning }
+  }
+
+  /** 会话当前绑定的 Agent：内存优先，否则读会话记录 */
+  sessionAgent(sessionId: string): { agentId?: string; pending: boolean } {
+    const live = this.sessions.get(sessionId)
+    if (live) return { agentId: live.agentId, pending: live.turning }
+    return { agentId: this.cfg.sessionStore?.list().find((x) => x.id === sessionId)?.agentId, pending: false }
   }
 
   /** 会话所选配置 + 是否还没生效（回合进行中切换的） */

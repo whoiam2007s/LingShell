@@ -438,7 +438,7 @@ export const gitdb: Record<string, string> = {
   '按代码内容搜（git log -S）：找加入或删除了这段内容的提交': 'Search code (git log -S): find commits that added or removed this text',
   '搜代码内容，如函数名 / 配置项（回车）': 'Search code, e.g. a function name / config key (Enter)',
   '搜提交说明（回车）': 'Search commit messages (Enter)',
-  '搜提交说明或提交号前缀（回车）': 'Search commit messages or a commit hash prefix (Enter)',
+  '搜提交说明或提交号（回车）': 'Search commit messages or a commit hash (Enter)',
   '当前列表里没有匹配的提交号（可点「再加载」或检查提交号是否完整）': 'No matching commit hash in the current list (load more or check the full hash)',
   '作者（回车）': 'Author (Enter)',
   '文件：{path}': 'File: {path}',

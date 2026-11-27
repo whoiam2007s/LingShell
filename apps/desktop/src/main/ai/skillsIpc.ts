@@ -29,6 +29,8 @@ export function registerSkills(d: SkillsIpcDeps): LocalSkills {
   }
   d.attach(lib)
   d.handle('skills:list', (): Promise<SkillInfo[]> => lib.list())
+  // 项目内 skill（只读）：按会话工作目录扫 .lingshell/skills、.claude/skills；不进全局库
+  d.handle('skills:listProject', (_e, workDir, includeUser) => lib.listProject(typeof workDir === 'string' ? workDir : undefined, includeUser === true))
   d.handle('skills:read', (_e, name) => lib.read(str(name, tk('arg| skill 名'))))
   d.handle('skills:save', (_e, input, old) => {
     const i = input as SkillInput

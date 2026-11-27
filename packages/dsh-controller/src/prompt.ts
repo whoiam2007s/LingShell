@@ -93,6 +93,20 @@ export function installTodayContext(ctx: any, now: () => Date = () => new Date()
   return ctx.systemPrompt.context({ name: TODAY_CONTEXT, order: 10, interpolate: false, text: () => buildTodayContext(now()) })
 }
 
+// 当前 Agent（角色）：会话绑定了 Agent 时把它的正文（系统提示）注入；工具白名单由 DshController 在 tools/pre-execute 里拦。
+// order 30：紧跟在基础提示之后、语言段之前——模型先看到"我是谁"，再读其余环境信息
+export const AGENT_SECTION = 'lingshell:agent'
+export function installAgentSection(ctx: any, textFor: (agentId: string) => string): () => void {
+  return ctx.systemPrompt.section({ name: AGENT_SECTION, order: 896, interpolate: false, text: (c: any) => textFor(String(c?.agent?.id ?? '')) })
+}
+
+// 可选角色清单：只放名称 + 描述，正文不注入（切过去才注入，见上面的 AGENT_SECTION）。
+// order 895 紧挨它、都放在末尾：模型自己切角色时只有这两段变化，前面几百个 order 的稳定前缀仍能命中缓存。
+export const AGENT_CATALOG = 'lingshell:agent-catalog'
+export function installAgentCatalogSection(ctx: any, textFor: (agentId: string) => string): () => void {
+  return ctx.systemPrompt.section({ name: AGENT_CATALOG, order: 895, interpolate: false, text: (c: any) => textFor(String(c?.agent?.id ?? '')) })
+}
+
 // 主机记忆库：按会话现求值——本会话用到的主机（见 DshController.touched）的记忆卡，没用到主机时为空（段落消失）。
 // 卡片是用户内容，可能含 `{{`，关掉变量插值原样输出。order 899：紧挨终端清单之前，只在用到新主机 / 改了卡片时变化
 export const MEMORY_SECTION = 'lingshell:memory'

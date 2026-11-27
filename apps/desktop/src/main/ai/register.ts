@@ -3,7 +3,7 @@ import { ipcMain, app, shell, dialog, clipboard } from 'electron'
 import { join, posix, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
-import type { ApprovalRequest, PlanRequest, DshController, LocalSkills } from '@lingshell/dsh-controller'
+import type { ApprovalRequest, PlanRequest, DshController, LocalAgents, LocalSkills } from '@lingshell/dsh-controller'
 import { TemplateStore, newProfileId } from '@lingshell/config'
 import { type AppEvent, type ApprovalAnswer, type UsageRange, type UsagePrices, type TemplateInput, type McpServerInput, type ModelProfile, providerMeta,
   tr, decodeText, encodeText, type NlCommandRequest, buildNlCommandPrompt, sanitizeNlCommand, summarizeUsage, sessionUsage,
@@ -17,6 +17,8 @@ import { createTurnNotifier } from './turnNotify.js'
 import { initUsage, recordUsage } from './usage.js'
 import { registerModelProfiles } from './modelProfilesIpc.js'
 import { registerSkills } from './skillsIpc.js'
+import { registerAgents } from './agentsIpc.js'
+import { registerImport } from './importIpc.js'
 import { parseAttachments, registerAttachments, parseFileNameW, IMAGE_FILTER } from './attachIpc.js'
 import { registerChatFork } from './chatForkIpc.js'
 import { sha256, registerTurnUndo } from './turnUndo.js'
@@ -190,6 +192,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   // Skill 库在下面 registerSkills 里创建（它要接进已建好的 controller），这里先给个持有者：
   // controller 的 configEntities 闭包要用它，调用发生在用户交互之后，那时早已填上
   const skillsRef: { current?: LocalSkills } = {}
+  // Agent 库同理由 registerAgents 创建；cfg.agentDef 闭包读它（调用发生在用户交互之后）
+  const agentsRef: { current?: LocalAgents } = {}
   // dsh 是进程内库：没有 MCP 协议层、没有 bridge 端口、没有会话进程池。
   // 终端能力直接注册成 dsh 工具，授权走 tools/pre-execute 三态网关。
   const controller = new DshController({
@@ -218,6 +222,8 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
     requestAsk: (r, s) => askBroker.request(r, s),
     execTimeoutMs: () => sys().execTimeoutSec * 1000,
     skillsRoot: join(paths.root, 'skills'),
+    // Agent（角色）定义：按 id 现读（项目内目录随会话工作目录变化）；库在下面 registerAgents 里创建
+    agentDef: (id, workDir) => agentsRef.current?.read(id, workDir) ?? Promise.resolve(undefined),
     contextLimitTokens: () => AUTO_COMPACT_CAP,   // 实际阈值 = min(600K, 模型上下文窗口 × 60%)，见 dsh-controller compaction.ts
     contextResetSteps: () => sys().contextResetSteps,
     subagentTimeoutSec: () => sys().subagentTimeoutSec,
@@ -409,6 +415,10 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('agent:createSession', (_e, opts) => controller.createSession(opts))
   // 子代理列表（会话标题栏下拉）：某个会话派过哪些子代理、各自状态
   ipcMain.handle('subagent:list', (_e, sessionId: string) => controller.subagentsOf(String(sessionId ?? '')))
+  // 会话绑定的 Agent（角色）：选择 / 解绑 / 查询
+  ipcMain.handle('agent:sessionAgent', (_e, sessionId: string) => controller.sessionAgent(String(sessionId ?? '')))
+  ipcMain.handle('agent:setSessionAgent', (_e, sessionId: string, id?: string) =>
+    controller.setSessionAgent(String(sessionId ?? ''), typeof id === 'string' && id ? id : undefined))
   // 后台任务（start_background 起的）：状态条 / 任务面板按会话拉还在跑的；取消=真的停掉进程
   ipcMain.handle('bg:list', (_e, sessionId: string) => controller.bgTasksOf(String(sessionId ?? '')))
   ipcMain.handle('bg:cancel', (_e, sessionId: string, jobId?: string) => controller.cancelBgOfSession(String(sessionId ?? ''), jobId ? String(jobId) : undefined))
@@ -472,6 +482,19 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   ipcMain.handle('audit:listForSession', (_e, sid: string) => auditStore.listForSession(sid))
   ipcMain.handle('audit:listRecent', () => auditStore.listRecent())
   // 用量统计：聚合在主进程做，渲染层只拿汇总
+  // 回填底栏：该会话最近一次请求的性能快照（tok/s / 缓存率 / thinking），重启或切会话后还能看到
+  ipcMain.handle('usage:lastRequest', (_e, sid: string) => {
+    const id = String(sid ?? '')
+    if (!id) return null
+    const rec = usageStore.list().filter((r) => r.sessionId === id).pop()
+    if (!rec) return null
+    return {
+      outputTokens: rec.output, inputTokens: rec.input, cacheReadTokens: rec.cacheRead,
+      ...(rec.ms ? { ms: rec.ms } : {}),
+      ...(rec.thinking ? { thinkingTokens: rec.thinking } : {}),
+      ...(!rec.thinking && rec.thinkChars ? { thinkingChars: rec.thinkChars } : {}),
+    }
+  })
   ipcMain.handle('usage:summary', (_e, range: UsageRange) => summarizeUsage(usageStore.list(), settings.getUsagePrices(), range))
   ipcMain.handle('usage:session', (_e, sid: string) => ({ ...sessionUsage(usageStore.list(), settings.getUsagePrices(), sid), currency: settings.getUsagePrices().currency }))
   ipcMain.handle('usage:getPrices', () => settings.getUsagePrices())
@@ -502,6 +525,23 @@ export function registerAiIpc(ctx: MainContext, deps: Deps) {
   skillsRef.current = registerSkills({ handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'skills'), attach: (lib) => controller.attachSkills(lib), openPath: (p) => shell.openPath(p), log: (lv, m, d) => log(lv, 'main', 'skills', m, d),
     builtinDir: findBuiltinSkills(),
     pickPath: async (kind) => (await dialog.showOpenDialog(win, kind === 'folder' ? { title: tr('选择 Skill 文件夹（含 SKILL.md）'), properties: ['openDirectory'] } : { title: tr('选择 Skill 包'), properties: ['openFile'], filters: [{ name: tr('Skill 包'), extensions: ['zip', 'skill'] }] })).filePaths[0] })
+
+  // 设置 → Agents（见 agentsIpc.ts）：<数据目录>/agents，接进控制器的 cfg.agentDef
+  agentsRef.current = registerAgents({
+    handle: (ch, fn) => ipcMain.handle(ch, fn), root: join(paths.root, 'agents'),
+    attach: () => { /* 库对象由返回值持有 */ }, openPath: (p) => shell.openPath(p),
+    log: (lv, m, d) => log(lv, 'main', 'agents', m, d),
+  })
+
+  // 第三方导入：Claude Code / Codex / Cursor 的 agents / skills / MCP（只读对方目录，写我们自己的库）
+  registerImport({
+    handle: (ch, fn) => ipcMain.handle(ch, fn),
+    agents: () => agentsRef.current!,
+    skills: () => skillsRef.current!,
+    saveMcp: (input) => { mcpStore.save(input); void applyMcp() },
+    openPath: (p) => shell.openPath(p),
+    log: (lv, m, d) => log(lv, 'main', 'import', m, d),
+  })
 
   // AI 对话附件：选择文件 / 目录 / 图片、带附件发送、历史回放取图、打开附件（见 attachIpc.ts）
   registerAttachments({ handle: (ch, fn) => ipcMain.handle(ch, fn), send: (sid, p, a) => controller.sendTurn(sid, p, a), readImage: (id) => controller.readImage(id), openPath: (p) => shell.openPath(p),

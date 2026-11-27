@@ -70,6 +70,9 @@ export type ContextState =
   | { stage: 'compactFailed'; error: string }
   | { stage: 'suggest'; steps: number; compactions: number; summary: string }
 
+/** 单次模型调用的性能快照（输入框底栏显示 tok/s 与缓存命中率） */
+export type TurnStats = { outputTokens: number; inputTokens: number; cacheReadTokens: number; ms: number; thinkingTokens?: number; thinkingChars?: number }
+
 const log = logger.scope('chat')
 
 // 多会话对话状态机：每个 sessionId 一份 items + 索引 + busy。activeSessionId 决定渲染哪个会话。
@@ -80,6 +83,8 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
   const busyRef = useRef<Set<string>>(new Set())
   const ctxRef = useRef<Map<string, ContextState>>(new Map())   // sessionId → 上下文超线状态
   const usageRef = useRef<Map<string, { inputTokens: number; limit: number; window?: number; compactAt?: number }>>(new Map())   // sessionId → 上下文用量（百分比分母用 window）
+  // sessionId → 最近一次模型调用的性能快照（tok/s、缓存命中）。回合结束后保留，底栏显示「上一次调用」
+  const statsRef = useRef<Map<string, TurnStats>>(new Map())
   // 本轮进行中用户补发的消息（thread 同时只允许一个活跃 turn，发不进去）→ 排队，本轮结束逐条发出。
   // 排队消息不进 items（否则本轮后续步骤会被 groupTurns 归到它名下），由 ChatPanel 在时间线底部单独显示，真正发出时才入 items。
   const queueRef = useRef<Map<string, { text: string; atts?: OutgoingAttachments }[]>>(new Map())
@@ -126,6 +131,10 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
       }
       if (it.kind === 'plan_request' && it.plan && !it.plan.result) {
         changed = true; return { ...it, status: 'failed' as const, plan: { ...it.plan, result: 'cancelled' as const } }
+      }
+      // 工具卡：turn/end 的兜底事件没到（丢事件 / 旧版本主进程）时，界面也把「运行中」收掉
+      if (it.kind === 'tool_call') {
+        changed = true; return { ...it, status: 'failed' as const }
       }
       return it
     })
@@ -321,6 +330,14 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
           usageRef.current.set(e.sessionId, { inputTokens: e.inputTokens, limit: e.limit, ...(e.window ? { window: e.window } : {}), ...(e.compactAt ? { compactAt: e.compactAt } : {}) })
           rerender()
           break
+        case 'agent:turnStats':
+          statsRef.current.set(e.sessionId, {
+            outputTokens: e.outputTokens, inputTokens: e.inputTokens, cacheReadTokens: e.cacheReadTokens, ms: e.ms,
+            ...(e.thinkingTokens ? { thinkingTokens: e.thinkingTokens } : {}),
+            ...(e.thinkingChars ? { thinkingChars: e.thinkingChars } : {}),
+          })
+          rerender()
+          break
         case 'agent:contextCompacting':
           ctxRef.current.set(e.sessionId, { stage: 'compacting' })
           rerender()
@@ -495,6 +512,7 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
     if (!sid || busyRef.current.has(sid)) return Promise.resolve()   // 本轮执行中不重置：会杀掉进行中的任务并丢掉排队 / 追问
     ctxRef.current.delete(sid)
     usageRef.current.delete(sid)
+    statsRef.current.delete(sid)
     queueRef.current.delete(sid)
     steerRef.current.delete(sid)
     clearSession(sid)
@@ -554,6 +572,7 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
     indexMap.current.delete(sid)
     busyRef.current.delete(sid)
     ctxRef.current.delete(sid)
+    statsRef.current.delete(sid)
     queueRef.current.delete(sid)
     steerRef.current.delete(sid)
     pendingRef.current.delete(sid)
@@ -644,6 +663,7 @@ export function useConversation(activeSessionId: string, onFirstUserMessage?: (s
     busy: busyRef.current.has(activeSessionId),
     context: ctxRef.current.get(activeSessionId),
     usage: usageRef.current.get(activeSessionId),
+    stats: statsRef.current.get(activeSessionId),
     turnTimes: timesRef.current.get(activeSessionId),
     send,
     sendTo,

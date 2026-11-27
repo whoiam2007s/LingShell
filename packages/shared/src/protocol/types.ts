@@ -872,7 +872,73 @@ export interface SessionMeta {
   digestFrom?: 'fork' | 'continue'
   /** 摘要是否已经随第一次发言带给模型（分叉会话用：只拼一次，之后不再重复占上下文） */
   digestSent?: boolean
+  /** 会话绑定的 Agent（角色）id：正文进系统提示、tools 收窄工具集；缺省 = 不绑定 */
+  agentId?: string
 }
+export interface ProjectSkillView {
+  name: string
+  description: string
+  body: string
+  origin: 'project' | 'claude'
+  dir: string
+}
+
+export interface AgentView {
+  /** 唯一标识：用户级 = name；项目 / 第三方 = name@origin */
+  id: string
+  name: string
+  description: string
+  model?: string
+  tools?: string[]
+  permission?: 'read' | 'write'
+  body: string
+  origin: 'user' | 'project' | 'claude' | 'codex'
+  file: string
+  enabled: boolean
+  /** 允许模型自主调度（md 里没写 disable-model-invocation 就是允许） */
+  modelInvocable?: boolean
+  /** 版本号（md 的 version，展示用） */
+  version?: string
+  /** 关联的 Skill 名（该 Agent 生效时这些 skill 可用） */
+  skills?: string[]
+  /** 来自项目仓库 / 第三方工具（Claude、Codex）：默认不启用，启用前要用户确认 */
+  external: boolean
+  error?: string
+}
+
+export interface AgentInput {
+  name: string
+  description: string
+  /** 版本号（md 的 version） */
+  version?: string
+  /** 关联的 Skill 名 */
+  skills?: string[]
+  body: string
+  model?: string
+  tools?: string[]
+  permission?: 'read' | 'write'
+  /** 允许模型自己挑这个 Agent 来干活（对应 md 的 disable-model-invocation 取反） */
+  modelInvocable?: boolean
+}
+
+export interface ImportItemView {
+  id: string
+  platform: string
+  kind: 'agent' | 'skill' | 'mcp'
+  name: string
+  description?: string
+  path?: string
+  detail?: string
+}
+
+export interface ImportGroupView {
+  platform: string
+  label: string
+  dir: string
+  exists: boolean
+  items: ImportItemView[]
+}
+
 export interface TerminalLayoutItem {
   kind: 'local' | 'ssh'
   id?: string             // 上次的终端 id（term_xxxx）：重启重建时复用，让历史对话里引用的 id 继续有效

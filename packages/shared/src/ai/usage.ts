@@ -10,6 +10,12 @@ export interface UsageRecord {
   input: number           // 未命中缓存的输入 tokens
   cacheRead: number       // 命中缓存的输入 tokens
   output: number
+  /** 本次请求耗时（毫秒；旧记录没有这一项） */
+  ms?: number
+  /** 思维链 token（provider 给了才有） */
+  thinking?: number
+  /** 思维链字符数（provider 不给 token 时用它兜底） */
+  thinkChars?: number
   unattended?: boolean    // 定时巡检（无人值守）会话
   source?: string         // 非会话调用的来源标签（如 'nl-command'）
 }

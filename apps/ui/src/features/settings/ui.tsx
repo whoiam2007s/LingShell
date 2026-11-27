@@ -27,7 +27,7 @@ export function Page({ children, className, onBlur }: { children: React.ReactNod
 }
 
 // ── 列表页共用（模板 / 手册 / 巡检 / MCP 等）：工具栏、列表容器、空状态、返回链接、行内图标按钮 ──
-export const BTN1 = 'flex shrink-0 items-center gap-1 rounded-md border border-transparent bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:opacity-40'
+export const BTN1 = 'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-transparent bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-bg-base)] transition-colors hover:bg-[var(--color-accent-dim)] disabled:opacity-40'
 export const ICON_BTN = 'flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)] disabled:opacity-40'
 export const ICON_DEL = 'flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_15%,transparent)] hover:text-[var(--color-danger)] disabled:opacity-30'
 /** 列表容器：一张 rounded-lg 卡片，条目间细线 */
@@ -39,9 +39,9 @@ export const taCls = 'w-full resize-none rounded-md border border-[var(--color-b
 /** 列表页顶部工具栏：左一句短提示（+ 问号说明），右侧操作按钮 */
 export function Toolbar({ hint, tip, children }: { hint?: React.ReactNode; tip?: React.ReactNode; children?: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-[var(--color-text-secondary)]"><span className="truncate">{hint}</span>{tip && <HelpTip>{tip}</HelpTip>}</div>
-      <div className="ml-auto flex shrink-0 items-center gap-2">{children}</div>
+      <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-2">{children}</div>
     </div>
   )
 }
@@ -53,7 +53,13 @@ export function EmptyState({ text, action }: { text: React.ReactNode; action?: R
     </div>
   )
 }
-export function BackLink({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return <button onClick={onClick} className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]"><ArrowLeft className="h-3.5 w-3.5" />{children}</button>
+/** 二级页左上角：返回 + 同一行右侧的保存/确认按钮 */
+export function BackLink({ onClick, children, actions }: { onClick: () => void; children: React.ReactNode; actions?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <button onClick={onClick} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-accent)]"><ArrowLeft className="h-3.5 w-3.5" />{children}</button>
+      {actions && <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>}
+    </div>
+  )
 }
 export const errText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')

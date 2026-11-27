@@ -7,7 +7,7 @@ const T = {
   model: '模型设置', ssh: '主机与连接', terminal: '终端', ai: 'AI 与安全', general: '通用',
   templates: '常用任务模板', runbooks: '运维手册', schedules: '定时巡检', mcp: 'MCP 服务',
   keys: 'SSH 密钥', network: '网络代理', recordings: '终端录像', about: '关于',
-  maintenance: '备份与诊断', shortcuts: '快捷键', skills: 'Skills', secrets: '密钥保险箱', mobile: '手机访问',
+  maintenance: '备份与诊断', shortcuts: '快捷键', skills: 'Skills', agents: 'Agents', secrets: '密钥保险箱', mobile: '手机访问',
   compliance: '合规基线',
 } as const
 

@@ -1,7 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert, MoreHorizontal, History } from 'lucide-react'
-import { useConversation, type ContextState, type ConvItem, type SessionPhase, type OutgoingAttachments } from './useConversation.js'
+import { Square, Loader2, KeyRound, AlertTriangle, Sparkles, Plus, Terminal, Bug, ListChecks, Server, ChevronUp, Clock, X, ArrowDown, Bot, Info, FlaskConical, CornerDownRight, ShieldCheck, Zap, ShieldAlert, MoreHorizontal, History } from 'lucide-react'
+import { useConversation, type ContextState, type ConvItem, type SessionPhase, type OutgoingAttachments, type TurnStats } from './useConversation.js'
 import { SessionFlowDrawer } from './SessionFlowDrawer.js'
 import { groupTurns, windowStart, type Turn } from './groupTurns.js'
 import { onOpenPathPreview } from '../../lib/chatBus.js'
@@ -21,7 +21,7 @@ import { isProposalCard } from './groupTurns.js'
 import { TurnSteps } from './items/TurnSteps.js'
 import { TurnElapsed, FirstAnswer } from './items/TurnTime.js'
 import type { TurnTimes, SessionMeta, SubagentView, ForkTurnPreview } from '@lingshell/shared'
-import { tr, tk , type ThinkingLevel , type ExecMode, INPUT_MAX, insertCapped, capInput } from '@lingshell/shared'
+import { tr, tk , type ThinkingLevel , type ExecMode, capInput, type AgentView } from '@lingshell/shared'
 import { SessionSwitcher, type SessionSwitcherProps } from './SessionTabs.js'
 import { TABS_KEY, openTab, restoreTabs } from './sessionTabsModel.js'
 import { prefillAsk } from './askPrefill.js'
@@ -29,12 +29,15 @@ import { cueOf, playCue } from '../../lib/sound.js'
 import { onQuoteToChat } from '../../lib/quoteToChat.js'
 import { onSendToChat, takeChatSends } from '../../lib/sendToChat.js'
 import { onPalette, paletteCtx } from '../../lib/paletteBus.js'
-import { conversationToMarkdown, buildSessionReport, fmtTokens, fmtCost, totalTokens, cacheHitRate, costLevel, USAGE_PRICES_EVENT, type UsageTotals, type UsageCurrency } from '@lingshell/shared'
+import { conversationToMarkdown, buildSessionReport, fmtCost, USAGE_PRICES_EVENT, type UsageTotals, type UsageCurrency } from '@lingshell/shared'
 import { client } from '../../client/index.js'
 import { TemplatePicker } from './TemplatePicker.js'
 import { RunbookPicker } from '../runbooks/index.js'
 import { InputActionsMenu } from './InputActionsMenu.js'
-import { ModelChip, type ModelMenuProps } from './ModelMenu.js'
+import { ModelChip } from './ModelPicker.js'
+import type { ModelMenuProps } from './ModelMenu.js'
+import { Composer } from './Composer.js'
+import { UsageStrip } from './UsageStrip.js'
 import { compactErrorText } from './compactError.js'
 import { useModelProfiles, profileOf } from '../../lib/modelProfiles.js'
 import { logger } from '../../lib/logger.js'
@@ -51,20 +54,22 @@ import { useTurnHostChanges, TurnHostChangesBar } from './TurnHostChanges.js'
 import { buildPostmortemPrompt, isPostmortemRequest, redactSecrets } from '@lingshell/shared'
 import { PostmortemSaveBar } from './PostmortemSave.js'
 import { AskRequestItem } from './items/AskRequestItem.js'
-import { AtMenuPopup, useAtMenu, type AtPick } from './AtMenu.js'
+import { useAtMenu, type AtPick } from './AtMenu.js'
 import { ChatFind } from './ChatFind.js'
 import { onChatJump, peekChatJump, clearChatJump, onChatContext } from '../../lib/chatBus.js'
 import { bangCommand, shellBlockText, terminalRefText, hostRefText, sessionRefText, planCompose, pasteLine, type ComposePlan } from '@lingshell/shared'
 import { getActiveTerminal } from '../../lib/activeTerminal.js'
 import { isAction } from '../../lib/keybindings.js'
 import { PasteConfirmDialog } from '../../components/PasteConfirm.js'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog.js'
 import { errMsg } from './attachments.js'
-import { usePreview, PreviewBanner, PreviewPlanCard, previewPlanOfTurn } from './PreviewMode.js'
+import { usePreview, PreviewPlanCard, previewPlanOfTurn } from './PreviewMode.js'
+import { openUsage } from '../usage/index.js'
 
 const log = logger.scope('chat')
 
 // 受控对话面板：会话生命周期（创建/重连/选择/phase）由 App 管，这里只按 activeSessionId 渲染对话流。
-export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, forkPreview, seedDigestFrom, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onContinueSession, onOpenSession, onOpenGit }: {
+export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitle, seedDigest, forkPreview, seedDigestFrom, workDir, onPickWorkDir, onRename, onNew, onOpenHistory, onOpenSettings, onRetry, onBack, onFirstUserMessage, onManageTemplates, onManageRunbooks, onManageModels, onManageSkills, onManageAgents, onContinueSession, onOpenSession, onOpenGit }: {
   onBack?: () => void          // 错误态「返回上一个会话」（没有可回的会话时不传）
   onOpenSession?: (id: string) => Promise<void>   // 切到某会话（分叉出的新会话：刷新列表并打开）
   onOpenGit?: () => void       // 标题前的分支 tag 点开 Git 面板
@@ -87,9 +92,10 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   onManageRunbooks?: () => void
   onManageModels?: () => void
   onManageSkills?: () => void
+  onManageAgents?: () => void
   onContinueSession?: (title: string) => Promise<{ id: string; digest: string } | undefined>   // 接续：用摘要开新会话（旧会话原样保留）
 }) {
-  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, turnTimes, send, regenerate, fail, interrupt, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
+  const { items, queued, steering, withdrawSteer, withdrawQueued, busy, context, usage, stats, turnTimes, send, regenerate, fail, interrupt, dismissContextPrompt, takeResetSuggestion } = useConversation(activeSessionId, onFirstUserMessage)
   const models = useSessionModel(activeSessionId, busy, onManageModels)
   const turnChanges = useTurnChanges(activeSessionId, busy)   // 回合末「本轮改了 N 个文件」
   const hostChanges = useTurnHostChanges(activeSessionId)     // 回合末「本轮主机变化」
@@ -453,25 +459,14 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
   // 只有真的收下了才清空输入框——被拒时留着内容，不让用户白打一遍
   // 选了 Skill：消息前加 `/名字`，由 dsh-tool-skill 把该 skill 的完整指令注入本轮（用户显式调用）
   const [skill, setSkill] = useState<string>()
-  // 输入框里打 `/` 直接唤起 Skill 列表（只认「/ + 还没空格」这种开头），省得去「+」菜单里翻两层
-  const [sks, setSks] = useState<{ name: string; description?: string }[] | null>(null)
-  const [slashQ, setSlashQ] = useState<string | null>(null)
-  const [slashIdx, setSlashIdx] = useState(0)
-  const slashItems = useMemo(() => {
-    if (slashQ === null) return []
-    const q = slashQ.trim().toLowerCase()
-    return (sks ?? []).filter((s) => !q || s.name.toLowerCase().includes(q)).slice(0, 8)
-  }, [sks, slashQ])
-  const loadSkills = () => {
-    if (sks) return
-    client.skills.list()
-      .then((l) => setSks(l.filter((s) => s.enabled && s.userInvocable && !s.error).map((s) => ({ name: s.name, description: s.description }))))
-      .catch(() => setSks([]))
-  }
-  const pickSkillByName = (name: string) => {
-    setSkill(name); setSlashQ(null); setInput(''); draftRef.current.delete(activeSessionId)
+  // 项目内 skill（只读，只对本项目的会话生效）：不走全局 skill 机制，正文直接拼进本轮消息
+  const [projectSkill, setProjectSkill] = useState<{ name: string; body: string } | null>(null)
+  const pickSkill = (name: string, body?: string) => {
+    if (body) { setProjectSkill({ name, body }); setSkill(undefined) }
+    else { setSkill(name); setProjectSkill(null) }
     requestAnimationFrame(() => taRef.current?.focus())
   }
+  // 输入框里打 `/` 唤起 Skill 列表的逻辑已移到 Composer.tsx（只认「/ + 还没空格」）
   // 后台任务（start_background 起的）：有回合在跑、或还有任务没结束时才轮询；两边都空就完全停（不空转）
   // 注意：这里**只用于显示**，绝不参与「能不能输入」的判断 —— 输入框始终可用（追问机制）
   // 分叉进行中（正在用模型总结历史）：期间禁用所有消息操作，并在输入框上方显示进度
@@ -529,6 +524,34 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     setExecMode(m)
     client.safety.setExecMode(activeSessionId, m).catch(() => {})
   }
+  // ── 会话绑定的 Agent（角色）：正文进系统提示、tools 收窄；空 = 不绑定 ──
+  const [agentId, setAgentId] = useState<string | undefined>(undefined)
+  const [agentList, setAgentList] = useState<AgentView[]>([])
+  useEffect(() => {
+    setAgentId(undefined)
+    if (!activeSessionId) return
+    let alive = true
+    client.agents.sessionAgent(activeSessionId).then((r) => { if (alive) setAgentId(r.agentId) }, () => {})
+    return () => { alive = false }
+  }, [activeSessionId])
+  const loadAgents = () => { client.agents.list(workDir).then(setAgentList).catch(() => setAgentList([])) }
+  useEffect(() => { loadAgents() }, [workDir])
+  // 用量详情：复用「用量统计」弹窗（App 里常驻，事件驱动打开）
+  const openUsagePanel = () => openUsage('session')
+  // 该会话最近一次请求的快照（从 usage.jsonl 回填）：实时事件还没到时底栏也能显示 tok/s / 缓存率
+  const [lastStats, setLastStats] = useState<TurnStats | null>(null)
+  useEffect(() => {
+    setLastStats(null)
+    if (!activeSessionId) return
+    let alive = true
+    client.usage.lastRequest(activeSessionId).then((r) => { if (alive) setLastStats(r ? { ...r, ms: r.ms ?? 0 } : null) }, () => {})
+    return () => { alive = false }
+  }, [activeSessionId])
+  const pickAgent = (id?: string) => {
+    if (!activeSessionId) return
+    setAgentId(id)
+    client.agents.setSessionAgent(activeSessionId, id).catch(() => {})
+  }
   const att = useAttachments(!!models.current?.multimodal, activeSessionId)
   // 消息操作：编辑后重发 / 从这里分叉 → 主进程从切点分叉出新会话并切过去；重新生成 → 本会话原地重跑最后一轮。
   // includeTurn：从 AI 回复分叉时带上这一轮（否则刚刚那一轮会被整个切掉）。
@@ -585,12 +608,16 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     const out = att.outgoing()
     if (out === null) return   // 有图片但当前模型不支持：已提示，保留输入
     const text = withTermBlocks(input, att.blocks())   // 终端块拼成文本接在后面
-    if (send(skill ? `/${skill} ${text}`.trim() : text, out, opts)) { setInput(''); draftRef.current.delete(activeSessionId); setSkill(undefined); att.clear() }
+    // 项目内 skill：只影响本轮（正文注入），不加 `/名字` —— 那个前缀只认全局 skill 库
+    const payload = projectSkill ? `${text}\n\n${tr('以下是项目内 Skill「{name}」的完整指令：', { name: projectSkill.name })}\n\n${projectSkill.body}` : text
+    if (send(skill ? `/${skill} ${payload}`.trim() : payload, out, opts)) {
+      setInput(''); draftRef.current.delete(activeSessionId); setSkill(undefined); setProjectSkill(null); att.clear()
+    }
   }
   const submit = (opts?: { queue?: boolean }) => {
     const cmd = bangCommand(input)
     if (cmd !== null) { void runBang(cmd); return }   // `!命令`：不发给 AI，在当前终端执行
-    if (!input.trim() && !skill && !att.items.length) return
+    if (!input.trim() && !skill && !projectSkill && !att.items.length) return
     if (att.outgoing() === null) return   // 有图片但当前模型不支持：已提示，保留输入
     // 发送前才问：主进程是在压缩完成时记下的建议，那时会话正在跑、弹了也开不了
     const ask = takeResetSuggestion()
@@ -649,6 +676,7 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     setInput((cur) => cur.slice(0, r.start) + cur.slice(r.end))
     setCaret(r.start)
     requestAnimationFrame(() => { const ta = taRef.current; if (ta) { ta.focus(); ta.setSelectionRange(r.start, r.start) } })
+    if (p.type === 'agent') { pickAgent(p.a.id); return }
     if (p.type === 'terminal') att.addContext('terminal', p.t.title, terminalRefText(p.t.title, p.t.id))
     else if (p.type === 'host') att.addContext('host', p.h.label, hostRefText(p.h.label, p.h.id, p.h.group))
     else if (p.type === 'file') att.pickFiles()
@@ -661,7 +689,9 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       } catch (e) { if (sidRef.current === sid0) att.setHint(tr('读取会话「{title}」失败：{msg}', { title: tr(p.s.title), msg: errMsg(e) })) }
     }
   }
-  const atMenu = useAtMenu(input, caret, activeSessionId, (p, r) => { void onAtPick(p, r) })
+  const atMenu = useAtMenu(input, caret, activeSessionId, (p, r) => { void onAtPick(p, r) }, agentList)
+  // 按 @ 时才需要 Agent 列表（省一次启动期的扫描）
+  useEffect(() => { if (atMenu.kind === 'agent') loadAgents() }, [atMenu.kind])
 
   // 跨会话搜索「问 AI」：检索片段作为上下文标签附上（send = 直接发出）
   const autoSend = useRef(false)
@@ -738,6 +768,31 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
     if (i >= 0 && i < startIdx) setVisible(items.length - i + 5)
   }
 
+  // 输入区底栏左侧：「+」菜单 + 模板 / 手册 picker（后两个是 0 宽空壳，经 preset 打开）
+  const menusNode = (
+    <div className="flex shrink-0">
+      <InputActionsMenu workDir={workDir} canChat={canChat} hasSession={!!activeSessionId} onPickWorkDir={onPickWorkDir}
+        onTemplate={(id) => setTplPreset((p) => ({ id, n: (p?.n ?? 0) + 1 }))} onRunbook={(id) => setRbPreset((p) => ({ id, n: (p?.n ?? 0) + 1 }))}
+        onManageTemplates={onManageTemplates} onManageRunbooks={onManageRunbooks}
+        skills={{ onPick: (n, body) => pickSkill(n, body), onManage: onManageSkills }}
+        agents={{ onPick: (id) => pickAgent(id || undefined), onManage: onManageAgents }}
+        attach={{ multimodal: !!models.current?.multimodal, onFiles: att.pickFiles, onDirs: att.pickDirs }} />
+      <TemplatePicker hideTrigger disabled={!canChat} onManage={onManageTemplates} preset={tplPreset}
+        onPick={(t) => { setInput(capInput(t).value); requestAnimationFrame(() => taRef.current?.focus()) }} />
+      <RunbookPicker hideTrigger disabled={!canChat} onManage={onManageRunbooks} onRun={(p) => { send(p) }} preset={rbPreset} />
+    </div>
+  )
+  // 上下文快到压缩阈值：提醒一次，可立即压缩或关掉本会话的提示（随输入区渲染）
+  const compactHintNode = showCompactHint ? (
+    <div data-compact-hint className="mx-3 mb-1 flex items-center gap-2 rounded-md border border-[color:color-mix(in_srgb,var(--color-warn)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-[11.5px]">
+      <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">{tr('上下文已用 {used}%，到 {at}% 会自动压缩。', { used: usedPct, at: compactAtPct })}</span>
+      <button onClick={() => { setCompactHintOff(activeSessionId); void client.agent.compact(activeSessionId).catch(() => {}) }} disabled={busy}
+        className="shrink-0 rounded bg-[var(--color-accent)] px-2 py-0.5 text-[11px] text-[var(--color-bg-base)] disabled:opacity-40">{tr('立即压缩')}</button>
+      <button onClick={() => setCompactHintOff(activeSessionId)} title={tr('本会话不再提示')}
+        className="shrink-0 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)]"><X className="h-3 w-3" /></button>
+    </div>
+  ) : null
+
   // 对话区标尺（ChatRuler）：已渲染的「我的提问」
   const userMsgs = useMemo(() => items.slice(startIdx).filter((it) => it.kind === 'user_message').map((it) => ({ itemId: it.itemId, text: it.text })), [items, startIdx])
 
@@ -768,11 +823,9 @@ export function ChatPanel({ activeSessionId, sessions, sessionPhase, sessionTitl
       {sessionPhase.phase !== 'ready' && <Overlay phase={sessionPhase} onOpenSettings={onOpenSettings} onRetry={onRetry} onNew={onNew} onBack={onBack} onOpenHistory={onOpenHistory} />}
 
       {/* 会话 header */}
-      <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} usage={usage} busy={busy} onExport={items.length ? exportSession : undefined}
+      <SessionHeader hasSession={!!activeSessionId} sessionId={activeSessionId} busy={busy} onExport={items.length ? exportSession : undefined}
         onFlow={activeSessionId && items.length ? () => setFlowOpen(true) : undefined}
-        postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} workDir={workDir} onRename={onRename} onNew={onNew} onOpenGit={onOpenGit} models={canChat ? models : undefined}
-        preview={activeSessionId ? { on: preview.on, onToggle: () => preview.set(!preview.on) } : undefined}
-        thinking={thinkLevel} onPickThinking={pickThinking} mode={execMode} onPickMode={pickExecMode}
+        postmortem={{ off: postmortemOff ?? (canChat ? undefined : tr('AI 会话未就绪')), run: () => void postmortem() }} title={sessionTitle ?? ''} workDir={workDir} onRename={onRename} onNew={onNew} onOpenGit={onOpenGit}
         switcher={sessions?.length ? {
           sessions,
           activeId: activeSessionId,
@@ -907,145 +960,28 @@ ${r.text}` : r.text)); taRef.current?.focus() } })} />}
           }} />
       )}
 
-      {/* 输入区 */}
-      <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] p-2.5">
-        {skill && (
-          <div className="mb-1.5 flex">
-            <span data-skill-tag={skill} title={tr('本条消息会让 AI 先加载这个 Skill 的完整指令')}
-              className="flex items-center gap-1 rounded-md border border-[color:color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-accent)_10%,transparent)] py-0.5 pl-1.5 pr-0.5 text-[11.5px] text-[var(--color-accent)]">
-              <Sparkles className="h-3 w-3" /><span className="font-mono">{skill}</span>
-              <button onClick={() => setSkill(undefined)} title={tr('移除 Skill')} className="flex h-4 w-4 items-center justify-center rounded hover:bg-[var(--color-bg-hover)]"><X className="h-3 w-3" /></button>
-            </span>
-          </div>
-        )}
-        {/* 附件 tag（统一一行高）：小缩略图 / 文件、目录图标 + 名称，hover 看完整路径，× 移除，点击预览或打开 */}
-        {preview.on && <PreviewBanner onOff={() => preview.set(false)} />}
-        <AttachmentChips items={att.items} onRemove={att.remove} onError={att.setHint} noImage={!models.current?.multimodal} className="mb-1.5 pt-1.5" />
-        {att.hint && <div data-attach-hint className="mb-1.5 text-[11.5px] text-[var(--color-warn)]">{att.hint}</div>}
-        {/* 上下文快到压缩阈值：提醒一次，可立即压缩或关掉本会话的提示 */}
-        {showCompactHint && (
-          <div data-compact-hint className="mx-3 mb-1 flex items-center gap-2 rounded-md border border-[color:color-mix(in_srgb,var(--color-warn)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-[11.5px]">
-            <span className="min-w-0 flex-1 text-[var(--color-text-secondary)]">{tr('上下文已用 {used}%，到 {at}% 会自动压缩。', { used: usedPct, at: compactAtPct })}</span>
-            <button onClick={() => { void client.agent.compact(activeSessionId).catch(() => {}) }} disabled={busy}
-              className="shrink-0 rounded bg-[var(--color-accent)] px-2 py-0.5 text-[11px] text-[var(--color-bg-base)] disabled:opacity-40">{tr('立即压缩')}</button>
-            <button onClick={() => setCompactHintOff(activeSessionId)} title={tr('本会话不再提示')}
-              className="shrink-0 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-primary)]"><X className="h-3 w-3" /></button>
-          </div>
-        )}
-        {shellBusy && <div data-shell-busy className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-text-muted)]"><Loader2 className="h-3 w-3 animate-spin-slow text-[var(--color-accent)]" />{tr('正在终端「{title}」执行…', { title: shellBusy })}</div>}
-        {/* 输入框高度：往上拖变高（双击恢复默认一行）；拖过的高度记在 localStorage */}
-        <div data-chat-resize
-          title={tr('拖动调整输入框高度（双击恢复默认）')}
-          onPointerDown={onResizeDown} onDoubleClick={resetInputH}
-          className="group/resize relative -mt-0.5 flex h-2 shrink-0 cursor-row-resize items-center justify-center">
-          <span className="h-[4px] w-12 rounded-full bg-[var(--color-border-default)] transition-all group-hover/resize:h-[5px] group-hover/resize:bg-[var(--color-ask)]" />
-        </div>
-        <div {...att.dropProps} data-compose-box style={inputH ? { height: inputH } : undefined} className={`relative flex items-end gap-1.5 rounded-lg border bg-[var(--color-bg-base)] px-2.5 py-1.5 transition-colors ${bang !== null ? 'border-[color:color-mix(in_srgb,var(--color-warn)_60%,transparent)]' : 'border-[var(--color-border-default)] focus-within:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'}`}>
-          <AtMenuPopup m={atMenu} />
-          {/* `/` 唤起 Skill：键盘上下选、回车确认、Esc 关；选中后变成输入框上方的 skill tag */}
-          {slashQ !== null && (
-            <div data-slash-menu className="absolute bottom-full left-0 z-20 mb-1 w-[320px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl animate-fade-in">
-              {slashItems.length === 0
-                ? <div className="px-2.5 py-2 text-[12px] text-[var(--color-text-muted)]">{tr('没有匹配的 Skill')}</div>
-                : slashItems.map((s, i) => (
-                  <button key={s.name} onMouseEnter={() => setSlashIdx(i)} onClick={() => pickSkillByName(s.name)} title={s.description}
-                    className={`flex w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left transition-colors ${i === slashIdx ? 'bg-[var(--color-bg-hover)]' : ''}`}>
-                    <span className="font-mono text-[12.5px] text-[var(--color-text-primary)]">/{s.name}</span>
-                    {s.description && <span className="truncate text-[11px] text-[var(--color-text-muted)]">{s.description}</span>}
-                  </button>
-                ))}
-            </div>
-          )}
-          {/* 「+」菜单：工作目录（会话绑定，本地终端 cwd / AI 默认工作区）/ Skills ▸ / 常用任务 ▸ / 运维手册 ▸。
-              二级菜单选中后交给后面两个 picker（不显示自己的按钮，经 preset 打开）：模板填入输入框不自动发送；手册填参数 + 选终端后发出。
-              三者包在一个 flex 项里：两个 picker 是 0 宽的空壳，单独作为 flex 项会各吃一份 gap，「+」和输入区就隔得很远 */}
-          <div className="flex shrink-0">
-            <InputActionsMenu workDir={workDir} canChat={canChat} hasSession={!!activeSessionId} onPickWorkDir={onPickWorkDir}
-              onTemplate={(id) => setTplPreset((p) => ({ id, n: (p?.n ?? 0) + 1 }))} onRunbook={(id) => setRbPreset((p) => ({ id, n: (p?.n ?? 0) + 1 }))}
-              onManageTemplates={onManageTemplates} onManageRunbooks={onManageRunbooks}
-              skills={{ onPick: (n) => { setSkill(n); requestAnimationFrame(() => taRef.current?.focus()) }, onManage: onManageSkills }}
-              attach={{ multimodal: !!models.current?.multimodal, onFiles: att.pickFiles, onDirs: att.pickDirs }} />
-            <TemplatePicker hideTrigger disabled={!canChat} onManage={onManageTemplates} preset={tplPreset}
-              onPick={(t) => { setInput(capInput(t).value); requestAnimationFrame(() => taRef.current?.focus()) }} />
-            <RunbookPicker hideTrigger disabled={!canChat} onManage={onManageRunbooks} onRun={(p) => { send(p) }} preset={rbPreset} />
-          </div>
-          {/* `!` 开头：终端模式标记（回车在当前终端执行，不发给 AI） */}
-          {bang !== null && (
-            <span data-bang-badge title={tr('! 开头的内容会在当前终端执行（不发给 AI），结果作为「终端块」标签放进输入框')}
-              className="mb-[3px] flex h-[22px] shrink-0 items-center gap-1 rounded border border-[color:color-mix(in_srgb,var(--color-warn)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--color-warn)_12%,transparent)] px-1.5 text-[11px] font-medium text-[var(--color-warn)]">
-              <Terminal className="h-3 w-3" />{tr('终端')}
-            </span>
-          )}
-          <textarea
-            ref={taRef} data-chat-input
-            value={input}
-            maxLength={INPUT_MAX}
-            onChange={(e) => {
-              const v = e.target.value
-              setInput(v); setCaret(e.target.selectionStart)
-              // `/` 开头且还没打空格 → 唤起 Skill 列表（打了空格就当正文了）
-              const m = /^\/([^\s]*)$/.exec(v)
-              if (m) { loadSkills(); setSlashQ(m[1]); setSlashIdx(0) }
-              else if (slashQ !== null) setSlashQ(null)
-            }}
-            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-            onKeyDown={(e) => {
-              // `/` 浮层开着时先吃掉上下键 / 回车 / Esc，别让它落到发送逻辑上
-              if (slashQ !== null) {
-                if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIdx((i) => Math.min(i + 1, Math.max(0, slashItems.length - 1))); return }
-                if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIdx((i) => Math.max(0, i - 1)); return }
-                if (e.key === 'Escape') { e.preventDefault(); setSlashQ(null); return }
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing && slashItems.length) {
-                  e.preventDefault()
-                  pickSkillByName(slashItems[Math.min(slashIdx, slashItems.length - 1)].name)
-                  return
-                }
-              }
-              if (atMenu.onKey(e)) return
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(e.altKey ? { queue: true } : undefined) }
-            }}
-            onPaste={(e) => {
-              // 纯文本：超过剩余额度就必须自己截断再插入。浏览器是"先插入再按 maxLength 裁剪"，
-              // 6MB 那一下已经能把界面卡死（受控 textarea 每字符重渲染 + 自动增高重算布局）。
-              const text = e.clipboardData.getData('text/plain')
-              if (!text) { att.onPaste(e); return }   // 文件 / 图片交给附件逻辑
-              const start = taRef.current?.selectionStart ?? input.length
-              const end = taRef.current?.selectionEnd ?? input.length
-              if (text.length <= INPUT_MAX - (input.length - (end - start))) { att.onPaste(e); return }   // 不超限：保留原生粘贴
-              e.preventDefault()
-              const r = insertCapped(input, text, start, end)
-              setInput(r.value)
-              setCaret(r.caret)
-              requestAnimationFrame(() => { const el = taRef.current; if (el) el.selectionStart = el.selectionEnd = r.caret })
-              att.setHint(tr('已粘贴 {kept} 字，超过上限 {max} 字的部分已截掉（{cut} 字）', { kept: r.kept, max: INPUT_MAX, cut: r.cut }))
-            }}
-            disabled={!canChat}
-            rows={1}
-            placeholder={canChat ? (busy ? tr('追问…（Enter 在下一步前插入，Alt+Enter 本轮结束后再发）') : tr('跟 AI 对话…（Enter 发送，@ 引用，! 开头跑命令）')) : tr('等待引擎就绪…')}
-            className="flex-1 resize-none self-stretch overflow-y-auto bg-transparent py-[3px] text-[13px] leading-[22px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] disabled:opacity-50"
-          />
-          {/* 跑着的时候也留发送按钮（有内容才出现）：补发的消息排队，本轮结束自动送出 */}
-          {busy && (
-            <button
-              onClick={interrupt}
-              title={tr('停止')}
-              className="ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-danger)] text-[var(--color-bg-base)] transition-all hover:opacity-80"
-            >
-              <Square className="h-3 w-3 fill-current" />
-            </button>
-          )}
-          {(!busy || !!input.trim() || !!skill || att.items.length > 0) && (
-            <button
-              onClick={() => submit()}
-              disabled={!canChat || (!input.trim() && !skill && !att.items.length)}
-              title={bang !== null ? tr('在当前终端执行（不发给 AI）') : busy ? tr('追问：当前步骤结束后、AI 下一次请求前插入（Alt+Enter：本轮结束后再发）') : tr('发送')}
-              className="ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-accent)] text-[var(--color-bg-base)] transition-all hover:bg-[var(--color-accent-dim)] disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              {bang !== null ? <Terminal className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-            </button>
-          )}
-        </div>
-      </div>
+      {/* 输入区：草稿框 + 底部工具栏（+ 菜单 / 模型 / 性能指标 / 执行模式 / 发送） */}
+      <Composer
+        input={input} onInput={setInput} taRef={taRef} onCaret={setCaret}
+        canChat={canChat} busy={busy} bang={bang} skill={skill ?? projectSkill?.name ?? null}
+        onPickSkill={(name) => pickSkill(name)}
+        onClearSkill={() => { setSkill(undefined); setProjectSkill(null) }}
+        agentName={agentId ? (agentList.find((a) => a.id === agentId)?.name ?? agentId) : undefined}
+        onClearAgent={() => pickAgent(undefined)}
+        att={att} atMenu={atMenu} preview={preview} noImage={!models.current?.multimodal}
+        compactHint={compactHintNode} shellBusy={shellBusy || undefined} inputH={inputH ?? undefined}
+        onResizeDown={onResizeDown} resetInputH={resetInputH}
+        submit={submit} interrupt={interrupt}
+        showSend={!busy || !!input.trim() || !!skill || att.items.length > 0}
+        menus={menusNode}
+        model={canChat && models.current
+          ? <ModelChip profile={models.current} pending={models.pending} profiles={models.profiles} defaultId={models.defaultId}
+            thinking={thinkLevel} note={models.note} onPick={models.onPick} onPickThinking={pickThinking} onManage={models.onManage}
+            onViewUsage={() => openUsagePanel()} />
+          : null}
+        usage={activeSessionId ? <UsageChip sessionId={activeSessionId} usage={usage} stats={stats ?? lastStats ?? undefined} busy={busy} /> : null}
+        mode={activeSessionId ? <ModeChip mode={execMode} onPick={pickExecMode} onTogglePreview={() => preview.set(!preview.on)} /> : null}
+      />
       {/* `!命令` 的确认：与撰写栏 / 终端粘贴同一个确认框（危险行标红、隐藏字符显示占位） */}
       <PasteConfirmDialog open={!!shellAsk} title={shellAsk?.plan.hidden ? tr('命令含隐藏字符') : shellAsk?.plan.prod.length ? tr('在生产终端执行') : tr('dialog|危险命令确认')} confirmText={tr('确认执行')}
         message={tr('将在终端「{title}」执行{prod}{danger}{hidden}：', {
@@ -1284,11 +1220,12 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
 // 本会话累计 tokens（用量统计）：每次请求后 contextUsage 变 → 重新取一次；改了单价也重取（花费跟着变）
 // 头部用量小标签：「本会话累计 tokens · 上下文进度条 %」合成一个，悬停看明细，点击立即压缩上下文。
 // 累计 tokens 每次请求后（contextUsage 变）重取；改了单价也重取（花费跟着变）
-function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { inputTokens: number; limit: number; window?: number; compactAt?: number }; busy?: boolean }) {
+function UsageChip({ sessionId, usage, stats, busy }: { sessionId: string; usage?: { inputTokens: number; limit: number; window?: number; compactAt?: number }; stats?: TurnStats; busy?: boolean }) {
   const [t, setT] = useState<(UsageTotals & { currency: UsageCurrency }) | null>(null)
   const [priceTick, setPriceTick] = useState(0)
   // 点击标签 = 立即压缩上下文（会话空闲时才有意义；忙时 dsh 会报 busy）
   const [compacting, setCompacting] = useState(false)
+  const [askCompact, setAskCompact] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string }>()
   const doCompact = () => {
     if (compacting) return
@@ -1309,16 +1246,6 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
     const t = setTimeout(() => setNote(undefined), 5000)
     return () => clearTimeout(t)
   }, [note, compacting])
-  // 会话花费提醒阈值（设置里填的元；0=不提醒）。改设置后立刻生效
-  const [threshold, setThreshold] = useState(0)
-  useEffect(() => {
-    let alive = true
-    const load = () => client.settings.get().then((x) => { if (alive) setThreshold(x.system?.costWarnYuan ?? 0) }, () => {})
-    void load()
-    window.addEventListener(USAGE_PRICES_EVENT, load)
-    return () => { alive = false; window.removeEventListener(USAGE_PRICES_EVENT, load) }
-  }, [])
-  const lvl = costLevel(t?.cost, threshold)
   const tick = usage?.inputTokens ?? 0
   useEffect(() => {
     const on = () => setPriceTick((n) => n + 1)
@@ -1331,55 +1258,35 @@ function UsageChip({ sessionId, usage, busy }: { sessionId: string; usage?: { in
     client.usage.session(sessionId).then((r) => { if (alive) setT(r) }, () => { if (alive) setT(null) })
     return () => { alive = false }
   }, [sessionId, tick, priceTick])
-  if (!t?.requests && !usage) return null
-  const K = (n: number) => `${Math.round(n / 1000)}K`
-  // 分母用**模型上下文窗口**（用户理解的口径）——以前用压缩阈值当分母，
-  // 阈值是窗口的 60%，于是用量一直在 96% 附近徘徊，看着像"上下文快满了"，其实才用了一半多
-  const denom = usage?.window || 0
-  const pct = usage && denom > 0 ? Math.min(100, Math.round((usage.inputTokens / denom) * 100)) : undefined
-  const color = pct === undefined ? '' : pct >= 95 ? 'var(--color-danger)' : pct >= 80 ? 'var(--color-warn)' : 'var(--color-accent)'
-  const tip = [
-    usage && (denom > 0
-      ? tr('上下文 {used} / {window}（{pct}%）；达到 {compactAt}（{ratio}%）时自动压缩后继续', {
-        used: K(usage.inputTokens), window: K(denom), pct: pct ?? 0, compactAt: K(usage.compactAt || usage.limit),
-        ratio: Math.round(((usage.compactAt || usage.limit) / denom) * 100),
-      })
-      : tr('上下文 {used}（未设上限）', { used: K(usage.inputTokens) })),
-    t?.requests && tr('本会话 {n} 次请求，共 {total} tokens\n输入 {input}（未命中缓存）\n命中缓存 {cache}（{rate}%）\n输出 {output}\n花费 {cost}', {
-      n: t.requests, total: fmtTokens(totalTokens(t)), input: t.input.toLocaleString(), cache: t.cacheRead.toLocaleString(),
-      rate: (cacheHitRate(t) * 100).toFixed(1), output: t.output.toLocaleString(), cost: fmtCost(t.cost, t.currency),
-    }),
-    lvl !== 'ok' && t?.cost !== undefined ? tr('本会话已花 {cost}，超过你设的提醒阈值 {limit}（只提醒，不会中断任务；可在 设置 → AI 与安全 调整）', { cost: fmtCost(t.cost, t.currency), limit: `¥${threshold}` }) : '',
-    tr('点击立即压缩上下文（把较早的对话压成摘要，最近一轮原文会保留）'),
-  ].filter(Boolean).join('\n\n')
+  if (!t?.requests && !usage && !stats) return null
+  // 单次调用的口径优先（用户看的是"上一次调用"）：tok/s 与缓存命中都按最近这次请求算；
+  // 没有单次快照（刚开的应用 / 旧会话）时，缓存率退回会话累计
+  const pct = usage && usage.window && usage.window > 0 ? Math.min(100, Math.round((usage.inputTokens / usage.window) * 100)) : undefined
+  const tokPerSec = stats && stats.ms > 0 ? stats.outputTokens / (stats.ms / 1000) : undefined
+  const reqTotal = stats ? stats.inputTokens + stats.cacheReadTokens : 0
+  const cacheRate = stats && reqTotal > 0 ? stats.cacheReadTokens / reqTotal : undefined
   return (
-    <button data-usage-chip onClick={doCompact} disabled={compacting} title={tip}
-      className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] tabular-nums text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-secondary)]">
-      {t?.requests ? <span>{fmtTokens(totalTokens(t))}</span> : null}
-      {t?.cost !== undefined && (
-        <span data-usage-cost={lvl}
-          className={lvl === 'over' ? 'font-medium text-[var(--color-warn)]' : lvl === 'warn' ? 'text-[var(--color-warn)]' : ''}>
-          {fmtCost(t.cost, t.currency)}
-        </span>
-      )}
-      {pct !== undefined && (
-        <>
-          {/* 圆弧：从 12 点钟顺时针走 pct% */}
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 -rotate-90" aria-hidden>
-            <circle cx="8" cy="8" r="6" fill="none" strokeWidth="2.5" style={{ stroke: 'var(--color-bg-hover)' }} />
-            <circle cx="8" cy="8" r="6" fill="none" strokeWidth="2.5" strokeLinecap="round" pathLength={100} strokeDasharray={`${Math.max(pct, 1)} 100`} style={{ stroke: color }} className="transition-[stroke-dasharray]" />
-          </svg>
-          {compacting ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <span style={{ color: note ? (note.ok ? 'var(--color-success)' : 'var(--color-danger)') : pct >= 80 ? color : undefined }}>
-              {note ? (note.ok ? tr('已压缩') : tr('失败')) : `${pct}%`}
-            </span>
-          )}
-        </>
-      )}
-      {usage && pct === undefined && !t?.requests && <span>{K(usage.inputTokens)}</span>}
-    </button>
+    <>
+      <UsageStrip
+        tokPerSec={tokPerSec}
+        stats={stats}
+        totals={t}
+        costText={t ? fmtCost(t.cost, t.currency) : undefined}
+        cacheRate={cacheRate}
+        ctxTokens={usage?.inputTokens}
+        window={usage?.window || undefined}
+        compactAt={usage?.compactAt}
+        pct={pct}
+        compacting={compacting}
+        note={note ? (note.ok ? 'ok' : 'fail') : undefined}
+        onCompact={() => setAskCompact(true)}
+      />
+      <ConfirmDialog open={askCompact} title={tr('压缩上下文')}
+        message={tr('把较早的对话压成摘要、最近一轮原文保留，压完不能还原。现在就压？')}
+        confirmText={tr('压缩')}
+        onConfirm={() => { setAskCompact(false); doCompact() }}
+        onCancel={() => setAskCompact(false)} />
+    </>
   )
 }
 
@@ -1437,7 +1344,7 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
         <Icon className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-8 z-50 w-[260px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl">
+        <div className="absolute bottom-full right-0 z-50 mb-1 w-[260px] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] p-1.5 shadow-2xl">
           {(Object.keys(meta) as ExecMode[]).map((m) => {
             const it = meta[m]
             const ItIcon = it.icon
@@ -1462,20 +1369,13 @@ function ModeChip({ mode, onPick, onTogglePreview }: { mode: ExecMode; onPick: (
   )
 }
 
-function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmortem, title, workDir, onRename, onNew, onOpenGit, models, preview, thinking, onPickThinking, mode, onPickMode, switcher, onFlow }: {
+function SessionHeader({ hasSession, sessionId, busy, onExport, postmortem, title, workDir, onRename, onNew, onOpenGit, switcher, onFlow }: {
   /** 标题后的会话切换箭头（hover 出最近会话列表） */
   switcher?: Omit<SessionSwitcherProps, 'sessions'> & { sessions: SessionMeta[] }
-  preview?: { on: boolean; onToggle: () => void }   // 预演模式（只说不做），会话级
-  thinking?: ThinkingLevel                          // 会话级思考深度（低/中/高）
-  onPickThinking?: (lv: ThinkingLevel | undefined) => void   // undefined = 恢复为跟随模型配置
-  mode?: ExecMode                                   // 会话级执行模式（四档）
-  onPickMode?: (m: ExecMode) => void
-  busy?: boolean   // 本轮是否在跑：点用量标签压缩时要等它结束
-  models?: SessionModel
   postmortem?: PostmortemAction
   hasSession: boolean
   sessionId?: string | null
-  usage?: { inputTokens: number; limit: number; window?: number; compactAt?: number }
+  busy?: boolean   // 本轮是否在跑（子代理徽标据此刷新）
   onExport?: (mode: ExportMode, redact: boolean) => void
   title: string
   workDir?: string   // 当前会话绑定的工作目录（hover 标题时和名称一起显示）
@@ -1544,14 +1444,10 @@ function SessionHeader({ hasSession, sessionId, usage, busy, onExport, postmorte
               onRename={onRename ? () => { setDraft(title); setEditing(true) } : undefined}
               onExport={onExport} postmortem={postmortem} onFlow={onFlow} />
           )}
-          {/* 这个会话派过子代理时，名称后面显示数量与状态；点开看各自结论 */}
-          {sessionId && <SubagentBadge sessionId={sessionId} live={busy} />}
         </div>
       )}
-      {hasSession && models?.note && <span className={`max-w-[160px] shrink-0 truncate text-[11px] ${models.note.ok ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-danger)]'}`} title={models.note.text}>{models.note.text}</span>}
-      {hasSession && models && <ModelChip profile={models.current} pending={models.pending} profiles={models.profiles} defaultId={models.defaultId} onPick={models.onPick} onManage={models.onManage} thinking={thinking} onPickThinking={onPickThinking} />}
-      {hasSession && sessionId && <UsageChip sessionId={sessionId} usage={usage} busy={busy} />}
-      {hasSession && mode && onPickMode && <ModeChip mode={mode} onPick={onPickMode} onTogglePreview={preview?.onToggle} />}
+      {/* 这个会话派过子代理时，徽标固定在「+」左边（不参与标题区收缩与截断），弹窗向右对齐 */}
+      {sessionId && <SubagentBadge sessionId={sessionId} live={busy} />}
       <HdrBtn title={tr('新建会话')} onClick={onNew}><Plus className="h-4 w-4" /></HdrBtn>
       {/* 历史会话 / 资源管理器 / 授权 已移到左侧活动栏（App） */}
     </div>

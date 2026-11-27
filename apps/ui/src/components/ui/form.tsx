@@ -86,7 +86,7 @@ export function Row({ label, hint, tip, children, wide, danger }: { label: React
 /** 输入框统一样式（宽度由调用方给）；单行高 32px，与 Select / NumberInput 的 md 档一致 */
 export const INPUT = 'rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-panel)] px-2.5 py-1.5 text-[12.5px] leading-[18px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[color:color-mix(in_srgb,var(--color-accent)_60%,transparent)]'
 /** 次要按钮 */
-export const BTN2 = 'shrink-0 rounded-md border border-[var(--color-border-default)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-40'
+export const BTN2 = 'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[var(--color-border-default)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-40'
 /** 多行输入 */
 export const TEXTAREA = `${INPUT} w-full resize-y text-[12px]`
 

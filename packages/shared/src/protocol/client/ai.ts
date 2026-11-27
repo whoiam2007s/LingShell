@@ -73,6 +73,8 @@ export interface AiApi {
   usage: {
     summary(range: UsageRange): Promise<UsageSummary>
     session(sessionId: string): Promise<UsageTotals & { currency: UsageCurrency }>   // 聊天头部「本会话 tokens」
+    /** 该会话最近一次请求的性能快照（回填底栏 tok/s / 缓存率 / thinking）；没有记录返回 null */
+    lastRequest(sessionId: string): Promise<{ outputTokens: number; inputTokens: number; cacheReadTokens: number; ms?: number; thinkingTokens?: number; thinkingChars?: number } | null>
     getPrices(): Promise<UsagePrices>
     savePrices(prices: UsagePrices): Promise<UsagePrices>
   }
@@ -93,6 +95,7 @@ export interface AiApi {
   // 导入两步走：pickImport / inspect 暂存校验并返回预览（取消选择返回 null）→ 用户确认 commitImport（重名时 overwrite 或 rename）
   skills: {
     list(): Promise<import('../types.js').SkillInfo[]>
+    listProject(workDir?: string, includeUser?: boolean): Promise<import('../types.js').ProjectSkillView[]>
     read(name: string): Promise<import('../types.js').SkillInput>
     save(input: import('../types.js').SkillInput, oldName?: string): Promise<void>
     remove(name: string): Promise<void>
@@ -104,6 +107,25 @@ export interface AiApi {
     commitImport(token: string, opts?: { overwrite?: boolean; rename?: string }): Promise<string>
     cancelImport(token: string): Promise<void>
     openDir(): Promise<void>
+  }
+  // Agent（角色）：<数据目录>/agents/<name>.md + 项目内 .lingshell/agents、.claude/agents、.codex/agents（只读兼容）。
+  // 外来源默认不启用；会话绑定后正文进系统提示、tools 收窄工具集。
+  agents: {
+    list(workDir?: string): Promise<import('../types.js').AgentView[]>
+    read(id: string, workDir?: string): Promise<import('../types.js').AgentView | null>
+    save(input: import('../types.js').AgentInput, oldName?: string): Promise<void>
+    remove(id: string): Promise<void>
+    setEnabled(id: string, enabled: boolean): Promise<void>
+    openDir(): Promise<void>
+    sessionAgent(sessionId: string): Promise<{ agentId?: string; pending: boolean }>
+    setSessionAgent(sessionId: string, agentId?: string): Promise<{ pending: boolean }>
+  }
+  // 第三方导入：扫描 Claude Code / Codex / Cursor 的用户目录，导入它们的 agents / skills / MCP
+  importer: {
+    platforms(): Promise<{ id: string; label: string; dir: string }[]>
+    scan(kind: 'agent' | 'skill' | 'mcp', platform: string): Promise<import('../types.js').ImportGroupView>
+    commit(kind: 'agent' | 'skill' | 'mcp', ids: string[]): Promise<{ ok: number; failed: string[] }>
+    openDir(platform: string): Promise<void>
   }
   // AI 对话附件（输入框「+」菜单 / 粘贴 / 拖入，见 desktop/main/ai/attachIpc.ts）。pick* 取消返回 []；
   // pickImages 只返回路径；kinds 区分文件 / 目录 / 图片文件（扩展名 + 文件头）；imageFile 读图片文件为 data URL（svg 为 image/svg+xml，非图片 null）；

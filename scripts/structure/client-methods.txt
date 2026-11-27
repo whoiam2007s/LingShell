@@ -16,6 +16,14 @@ agent.setWorkDir → agent:setWorkDir
 agent.steer → agent:steer
 agent.suggestCommand → agent:suggestCommand
 agent.unsteer → agent:unsteer
+agents.list → agents:list
+agents.openDir → agents:openDir
+agents.read → agents:read
+agents.remove → agents:remove
+agents.save → agents:save
+agents.sessionAgent → agent:sessionAgent
+agents.setEnabled → agents:setEnabled
+agents.setSessionAgent → agent:setSessionAgent
 aiLink.predictCommand → aiLink:predict
 aiLink.recordingSummary → aiLink:summary
 aiLink.summarizeRecording → aiLink:summarize
@@ -228,6 +236,10 @@ hosts.list → hosts:list
 hosts.save → hosts:save
 hosts.sessionImportPreview → hosts:sessionImportPreview
 hosts.sshConfigPreview → hosts:sshConfigPreview
+importer.commit → import:commit
+importer.openDir → import:openDir
+importer.platforms → import:platforms
+importer.scan → import:scan
 k8s.forward → k8s:forward
 k8s.forwards → k8s:forwards
 k8s.health → k8s:health
@@ -353,6 +365,7 @@ skills.cancelImport → skills:cancelImport
 skills.commitImport → skills:commitImport
 skills.inspect → skills:inspect
 skills.list → skills:list
+skills.listProject → skills:listProject
 skills.openDir → skills:openDir
 skills.pickImport → skills:pickImport
 skills.read → skills:read
@@ -415,6 +428,7 @@ turnChanges.diff → turnChanges:diff
 turnChanges.list → turnChanges:list
 turnChanges.undo → turnChanges:undo
 usage.getPrices → usage:getPrices
+usage.lastRequest → usage:lastRequest
 usage.savePrices → usage:savePrices
 usage.session → usage:session
 usage.summary → usage:summary
